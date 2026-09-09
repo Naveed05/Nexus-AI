@@ -19,3 +19,4 @@ class TaskResponse(BaseModel):
     risk_level: RiskLevel
     created_at: str
     capabilities: list[str]
+    selected_model: str
