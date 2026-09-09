@@ -33,13 +33,34 @@ def test_create_task_builds_domain_object() -> None:
     assert body["status"] == "pending"
     assert body["risk_level"] == "medium"
     assert body["capabilities"] == ["data_analysis", "visualization"]
+    assert body["selected_model"] == "gpt-5.6-sol"
     assert body["created_at"]
+
+
+def test_hard_task_routes_to_astra() -> None:
+    response = client.post(
+        "/api/v1/tasks",
+        json={"objective": "Debug this complex agent architecture"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["selected_model"] == "gpt-6-astra"
+
+
+def test_low_budget_task_routes_to_luna() -> None:
+    response = client.post(
+        "/api/v1/tasks",
+        json={"objective": "Summarize these notes", "budget": 1.0},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["selected_model"] == "gpt-5.6-luna"
 
 
 def test_create_task_defaults() -> None:
     response = client.post(
         "/api/v1/tasks",
-        json={"objective": "Research AI agents"},
+        json={"objective": "Write a short summary"},
     )
 
     assert response.status_code == 201
@@ -47,6 +68,7 @@ def test_create_task_defaults() -> None:
     assert body["status"] == "pending"
     assert body["risk_level"] == "low"
     assert body["capabilities"] == []
+    assert body["selected_model"] == "gpt-5.6-terra"
 
 
 def test_create_task_rejects_empty_objective() -> None:
