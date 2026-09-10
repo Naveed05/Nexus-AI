@@ -6,7 +6,8 @@ from openai import OpenAI
 
 from nexus.core.config import settings
 from nexus.core.models import ModelSpec
-from nexus.core.task import RiskLevel, Task
+from nexus.core.permissions import PermissionDecision, PermissionPolicy
+from nexus.core.task import Task
 from nexus.core.tools import ToolRegistry, ToolSpec, tool_registry
 
 
@@ -29,24 +30,22 @@ class ExecutionResult:
 
 
 class ToolPermissionPolicy:
-    """Controls which registered tools a task is allowed to execute."""
+    """Compatibility wrapper around NEXUS's centralized permission policy."""
 
-    _risk_rank = {"low": 0, "medium": 1, "high": 2}
-    _permission_rank = {"read": 0, "modify": 1, "high_risk": 2}
+    def __init__(self, policy: PermissionPolicy | None = None) -> None:
+        self._policy = policy or PermissionPolicy()
 
     def authorize(self, task: Task, tool: ToolSpec) -> None:
-        if self._risk_rank[tool.risk_level] > self._risk_rank[task.risk_level.value]:
+        decision = self._policy.decide(tool, task.risk_level)
+        if decision == PermissionDecision.ALLOW:
+            return
+        if decision == PermissionDecision.APPROVAL_REQUIRED:
             raise PermissionError(
-                f"Tool '{tool.name}' requires {tool.risk_level} risk authorization."
+                f"Tool '{tool.name}' requires explicit user approval before execution."
             )
-        if tool.permission == "high_risk" and task.risk_level != RiskLevel.HIGH:
-            raise PermissionError(
-                f"Tool '{tool.name}' requires explicit high-risk task authorization."
-            )
-        if self._permission_rank[tool.permission] >= 2 and task.risk_level != RiskLevel.HIGH:
-            raise PermissionError(
-                f"Tool '{tool.name}' is blocked by the NEXUS permission policy."
-            )
+        raise PermissionError(
+            f"Tool '{tool.name}' is blocked by the NEXUS permission policy."
+        )
 
 
 class ModelExecutor:
