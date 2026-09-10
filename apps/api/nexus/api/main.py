@@ -26,3 +26,15 @@ def create_task(payload: TaskCreate) -> TaskResponse:
         capabilities=task.capabilities,
         selected_model=route.model.model_id,
     )
+
+
+@app.post("/api/v1/tasks/execute", response_model=dict[str, str], status_code=200)
+def execute_task(payload: TaskCreate) -> dict[str, str]:
+    task = Task(**payload.model_dump())
+    result = engine.run(task)
+    return {
+        "task_id": str(task.task_id),
+        "model": result.model.model_id,
+        "response_id": result.execution.response_id,
+        "output": result.execution.output,
+    }
