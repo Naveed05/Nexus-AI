@@ -3,6 +3,7 @@ from typing import Any, Callable
 
 from nexus.core.data_engine import DataIntelligenceEngine
 from nexus.core.data_pipeline import DataPipeline
+from nexus.core.ml_tools import baseline_ml
 
 RISK_LEVELS = {"low", "medium", "high"}
 PERMISSION_LEVELS = {"read", "modify", "high_risk"}
@@ -69,30 +70,19 @@ def calculator(expression: str) -> dict[str, str]:
 
 
 def profile_dataset(csv_text: str) -> dict[str, Any]:
-    """Profile a UTF-8 CSV dataset without executing user-supplied code."""
     if not csv_text.strip():
         raise ValueError("CSV payload cannot be empty")
     engine = DataIntelligenceEngine()
     frame = engine.load_bytes(csv_text.encode("utf-8"), "csv")
     profile = engine.profile(frame)
     quality = engine.quality_report(frame)
-    return {
-        "profile": {
-            "rows": profile.rows, "columns": profile.columns,
-            "duplicate_rows": profile.duplicate_rows,
-            "memory_estimate_bytes": profile.memory_estimate_bytes,
-            "columns": [
-                {"name": c.name, "dtype": c.dtype, "null_count": c.null_count,
-                 "null_ratio": c.null_ratio, "unique_count": c.unique_count}
-                for c in profile.column_profiles
-            ],
-        },
-        "quality": quality,
-    }
+    return {"profile": {"rows": profile.rows, "columns": profile.columns, "duplicate_rows": profile.duplicate_rows,
+        "memory_estimate_bytes": profile.memory_estimate_bytes,
+        "columns": [{"name": c.name, "dtype": c.dtype, "null_count": c.null_count, "null_ratio": c.null_ratio, "unique_count": c.unique_count} for c in profile.column_profiles]},
+        "quality": quality}
 
 
 def analyze_dataset(csv_text: str, target: str | None = None) -> dict[str, Any]:
-    """Analyze CSV data and optionally formulate a supervised ML problem."""
     if not csv_text.strip():
         raise ValueError("CSV payload cannot be empty")
     frame = DataIntelligenceEngine().load_bytes(csv_text.encode("utf-8"), "csv")
@@ -100,21 +90,15 @@ def analyze_dataset(csv_text: str, target: str | None = None) -> dict[str, Any]:
 
 
 tool_registry = ToolRegistry()
-tool_registry.register(ToolSpec(
-    name="calculator", description="Perform basic arithmetic calculations.",
-    input_schema={"type": "object", "properties": {"expression": {"type": "string", "description": "A basic arithmetic expression."}}, "required": ["expression"], "additionalProperties": False},
-    risk_level="low", permission="read", timeout_seconds=5.0, cost_units=0.0, handler=calculator,
-))
-tool_registry.register(ToolSpec(
-    name="profile_dataset", description="Profile a UTF-8 CSV dataset and identify missing values, duplicates, and constant columns.",
-    input_schema={"type": "object", "properties": {"csv_text": {"type": "string", "description": "The complete UTF-8 CSV payload to analyze."}}, "required": ["csv_text"], "additionalProperties": False},
-    risk_level="low", permission="read", timeout_seconds=15.0, cost_units=0.1, handler=profile_dataset,
-))
-tool_registry.register(ToolSpec(
-    name="analyze_dataset", description="Analyze CSV data with cleaning, EDA, correlations, problem formulation, and recommendations.",
-    input_schema={"type": "object", "properties": {
-        "csv_text": {"type": "string", "description": "The complete UTF-8 CSV payload to analyze."},
-        "target": {"type": ["string", "null"], "description": "Optional target column for supervised problem formulation."},
-    }, "required": ["csv_text", "target"], "additionalProperties": False},
-    risk_level="low", permission="read", timeout_seconds=30.0, cost_units=0.5, handler=analyze_dataset,
-))
+tool_registry.register(ToolSpec("calculator", "Perform basic arithmetic calculations.",
+    {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"], "additionalProperties": False},
+    "low", calculator, timeout_seconds=5.0))
+tool_registry.register(ToolSpec("profile_dataset", "Profile a UTF-8 CSV dataset and identify data-quality issues.",
+    {"type": "object", "properties": {"csv_text": {"type": "string"}}, "required": ["csv_text"], "additionalProperties": False},
+    "low", profile_dataset, timeout_seconds=15.0, cost_units=0.1))
+tool_registry.register(ToolSpec("analyze_dataset", "Analyze CSV data with cleaning, EDA, correlations, problem formulation, and recommendations.",
+    {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["csv_text", "target"], "additionalProperties": False},
+    "low", analyze_dataset, timeout_seconds=30.0, cost_units=0.5))
+tool_registry.register(ToolSpec("baseline_ml", "Train and evaluate a conservative baseline ML model for an explicit target column.",
+    {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": "string"}}, "required": ["csv_text", "target"], "additionalProperties": False},
+    "medium", baseline_ml, permission="read", timeout_seconds=60.0, cost_units=2.0))
