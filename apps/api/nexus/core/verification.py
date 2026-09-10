@@ -14,7 +14,7 @@ class VerificationCheck:
 @dataclass(frozen=True)
 class VerificationResult:
     passed: bool
-    checks: tuple[VerificationCheck, ...]
+    checks: dict[str, bool]
     issues: tuple[str, ...] = ()
 
 
@@ -25,13 +25,18 @@ class OutputVerifier:
         objective_present = bool(task.objective.strip())
         output_present = bool(output.strip())
         tools_recorded = all(bool(getattr(call, "tool_name", "")) for call in tool_calls)
-        checks = (
-            VerificationCheck("non_empty_output", output_present, "Output is non-empty." if output_present else "Output is empty."),
-            VerificationCheck("objective_present", objective_present, "Task objective is present." if objective_present else "Task objective is empty."),
-            VerificationCheck("tool_calls_recorded", tools_recorded, "Tool calls are recorded correctly." if tools_recorded else "A tool call is missing its name."),
-        )
+        checks = {
+            "non_empty_output": output_present,
+            "objective_present": objective_present,
+            "tool_calls_recorded": tools_recorded,
+        }
+        messages = {
+            "non_empty_output": "Output is non-empty." if output_present else "Output is empty.",
+            "objective_present": "Task objective is present." if objective_present else "Task objective is empty.",
+            "tool_calls_recorded": "Tool calls are recorded correctly." if tools_recorded else "A tool call is missing its name.",
+        }
         return VerificationResult(
-            passed=all(check.passed for check in checks),
+            passed=all(checks.values()),
             checks=checks,
-            issues=tuple(check.message for check in checks if not check.passed),
+            issues=tuple(messages[name] for name, passed in checks.items() if not passed),
         )
