@@ -30,6 +30,7 @@ def test_profile_dataset_tool_matches_engine() -> None:
 
 def test_analyze_dataset_tool_runs_pipeline() -> None:
     tool = tool_registry.get("analyze_dataset")
-    result = tool.handler("name,score\nA,10\nB,\nB,10\n")
+    result = tool.handler("name,score\nA,10\nB,\nB,\n", None)
     assert result["cleaned_shape"]["rows"] == 2
     assert result["eda"]["numeric"]["score"]["mean"] == pytest.approx(10.0)
+    assert result["problem"]["type"] == "descriptive"
