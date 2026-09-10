@@ -2,7 +2,8 @@ from fastapi import FastAPI
 
 from nexus.core.config import settings
 from nexus.core.engine import engine
-from nexus.core.schemas import TaskCreate, TaskResponse
+from nexus.core.events import EventType
+from nexus.core.schemas import ExecutionResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
@@ -28,13 +29,16 @@ def create_task(payload: TaskCreate) -> TaskResponse:
     )
 
 
-@app.post("/api/v1/tasks/execute", response_model=dict[str, str], status_code=200)
-def execute_task(payload: TaskCreate) -> dict[str, str]:
+@app.post("/api/v1/tasks/execute", response_model=ExecutionResponse, status_code=200)
+def execute_task(payload: TaskCreate) -> ExecutionResponse:
     task = Task(**payload.model_dump())
     result = engine.run(task)
-    return {
-        "task_id": str(task.task_id),
-        "model": result.model.model_id,
-        "response_id": result.execution.response_id,
-        "output": result.execution.output,
-    }
+    return ExecutionResponse(
+        task_id=str(task.task_id),
+        model=result.model.model_id,
+        response_id=result.execution.response_id,
+        output=result.execution.output,
+        verification_passed=result.state.verification_passed,
+        tool_calls=len(result.execution.tool_calls),
+        events=[event.event_type.value for event in result.events],
+    )
