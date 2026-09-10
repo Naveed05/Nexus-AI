@@ -7,6 +7,7 @@ from nexus.core.planner import TaskPlanner
 from nexus.core.router import TaskRouter
 from nexus.core.state import AgentState, StepStatus
 from nexus.core.task import Task
+from nexus.core.verification import OutputVerifier, VerificationResult
 
 
 @dataclass(frozen=True)
@@ -21,21 +22,24 @@ class EngineResult:
     model: ModelSpec
     execution: ExecutionResult
     state: AgentState
+    verification: VerificationResult
     events: tuple[ExecutionEvent, ...]
 
 
 class NexusEngine:
-    """Coordinates routing, planning, execution, and first-pass verification."""
+    """Coordinates routing, planning, execution, and observable verification."""
 
     def __init__(
         self,
         router: TaskRouter | None = None,
         executor: ModelExecutor | None = None,
         planner: TaskPlanner | None = None,
+        verifier: OutputVerifier | None = None,
     ) -> None:
         self._router = router or TaskRouter()
         self._executor = executor or ModelExecutor()
         self._planner = planner or TaskPlanner()
+        self._verifier = verifier or OutputVerifier()
 
     def route_task(self, task: Task) -> RouteResult:
         """Select the model without executing it."""
@@ -103,21 +107,24 @@ class NexusEngine:
             ExecutionEvent(
                 event_type=EventType.VERIFICATION_STARTED,
                 task_id=task.task_id,
-                message="Running first-pass output verification.",
+                message="Running observable output verification.",
             )
         )
 
-        state.verification_passed = bool(execution.output.strip())
-        verification_step.result = {"non_empty_output": state.verification_passed}
+        verification = self._verifier.verify(task, execution.output, execution.tool_calls)
+        state.verification_passed = verification.passed
+        verification_step.result = verification.checks
+        verification_step.error = "; ".join(verification.issues) or None
         verification_step.status = (
-            StepStatus.COMPLETED if state.verification_passed else StepStatus.FAILED
+            StepStatus.COMPLETED if verification.passed else StepStatus.FAILED
         )
+
         events.append(
             ExecutionEvent(
                 event_type=EventType.VERIFICATION_COMPLETED,
                 task_id=task.task_id,
                 message="Output verification completed.",
-                data={"passed": state.verification_passed},
+                data={"passed": verification.passed, "checks": verification.checks},
             )
         )
 
@@ -126,28 +133,24 @@ class NexusEngine:
                 step.status = StepStatus.SKIPPED
         state.current_step_index = len(state.steps)
 
-        if state.verification_passed:
-            events.append(
-                ExecutionEvent(
-                    event_type=EventType.TASK_COMPLETED,
-                    task_id=task.task_id,
-                    message="NEXUS task completed successfully.",
-                )
+        events.append(
+            ExecutionEvent(
+                event_type=EventType.TASK_COMPLETED if verification.passed else EventType.TASK_FAILED,
+                task_id=task.task_id,
+                message=(
+                    "NEXUS task completed successfully."
+                    if verification.passed
+                    else "NEXUS task failed output verification."
+                ),
             )
-        else:
-            events.append(
-                ExecutionEvent(
-                    event_type=EventType.TASK_FAILED,
-                    task_id=task.task_id,
-                    message="NEXUS task failed output verification.",
-                )
-            )
+        )
 
         return EngineResult(
             task=task,
             model=route.model,
             execution=execution,
             state=state,
+            verification=verification,
             events=tuple(events),
         )
 
