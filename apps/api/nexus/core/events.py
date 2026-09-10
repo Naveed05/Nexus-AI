@@ -7,10 +7,13 @@ from uuid import UUID
 
 class EventType(str, Enum):
     TASK_STARTED = "task_started"
-    MODEL_ROUTED = "model_routed"
     PLAN_CREATED = "plan_created"
+    MODEL_ROUTED = "model_routed"
     STEP_STARTED = "step_started"
     TOOL_CALLED = "tool_called"
+    STEP_FAILED = "step_failed"
+    RETRY_SCHEDULED = "retry_scheduled"
+    EXECUTION_RECOVERED = "execution_recovered"
     STEP_COMPLETED = "step_completed"
     VERIFICATION_STARTED = "verification_started"
     VERIFICATION_COMPLETED = "verification_completed"
