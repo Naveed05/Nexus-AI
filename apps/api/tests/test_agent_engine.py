@@ -37,9 +37,15 @@ def test_engine_builds_plan_and_verifies_output() -> None:
     )
     event_types = [event.event_type.value for event in result.events]
     assert event_types[0] == "task_started"
+    assert "model_routed" in event_types
     assert "plan_created" in event_types
     assert "verification_completed" in event_types
     assert event_types[-1] == "task_completed"
+
+    routed = next(event for event in result.events if event.event_type.value == "model_routed")
+    assert routed.data["model_id"] == "gpt-5.6-terra"
+    assert routed.data["provider"] == "openai"
+    assert routed.data["reasons"]
 
 
 def test_engine_routes_without_executing() -> None:
@@ -49,3 +55,5 @@ def test_engine_routes_without_executing() -> None:
     route = engine.route_task(task)
 
     assert route.model.model_id == "gpt-6-astra"
+    assert route.decision.model == route.model
+    assert route.decision.score == 95.0
