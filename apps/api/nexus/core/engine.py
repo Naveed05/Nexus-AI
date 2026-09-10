@@ -24,8 +24,13 @@ class NexusEngine:
         self._router = router or TaskRouter()
         self._executor = executor or ModelExecutor()
 
+    def route_task(self, task: Task) -> ModelSpec:
+        """Select the model without executing it."""
+        return self._router.route(task)
+
     def run(self, task: Task) -> EngineResult:
-        model = self._router.route(task)
+        """Route a task and execute it through the selected model."""
+        model = self.route_task(task)
         execution = self._executor.execute(task, model)
         return EngineResult(task=task, model=model, execution=execution)
 
