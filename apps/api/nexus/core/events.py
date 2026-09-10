@@ -7,6 +7,7 @@ from uuid import UUID
 
 class EventType(str, Enum):
     TASK_STARTED = "task_started"
+    MODEL_ROUTED = "model_routed"
     PLAN_CREATED = "plan_created"
     STEP_STARTED = "step_started"
     TOOL_CALLED = "tool_called"
