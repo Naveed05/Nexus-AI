@@ -35,6 +35,8 @@ class ModelExecutor:
         registry: ToolRegistry | None = None,
         max_tool_rounds: int = 8,
     ) -> None:
+        if max_tool_rounds < 1:
+            raise ValueError("max_tool_rounds must be at least 1")
         self._client = client
         self._registry = registry or tool_registry
         self._max_tool_rounds = max_tool_rounds
@@ -49,8 +51,9 @@ class ModelExecutor:
         tools = self._registry.openai_tools()
         input_items: list[Any] = [task.objective]
         tool_calls: list[ToolCallRecord] = []
+        tool_rounds = 0
 
-        for _ in range(self._max_tool_rounds + 1):
+        while True:
             response = client.responses.create(
                 model=model.model_id,
                 input=input_items,
@@ -69,6 +72,10 @@ class ModelExecutor:
                     output=response.output_text,
                     tool_calls=tuple(tool_calls),
                 )
+
+            if tool_rounds >= self._max_tool_rounds:
+                raise RuntimeError("NEXUS tool execution limit exceeded")
+            tool_rounds += 1
 
             input_items.extend(response.output)
             tool_outputs: list[dict[str, Any]] = []
@@ -98,5 +105,3 @@ class ModelExecutor:
                 )
 
             input_items.extend(tool_outputs)
-
-        raise RuntimeError("NEXUS tool execution limit exceeded")
