@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from nexus.core.data_tools import profile_dataset
+
 
 RISK_LEVELS = {"low", "medium", "high"}
 PERMISSION_LEVELS = {"read", "modify", "high_risk"}
@@ -94,5 +96,29 @@ tool_registry.register(
         cost_units=0.0,
         sandbox_required=False,
         handler=calculator,
+    )
+)
+
+tool_registry.register(
+    ToolSpec(
+        name="profile_dataset",
+        description="Profile a UTF-8 CSV dataset and identify missing values, duplicates, and constant columns.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "csv_text": {
+                    "type": "string",
+                    "description": "The complete UTF-8 CSV payload to analyze.",
+                }
+            },
+            "required": ["csv_text"],
+            "additionalProperties": False,
+        },
+        risk_level="low",
+        permission="read",
+        timeout_seconds=15.0,
+        cost_units=0.1,
+        sandbox_required=False,
+        handler=profile_dataset,
     )
 )
