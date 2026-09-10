@@ -7,3 +7,4 @@ openai-agents
 python-dotenv
 pytest
 httpx
+polars
