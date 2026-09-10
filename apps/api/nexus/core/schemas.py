@@ -20,3 +20,13 @@ class TaskResponse(BaseModel):
     created_at: str
     capabilities: list[str]
     selected_model: str
+
+
+class ExecutionResponse(BaseModel):
+    task_id: str
+    model: str
+    response_id: str
+    output: str
+    verification_passed: bool
+    tool_calls: int
+    events: list[str]
