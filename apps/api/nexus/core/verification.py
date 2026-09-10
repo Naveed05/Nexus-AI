@@ -31,7 +31,7 @@ class OutputVerifier:
             "tool_calls_recorded": tools_recorded,
         }
         messages = {
-            "non_empty_output": "Output is non-empty." if output_present else "Output is empty.",
+            "non_empty_output": "Output is non-empty." if output_present else "Model returned empty output.",
             "objective_present": "Task objective is present." if objective_present else "Task objective is empty.",
             "tool_calls_recorded": "Tool calls are recorded correctly." if tools_recorded else "A tool call is missing its name.",
         }
