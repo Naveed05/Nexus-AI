@@ -10,3 +10,4 @@ httpx
 polars
 scikit-learn
 pandas
+pyarrow
