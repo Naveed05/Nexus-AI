@@ -20,8 +20,6 @@ class TaskResponse(BaseModel):
     created_at: str
     capabilities: list[str]
     selected_model: str
-    routing_score: float
-    routing_reasons: list[str]
 
 
 class ExecutionResponse(BaseModel):
