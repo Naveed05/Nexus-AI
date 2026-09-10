@@ -2,6 +2,10 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 
+RISK_LEVELS = {"low", "medium", "high"}
+PERMISSION_LEVELS = {"read", "modify", "high_risk"}
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
@@ -9,6 +13,20 @@ class ToolSpec:
     input_schema: dict[str, Any]
     risk_level: str
     handler: Callable[..., Any]
+    permission: str = "read"
+    timeout_seconds: float = 30.0
+    cost_units: float = 0.0
+    sandbox_required: bool = False
+
+    def __post_init__(self) -> None:
+        if self.risk_level not in RISK_LEVELS:
+            raise ValueError(f"Unsupported risk level: {self.risk_level}")
+        if self.permission not in PERMISSION_LEVELS:
+            raise ValueError(f"Unsupported permission level: {self.permission}")
+        if self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+        if self.cost_units < 0:
+            raise ValueError("cost_units cannot be negative")
 
     def as_openai_tool(self) -> dict[str, Any]:
         return {
@@ -43,7 +61,7 @@ class ToolRegistry:
 
 
 def calculator(expression: str) -> dict[str, str]:
-    """Evaluate a basic arithmetic expression using a restricted character set."""
+    """Evaluate basic arithmetic using a restricted expression character set."""
     allowed = set("0123456789+-*/(). %")
     if not expression or any(char not in allowed for char in expression):
         raise ValueError("Expression contains unsupported characters")
@@ -71,6 +89,10 @@ tool_registry.register(
             "additionalProperties": False,
         },
         risk_level="low",
+        permission="read",
+        timeout_seconds=5.0,
+        cost_units=0.0,
+        sandbox_required=False,
         handler=calculator,
     )
 )
