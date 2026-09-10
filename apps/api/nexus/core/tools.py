@@ -7,6 +7,7 @@ from nexus.core.data_pipeline import DataPipeline
 RISK_LEVELS = {"low", "medium", "high"}
 PERMISSION_LEVELS = {"read", "modify", "high_risk"}
 
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
@@ -32,6 +33,7 @@ class ToolSpec:
     def as_openai_tool(self) -> dict[str, Any]:
         return {"type": "function", "name": self.name, "description": self.description, "parameters": self.input_schema, "strict": True}
 
+
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, ToolSpec] = {}
@@ -53,6 +55,7 @@ class ToolRegistry:
     def openai_tools(self) -> list[dict[str, Any]]:
         return [tool.as_openai_tool() for tool in self._tools.values()]
 
+
 def calculator(expression: str) -> dict[str, str]:
     """Evaluate basic arithmetic using a restricted expression character set."""
     allowed = set("0123456789+-*/(). %")
@@ -64,13 +67,15 @@ def calculator(expression: str) -> dict[str, str]:
         raise ValueError("Invalid arithmetic expression") from exc
     return {"expression": expression, "result": str(result)}
 
+
 def profile_dataset(csv_text: str) -> dict[str, Any]:
-    """Profile a UTF-8 CSV payload without executing user-supplied code."""
+    """Profile a UTF-8 CSV dataset without executing user-supplied code."""
     if not csv_text.strip():
         raise ValueError("CSV payload cannot be empty")
-    frame = DataIntelligenceEngine().load_bytes(csv_text.encode("utf-8"), "csv")
-    profile = DataIntelligenceEngine().profile(frame)
-    quality = DataIntelligenceEngine().quality_report(frame)
+    engine = DataIntelligenceEngine()
+    frame = engine.load_bytes(csv_text.encode("utf-8"), "csv")
+    profile = engine.profile(frame)
+    quality = engine.quality_report(frame)
     return {
         "profile": {
             "rows": profile.rows, "columns": profile.columns,
@@ -85,12 +90,14 @@ def profile_dataset(csv_text: str) -> dict[str, Any]:
         "quality": quality,
     }
 
-def analyze_dataset(csv_text: str) -> dict[str, Any]:
-    """Run conservative cleaning and exploratory analysis over CSV text."""
+
+def analyze_dataset(csv_text: str, target: str | None = None) -> dict[str, Any]:
+    """Analyze CSV data and optionally formulate a supervised ML problem."""
     if not csv_text.strip():
         raise ValueError("CSV payload cannot be empty")
     frame = DataIntelligenceEngine().load_bytes(csv_text.encode("utf-8"), "csv")
-    return DataPipeline().analyze(frame)
+    return DataPipeline().analyze(frame, target=target)
+
 
 tool_registry = ToolRegistry()
 tool_registry.register(ToolSpec(
@@ -104,7 +111,10 @@ tool_registry.register(ToolSpec(
     risk_level="low", permission="read", timeout_seconds=15.0, cost_units=0.1, handler=profile_dataset,
 ))
 tool_registry.register(ToolSpec(
-    name="analyze_dataset", description="Analyze a CSV dataset: create a cleaning plan, apply conservative cleaning, and produce exploratory statistics.",
-    input_schema={"type": "object", "properties": {"csv_text": {"type": "string", "description": "The complete UTF-8 CSV payload to analyze."}}, "required": ["csv_text"], "additionalProperties": False},
+    name="analyze_dataset", description="Analyze CSV data with cleaning, EDA, correlations, problem formulation, and recommendations.",
+    input_schema={"type": "object", "properties": {
+        "csv_text": {"type": "string", "description": "The complete UTF-8 CSV payload to analyze."},
+        "target": {"type": ["string", "null"], "description": "Optional target column for supervised problem formulation."},
+    }, "required": ["csv_text", "target"], "additionalProperties": False},
     risk_level="low", permission="read", timeout_seconds=30.0, cost_units=0.5, handler=analyze_dataset,
 ))
