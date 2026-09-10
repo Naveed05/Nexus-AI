@@ -4,7 +4,7 @@ from nexus.core.events import EventType, ExecutionEvent
 from nexus.core.executor import ExecutionResult, ModelExecutor
 from nexus.core.models import ModelSpec
 from nexus.core.planner import TaskPlanner
-from nexus.core.router import TaskRouter
+from nexus.core.router import RoutingDecision, TaskRouter
 from nexus.core.state import AgentState, StepStatus
 from nexus.core.task import Task
 from nexus.core.verification import OutputVerifier, VerificationResult
@@ -14,6 +14,7 @@ from nexus.core.verification import OutputVerifier, VerificationResult
 class RouteResult:
     task: Task
     model: ModelSpec
+    decision: RoutingDecision
 
 
 @dataclass(frozen=True)
@@ -42,8 +43,9 @@ class NexusEngine:
         self._verifier = verifier or OutputVerifier()
 
     def route_task(self, task: Task) -> RouteResult:
-        """Select the model without executing it."""
-        return RouteResult(task=task, model=self._router.route(task))
+        """Select the model and expose safe routing metadata without executing it."""
+        decision = self._router.decide(task)
+        return RouteResult(task=task, model=decision.model, decision=decision)
 
     def run(self, task: Task) -> EngineResult:
         route = self.route_task(task)
@@ -53,7 +55,20 @@ class NexusEngine:
                 event_type=EventType.TASK_STARTED,
                 task_id=task.task_id,
                 message="NEXUS task execution started.",
-            )
+            ),
+            ExecutionEvent(
+                event_type=EventType.MODEL_ROUTED,
+                task_id=task.task_id,
+                message=f"Task routed to {route.model.model_id}.",
+                data={
+                    "model_key": route.model.key,
+                    "model_id": route.model.model_id,
+                    "provider": route.model.provider,
+                    "tier": route.model.tier,
+                    "score": route.decision.score,
+                    "reasons": list(route.decision.reasons),
+                },
+            ),
         ]
 
         state.steps = self._planner.plan(task)
