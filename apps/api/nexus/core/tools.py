@@ -76,10 +76,25 @@ def profile_dataset(csv_text: str) -> dict[str, Any]:
     frame = engine.load_bytes(csv_text.encode("utf-8"), "csv")
     profile = engine.profile(frame)
     quality = engine.quality_report(frame)
-    return {"profile": {"rows": profile.rows, "columns": profile.columns, "duplicate_rows": profile.duplicate_rows,
-        "memory_estimate_bytes": profile.memory_estimate_bytes,
-        "columns": [{"name": c.name, "dtype": c.dtype, "null_count": c.null_count, "null_ratio": c.null_ratio, "unique_count": c.unique_count} for c in profile.column_profiles]},
-        "quality": quality}
+    return {
+        "profile": {
+            "rows": profile.rows,
+            "columns": profile.columns,
+            "duplicate_rows": profile.duplicate_rows,
+            "memory_estimate_bytes": profile.memory_estimate_bytes,
+            "column_profiles": [
+                {
+                    "name": c.name,
+                    "dtype": c.dtype,
+                    "null_count": c.null_count,
+                    "null_ratio": c.null_ratio,
+                    "unique_count": c.unique_count,
+                }
+                for c in profile.column_profiles
+            ],
+        },
+        "quality": quality,
+    }
 
 
 def analyze_dataset(csv_text: str, target: str | None = None) -> dict[str, Any]:
