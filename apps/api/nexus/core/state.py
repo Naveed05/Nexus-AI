@@ -23,6 +23,8 @@ class PlanStep:
     attempts: int = 0
     depends_on: tuple[str, ...] = ()
     execution_required: bool = True
+    selected_tool: str | None = None
+    tool_score: float = 0.0
 
 
 @dataclass
