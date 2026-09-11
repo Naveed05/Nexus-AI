@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "NEXUS AI"
     environment: str = "development"
     openai_api_key: str | None = None
+    dataset_storage_path: str = ".nexus/data"
 
     model_config = SettingsConfigDict(
         env_file=".env",
