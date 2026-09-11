@@ -24,6 +24,16 @@ def test_selector_maps_analysis_to_analysis_tool() -> None:
     assert decision.tool.name == "analyze_dataset"
 
 
+def test_selector_uses_reference_tool_when_dataset_id_is_in_context() -> None:
+    decision = ToolSelector().select(
+        Task(objective="Inspect this dataset", context="dataset_id=123"),
+        PlanStep("inspect_data", "Inspect the registered dataset"),
+    )
+    assert decision.tool is not None
+    assert decision.tool.name == "profile_dataset_by_id"
+    assert "dataset reference detected" in decision.reasons
+
+
 def test_selector_returns_no_tool_when_step_has_no_match() -> None:
     decision = ToolSelector().select(
         Task(objective="Research the latest approaches"),
