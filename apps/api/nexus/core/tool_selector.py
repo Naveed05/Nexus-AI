@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 
 from nexus.core.state import PlanStep
 from nexus.core.tools import ToolSpec, tool_registry
@@ -23,13 +24,18 @@ class ToolSelector:
         "baseline_ml": ("machine learning", "model", "train", "classification", "regression", "predict"),
     }
 
+    @staticmethod
+    def _matches_signal(text: str, signal: str) -> bool:
+        """Match whole words/phrases so substrings like 'sum' in 'summary' do not trigger."""
+        return re.search(rf"(?<!\w){re.escape(signal)}(?!\w)", text) is not None
+
     def decide(self, step: PlanStep) -> ToolDecision:
         text = f"{step.step_id} {step.objective}".lower()
         candidates: list[tuple[float, ToolSpec, list[str]]] = []
 
         for tool in tool_registry.all():
             signals = self._signals.get(tool.name, ())
-            matched = [signal for signal in signals if signal in text]
+            matched = [signal for signal in signals if self._matches_signal(text, signal)]
             if not matched:
                 continue
             score = min(95.0, 50.0 + len(matched) * 10.0)
