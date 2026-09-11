@@ -57,7 +57,7 @@ class ToolSelector:
                 reasons=tuple(reasons),
             )
 
-        reasons = [f"no authorized registered tool matches plan step '{step.step_id}'"]
+        reasons = [f"no registered tool matches plan step '{step.step_id}'"]
         if rejected:
             reasons.append("; ".join(rejected))
         return ToolDecision(tool=None, score=0.0, reasons=tuple(reasons))
