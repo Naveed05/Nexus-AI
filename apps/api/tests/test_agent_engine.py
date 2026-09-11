@@ -27,7 +27,8 @@ def test_engine_builds_plan_and_verifies_output() -> None:
     assert result.state.completed is True
     assert [step.step_id for step in result.state.steps] == [
         "understand",
-        "execute",
+        "inspect_data",
+        "analyze_data",
         "verify",
         "deliver",
     ]
