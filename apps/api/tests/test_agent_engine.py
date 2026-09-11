@@ -6,7 +6,7 @@ from nexus.core.task import Task
 
 
 class FakeExecutor:
-    def execute(self, task: Task, model) -> ExecutionResult:
+    def execute(self, task: Task, model, allowed_tools=()) -> ExecutionResult:
         return ExecutionResult(
             model_key=model.key,
             model_id=model.model_id,
