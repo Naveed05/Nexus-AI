@@ -212,6 +212,8 @@ class NexusEngine:
             )
 
             decision = self._tool_selector.select(task, step)
+            step.selected_tool = decision.tool.name if decision.tool else None
+            step.tool_score = decision.score
             allowed_tools = (decision.tool.name,) if decision.tool is not None else ()
             events.append(
                 ExecutionEvent(
@@ -224,7 +226,7 @@ class NexusEngine:
                     ),
                     data={
                         "step_id": step.step_id,
-                        "tool_name": decision.tool.name if decision.tool else None,
+                        "tool_name": step.selected_tool,
                         "score": decision.score,
                         "reasons": list(decision.reasons),
                     },
@@ -275,6 +277,7 @@ class NexusEngine:
             step.observation = {
                 "response_id": execution.response_id,
                 "tool_call_count": len(execution.tool_calls),
+                "tool_names": [call.tool_name for call in execution.tool_calls],
             }
             step.status = StepStatus.COMPLETED
 
