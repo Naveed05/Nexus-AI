@@ -70,10 +70,26 @@ class ModelExecutor:
             self._client = OpenAI(api_key=settings.openai_api_key)
         return self._client
 
-    def execute(self, task: Task, model: ModelSpec) -> ExecutionResult:
+    def execute(
+        self,
+        task: Task,
+        model: ModelSpec,
+        allowed_tools: tuple[str, ...] | None = None,
+    ) -> ExecutionResult:
+        """Execute a task, optionally constraining the model to selected tools.
+
+        ``allowed_tools=None`` preserves the original executor behavior. An
+        explicit empty tuple means that this step has no tool access.
+        """
         client = self._get_client()
-        tools = self._registry.openai_tools()
+        if allowed_tools is None:
+            tools = self._registry.openai_tools()
+        else:
+            tools = [self._registry.get(name).as_openai_tool() for name in allowed_tools]
+
         input_items: list[Any] = [task.objective]
+        if task.context:
+            input_items.append({"role": "user", "content": task.context})
         tool_calls: list[ToolCallRecord] = []
         tool_rounds = 0
 
@@ -82,7 +98,7 @@ class ModelExecutor:
                 model=model.model_id,
                 input=input_items,
                 tools=tools,
-                tool_choice="auto",
+                tool_choice="auto" if tools else "none",
             )
 
             function_calls = [
