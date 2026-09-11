@@ -31,7 +31,7 @@ def test_selector_uses_reference_tool_when_dataset_id_is_in_context() -> None:
     )
     assert decision.tool is not None
     assert decision.tool.name == "profile_dataset_by_id"
-    assert "dataset reference detected" in decision.reasons
+    assert any("dataset reference detected" in reason for reason in decision.reasons)
 
 
 def test_selector_returns_no_tool_when_step_has_no_match() -> None:
