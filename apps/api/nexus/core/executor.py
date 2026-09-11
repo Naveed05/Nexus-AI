@@ -18,6 +18,7 @@ class ToolCallRecord:
     result: Any
     risk_level: str = "low"
     permission: str = "read"
+    success: bool = True
 
 
 @dataclass(frozen=True)
@@ -124,11 +125,17 @@ class ModelExecutor:
                 arguments = json.loads(call.arguments)
                 tool = self._registry.get(call.name)
 
+                # Authorization failures are control-flow failures, not tool
+                # results. They must stop execution so a forbidden action can
+                # never be presented to the model as if it actually ran.
+                self._policy.authorize(task, tool)
+
                 try:
-                    self._policy.authorize(task, tool)
                     result = tool.handler(**arguments)
+                    success = True
                 except Exception as exc:
                     result = {"error": str(exc), "tool": call.name}
+                    success = False
 
                 tool_calls.append(
                     ToolCallRecord(
@@ -137,6 +144,7 @@ class ModelExecutor:
                         result=result,
                         risk_level=tool.risk_level,
                         permission=tool.permission,
+                        success=success,
                     )
                 )
                 tool_outputs.append(
