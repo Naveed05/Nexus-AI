@@ -54,6 +54,14 @@ class AgentState:
         if self.current_step_index < len(self.steps):
             self.current_step_index += 1
 
+    def add_artifact(self, artifact_id: str | UUID) -> None:
+        """Attach an artifact reference without introducing duplicate IDs."""
+        value = str(artifact_id)
+        if not value:
+            raise ValueError("artifact_id cannot be empty")
+        if value not in self.artifacts:
+            self.artifacts.append(value)
+
     def step_by_id(self, step_id: str) -> PlanStep:
         for step in self.steps:
             if step.step_id == step_id:
