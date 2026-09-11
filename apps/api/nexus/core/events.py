@@ -10,6 +10,8 @@ class EventType(str, Enum):
     PLAN_CREATED = "plan_created"
     MODEL_ROUTED = "model_routed"
     STEP_STARTED = "step_started"
+    TOOL_SELECTED = "tool_selected"
+    TOOL_AUTHORIZATION = "tool_authorization"
     TOOL_CALLED = "tool_called"
     STEP_FAILED = "step_failed"
     RETRY_SCHEDULED = "retry_scheduled"
