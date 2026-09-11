@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 from typing import Any, Callable
+from uuid import UUID
 
 from nexus.core.data_engine import DataIntelligenceEngine
 from nexus.core.data_pipeline import DataPipeline
+from nexus.core.datasets import DatasetRef
+from nexus.core.dataset_workspace import DatasetNotFoundError, DatasetWorkspace
 from nexus.core.ml_tools import baseline_ml
 
 RISK_LEVELS = {"low", "medium", "high"}
@@ -57,6 +60,22 @@ class ToolRegistry:
         return [tool.as_openai_tool() for tool in self._tools.values()]
 
 
+# The application layer can inject a workspace at startup. Keeping it optional
+# preserves the existing csv_text tool APIs and their tests.
+_dataset_workspace: DatasetWorkspace | None = None
+
+
+def configure_dataset_workspace(workspace: DatasetWorkspace | None) -> None:
+    global _dataset_workspace
+    _dataset_workspace = workspace
+
+
+def _require_workspace() -> DatasetWorkspace:
+    if _dataset_workspace is None:
+        raise RuntimeError("Dataset workspace is not configured")
+    return _dataset_workspace
+
+
 def calculator(expression: str) -> dict[str, str]:
     """Evaluate basic arithmetic using a restricted expression character set."""
     allowed = set("0123456789+-*/(). %")
@@ -69,11 +88,8 @@ def calculator(expression: str) -> dict[str, str]:
     return {"expression": expression, "result": str(result)}
 
 
-def profile_dataset(csv_text: str) -> dict[str, Any]:
-    if not csv_text.strip():
-        raise ValueError("CSV payload cannot be empty")
+def _profile_frame(frame) -> dict[str, Any]:
     engine = DataIntelligenceEngine()
-    frame = engine.load_bytes(csv_text.encode("utf-8"), "csv")
     profile = engine.profile(frame)
     quality = engine.quality_report(frame)
     return {
@@ -97,10 +113,33 @@ def profile_dataset(csv_text: str) -> dict[str, Any]:
     }
 
 
+def profile_dataset(csv_text: str) -> dict[str, Any]:
+    if not csv_text.strip():
+        raise ValueError("CSV payload cannot be empty")
+    frame = DataIntelligenceEngine().load_bytes(csv_text.encode("utf-8"), "csv")
+    return _profile_frame(frame)
+
+
+def profile_dataset_by_id(dataset_id: str) -> dict[str, Any]:
+    try:
+        frame = _require_workspace().load(UUID(dataset_id))
+    except (ValueError, DatasetNotFoundError) as exc:
+        raise ValueError(f"Invalid or unknown dataset_id: {dataset_id}") from exc
+    return _profile_frame(frame)
+
+
 def analyze_dataset(csv_text: str, target: str | None = None) -> dict[str, Any]:
     if not csv_text.strip():
         raise ValueError("CSV payload cannot be empty")
     frame = DataIntelligenceEngine().load_bytes(csv_text.encode("utf-8"), "csv")
+    return DataPipeline().analyze(frame, target=target)
+
+
+def analyze_dataset_by_id(dataset_id: str, target: str | None = None) -> dict[str, Any]:
+    try:
+        frame = _require_workspace().load(UUID(dataset_id))
+    except (ValueError, DatasetNotFoundError) as exc:
+        raise ValueError(f"Invalid or unknown dataset_id: {dataset_id}") from exc
     return DataPipeline().analyze(frame, target=target)
 
 
@@ -114,6 +153,12 @@ tool_registry.register(ToolSpec("profile_dataset", "Profile a UTF-8 CSV dataset 
 tool_registry.register(ToolSpec("analyze_dataset", "Analyze CSV data with cleaning, EDA, correlations, problem formulation, and recommendations.",
     {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["csv_text", "target"], "additionalProperties": False},
     "low", analyze_dataset, timeout_seconds=30.0, cost_units=0.5))
+tool_registry.register(ToolSpec("profile_dataset_by_id", "Profile a registered NEXUS dataset by dataset_id.",
+    {"type": "object", "properties": {"dataset_id": {"type": "string"}}, "required": ["dataset_id"], "additionalProperties": False},
+    "low", profile_dataset_by_id, timeout_seconds=15.0, cost_units=0.1))
+tool_registry.register(ToolSpec("analyze_dataset_by_id", "Analyze a registered NEXUS dataset by dataset_id.",
+    {"type": "object", "properties": {"dataset_id": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["dataset_id", "target"], "additionalProperties": False},
+    "low", analyze_dataset_by_id, timeout_seconds=30.0, cost_units=0.5))
 tool_registry.register(ToolSpec("baseline_ml", "Train and evaluate a conservative baseline ML model for an explicit target column.",
     {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": "string"}}, "required": ["csv_text", "target"], "additionalProperties": False},
     "medium", baseline_ml, permission="read", timeout_seconds=60.0, cost_units=2.0))
