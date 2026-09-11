@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from nexus.core.permissions import PermissionDecision, PermissionPolicy
 from nexus.core.state import PlanStep
 from nexus.core.task import Task
 from nexus.core.tools import ToolRegistry, ToolSpec, tool_registry
@@ -21,30 +22,45 @@ class ToolSelector:
         "execute": ("calculator",),
     }
 
-    def __init__(self, registry: ToolRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry | None = None,
+        permission_policy: PermissionPolicy | None = None,
+    ) -> None:
         self._registry = registry or tool_registry
+        self._permission_policy = permission_policy or PermissionPolicy()
 
     def select(self, task: Task, step: PlanStep) -> ToolDecision:
         preferred = self._step_preferences.get(step.step_id, ())
         candidates = {tool.name: tool for tool in self._registry.all()}
+        rejected: list[str] = []
 
         for index, name in enumerate(preferred):
             tool = candidates.get(name)
             if tool is None:
+                rejected.append(f"{name} is not registered")
                 continue
-            if tool.risk_level == "high" and task.risk_level.value != "high":
+
+            permission = self._permission_policy.decide(tool, task.risk_level)
+            if permission != PermissionDecision.ALLOW:
+                rejected.append(f"{name} blocked by permission policy ({permission.value})")
                 continue
+
+            reasons = [f"matched plan step '{step.step_id}'"]
+            if index == 0:
+                reasons.append("highest-priority compatible tool")
+            if rejected:
+                reasons.append(f"skipped {len(rejected)} incompatible candidate(s)")
             return ToolDecision(
                 tool=tool,
                 score=100.0 - index * 10.0,
-                reasons=(f"matched plan step '{step.step_id}'",),
+                reasons=tuple(reasons),
             )
 
-        return ToolDecision(
-            tool=None,
-            score=0.0,
-            reasons=(f"no registered tool matches plan step '{step.step_id}'",),
-        )
+        reasons = [f"no authorized registered tool matches plan step '{step.step_id}'"]
+        if rejected:
+            reasons.append("; ".join(rejected))
+        return ToolDecision(tool=None, score=0.0, reasons=tuple(reasons))
 
 
 selector = ToolSelector()
