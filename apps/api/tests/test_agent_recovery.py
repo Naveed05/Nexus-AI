@@ -10,7 +10,7 @@ class FailOnceExecutor:
     def __init__(self) -> None:
         self.calls = 0
 
-    def execute(self, task: Task, model) -> ExecutionResult:
+    def execute(self, task: Task, model, allowed_tools=()) -> ExecutionResult:
         self.calls += 1
         if self.calls == 1:
             raise RuntimeError("transient provider failure")
@@ -27,7 +27,7 @@ class AlwaysFailExecutor:
     def __init__(self) -> None:
         self.calls = 0
 
-    def execute(self, task: Task, model) -> ExecutionResult:
+    def execute(self, task: Task, model, allowed_tools=()) -> ExecutionResult:
         self.calls += 1
         raise RuntimeError("persistent failure")
 
