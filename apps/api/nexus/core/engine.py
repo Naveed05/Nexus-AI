@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import TypeVar
 
 from nexus.core.events import EventType, ExecutionEvent
 from nexus.core.executor import ExecutionResult, ModelExecutor
@@ -8,10 +7,8 @@ from nexus.core.planner import TaskPlanner
 from nexus.core.router import RoutingDecision, TaskRouter
 from nexus.core.state import AgentState, PlanStep, StepStatus
 from nexus.core.task import Task
+from nexus.core.tool_intelligence import ToolSelector
 from nexus.core.verification import OutputVerifier, VerificationResult
-
-
-T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -46,7 +43,7 @@ class EngineResult:
 
 
 class NexusEngine:
-    """Coordinates routing, planning, multi-step execution, recovery, and verification."""
+    """Coordinates routing, planning, tool selection, execution, recovery, and verification."""
 
     def __init__(
         self,
@@ -54,12 +51,14 @@ class NexusEngine:
         executor: ModelExecutor | None = None,
         planner: TaskPlanner | None = None,
         verifier: OutputVerifier | None = None,
+        tool_selector: ToolSelector | None = None,
         retry_policy: RetryPolicy | None = None,
     ) -> None:
         self._router = router or TaskRouter()
         self._executor = executor or ModelExecutor()
         self._planner = planner or TaskPlanner()
         self._verifier = verifier or OutputVerifier()
+        self._tool_selector = tool_selector or ToolSelector()
         self._retry_policy = retry_policy or RetryPolicy()
 
     def route_task(self, task: Task) -> RouteResult:
@@ -73,13 +72,14 @@ class NexusEngine:
         model: ModelSpec,
         step: PlanStep,
         events: list[ExecutionEvent],
+        allowed_tools: tuple[str, ...],
     ) -> ExecutionResult:
         last_error: Exception | None = None
 
         for attempt in self._retry_policy.attempts():
             step.attempts = attempt
             try:
-                execution = self._executor.execute(task, model)
+                execution = self._executor.execute(task, model, allowed_tools=allowed_tools)
                 if attempt > 1:
                     events.append(
                         ExecutionEvent(
@@ -211,9 +211,50 @@ class NexusEngine:
                 )
             )
 
+            decision = self._tool_selector.select(task, step)
+            allowed_tools = (decision.tool.name,) if decision.tool is not None else ()
+            events.append(
+                ExecutionEvent(
+                    event_type=EventType.TOOL_SELECTED,
+                    task_id=task.task_id,
+                    message=(
+                        f"Selected tool: {decision.tool.name}."
+                        if decision.tool is not None
+                        else "No tool selected for this step."
+                    ),
+                    data={
+                        "step_id": step.step_id,
+                        "tool_name": decision.tool.name if decision.tool else None,
+                        "score": decision.score,
+                        "reasons": list(decision.reasons),
+                    },
+                )
+            )
+
+            if decision.tool is not None:
+                events.append(
+                    ExecutionEvent(
+                        event_type=EventType.TOOL_AUTHORIZATION,
+                        task_id=task.task_id,
+                        message=f"Tool '{decision.tool.name}' authorized for execution.",
+                        data={
+                            "step_id": step.step_id,
+                            "tool_name": decision.tool.name,
+                            "risk_level": decision.tool.risk_level,
+                            "permission": decision.tool.permission,
+                        },
+                    )
+                )
+
             step_task = self._step_task(task, step, state)
             try:
-                execution = self._run_with_recovery(step_task, route.model, step, events)
+                execution = self._run_with_recovery(
+                    step_task,
+                    route.model,
+                    step,
+                    events,
+                    allowed_tools=allowed_tools,
+                )
             except Exception as exc:
                 step.status = StepStatus.FAILED
                 events.append(
