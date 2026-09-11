@@ -7,9 +7,11 @@ from nexus.core.dataset_workspace import DatasetWorkspace
 from nexus.core.engine import engine
 from nexus.core.schemas import ExecutionResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
+from nexus.core.tools import configure_dataset_workspace
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 dataset_workspace = DatasetWorkspace(settings.dataset_storage_path)
+configure_dataset_workspace(dataset_workspace)
 
 
 @app.get("/api/v1/health")
