@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import inspect
 
 from nexus.core.events import EventType, ExecutionEvent
 from nexus.core.executor import ExecutionResult, ModelExecutor
@@ -66,6 +67,24 @@ class NexusEngine:
         decision = self._router.decide(task)
         return RouteResult(task=task, model=decision.model, decision=decision)
 
+    def _execute_compatibly(
+        self,
+        task: Task,
+        model: ModelSpec,
+        allowed_tools: tuple[str, ...],
+    ) -> ExecutionResult:
+        """Call both current executors and older test/custom executors safely."""
+        execute = self._executor.execute
+        try:
+            signature = inspect.signature(execute)
+            accepts_allowed_tools = "allowed_tools" in signature.parameters
+        except (TypeError, ValueError):
+            accepts_allowed_tools = True
+
+        if accepts_allowed_tools:
+            return execute(task, model, allowed_tools=allowed_tools)
+        return execute(task, model)
+
     def _run_with_recovery(
         self,
         task: Task,
@@ -79,7 +98,7 @@ class NexusEngine:
         for attempt in self._retry_policy.attempts():
             step.attempts = attempt
             try:
-                execution = self._executor.execute(task, model, allowed_tools=allowed_tools)
+                execution = self._execute_compatibly(task, model, allowed_tools)
                 if attempt > 1:
                     events.append(
                         ExecutionEvent(
