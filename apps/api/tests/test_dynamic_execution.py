@@ -7,9 +7,11 @@ from nexus.core.task import Task
 class RecordingExecutor:
     def __init__(self) -> None:
         self.objectives: list[str] = []
+        self.allowed_tools: list[tuple[str, ...]] = []
 
-    def execute(self, task: Task, model) -> ExecutionResult:
+    def execute(self, task: Task, model, allowed_tools: tuple[str, ...] = ()) -> ExecutionResult:
         self.objectives.append(task.objective)
+        self.allowed_tools.append(allowed_tools)
         return ExecutionResult(
             model_key=model.key,
             model_id=model.model_id,
@@ -31,6 +33,10 @@ def test_engine_executes_each_dynamic_data_step_in_dependency_order() -> None:
         "Inspect the dataset structure, schema, missingness, and basic quality.",
         "Analyze the dataset and explain the main findings",
     ]
+    assert executor.allowed_tools == [
+        ("profile_dataset",),
+        ("analyze_dataset",),
+    ]
     assert [step.status.value for step in result.state.steps] == [
         "completed",
         "completed",
@@ -47,3 +53,10 @@ def test_engine_executes_each_dynamic_data_step_in_dependency_order() -> None:
         if event.event_type.value == "step_started"
     ]
     assert step_events == ["inspect_data", "analyze_data"]
+
+    tool_events = [
+        event.data["tool_name"]
+        for event in result.events
+        if event.event_type.value == "tool_selected"
+    ]
+    assert tool_events == ["profile_dataset", "analyze_dataset"]
