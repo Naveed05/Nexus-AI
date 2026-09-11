@@ -22,6 +22,11 @@ class ToolSelector:
         "execute": ("calculator",),
     }
 
+    _dataset_step_preferences: dict[str, tuple[str, ...]] = {
+        "inspect_data": ("profile_dataset_by_id", "profile_dataset"),
+        "analyze_data": ("analyze_dataset_by_id", "analyze_dataset", "baseline_ml"),
+    }
+
     def __init__(
         self,
         registry: ToolRegistry | None = None,
@@ -30,8 +35,20 @@ class ToolSelector:
         self._registry = registry or tool_registry
         self._permission_policy = permission_policy or PermissionPolicy()
 
+    @staticmethod
+    def _has_dataset_reference(task: Task) -> bool:
+        context = task.context or ""
+        return "dataset_id" in context.lower()
+
     def select(self, task: Task, step: PlanStep) -> ToolDecision:
-        preferred = self._step_preferences.get(step.step_id, ())
+        if self._has_dataset_reference(task):
+            preferred = self._dataset_step_preferences.get(
+                step.step_id,
+                self._step_preferences.get(step.step_id, ()),
+            )
+        else:
+            preferred = self._step_preferences.get(step.step_id, ())
+
         candidates = {tool.name: tool for tool in self._registry.all()}
         rejected: list[str] = []
 
@@ -47,6 +64,8 @@ class ToolSelector:
                 continue
 
             reasons = [f"matched plan step '{step.step_id}'"]
+            if self._has_dataset_reference(task):
+                reasons.append("dataset reference detected in task context")
             if index == 0:
                 reasons.append("highest-priority compatible tool")
             if rejected:
