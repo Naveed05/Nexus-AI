@@ -4,7 +4,7 @@ import pytest
 
 from nexus.core.executor import ModelExecutor
 from nexus.core.models import model_registry
-from nexus.core.task import Task
+from nexus.core.task import RiskLevel, Task
 from nexus.core.tools import ToolRegistry, ToolSpec
 
 
@@ -83,7 +83,11 @@ def test_executor_runs_function_tool_and_returns_final_output() -> None:
 def test_executor_enforces_allowed_tool_list() -> None:
     registry = ToolRegistry()
     registry.register(calculator_spec())
-    client = FakeClient()
+    client = FakeClient(
+        responses=[
+            SimpleNamespace(id="resp_final", output=[], output_text="No tool used.")
+        ]
+    )
     executor = ModelExecutor(client=client, registry=registry)
 
     result = executor.execute(
@@ -92,7 +96,7 @@ def test_executor_enforces_allowed_tool_list() -> None:
         allowed_tools=(),
     )
 
-    assert result.output == "The answer is 100."
+    assert result.output == "No tool used."
     assert client.responses.calls[0]["tools"] == []
     assert client.responses.calls[0]["tool_choice"] == "none"
 
@@ -105,7 +109,7 @@ def test_executor_stops_on_approval_required_tool() -> None:
 
     with pytest.raises(PermissionError, match="requires explicit user approval"):
         executor.execute(
-            Task(objective="Calculate something"),
+            Task(objective="Calculate something", risk_level=RiskLevel.MEDIUM),
             model_registry.get("astra"),
         )
 
