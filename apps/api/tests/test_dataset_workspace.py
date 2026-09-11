@@ -41,7 +41,7 @@ def test_reference_tools_execute_against_registered_dataset(tmp_path):
 
     assert profile["profile"]["rows"] == 3
     assert profile["profile"]["columns"] == 3
-    assert analysis["rows"] == 3
+    assert analysis["cleaned_shape"]["rows"] == 3
 
     configure_dataset_workspace(None)
 
