@@ -46,7 +46,7 @@ class EngineResult:
 
 
 class NexusEngine:
-    """Coordinates routing, planning, execution, recovery, and verification."""
+    """Coordinates routing, planning, multi-step execution, recovery, and verification."""
 
     def __init__(
         self,
@@ -121,6 +121,21 @@ class NexusEngine:
         assert last_error is not None
         raise last_error
 
+    def _step_task(self, task: Task, step: PlanStep, state: AgentState) -> Task:
+        """Create an isolated task view for one executable plan step."""
+        completed_outputs = [
+            f"{item.step_id}: {item.result}"
+            for item in state.steps
+            if item.status == StepStatus.COMPLETED and item.result is not None
+        ]
+        context_parts = [part for part in (task.context, *completed_outputs) if part]
+        return task.model_copy(
+            update={
+                "objective": step.objective,
+                "context": "\n".join(context_parts) or None,
+            }
+        )
+
     def run(self, task: Task) -> EngineResult:
         route = self.route_task(task)
         state = AgentState(task_id=task.task_id, objective=task.objective)
@@ -146,80 +161,120 @@ class NexusEngine:
         ]
 
         state.steps = self._planner.plan(task)
+        state.metadata["plan_type"] = (
+            "data" if any(step.step_id in {"inspect_data", "analyze_data"} for step in state.steps)
+            else "coding" if any(step.step_id in {"inspect_code", "implement"} for step in state.steps)
+            else "research" if any(step.step_id in {"research", "synthesize"} for step in state.steps)
+            else "general"
+        )
         events.append(
             ExecutionEvent(
                 event_type=EventType.PLAN_CREATED,
                 task_id=task.task_id,
                 message=f"Created {len(state.steps)} execution steps.",
-                data={"step_count": len(state.steps)},
+                data={
+                    "step_count": len(state.steps),
+                    "step_ids": [step.step_id for step in state.steps],
+                    "plan_type": state.metadata["plan_type"],
+                },
             )
         )
 
-        execute_step = next(step for step in state.steps if step.step_id == "execute")
-        execute_step.status = StepStatus.RUNNING
-        events.append(
-            ExecutionEvent(
-                event_type=EventType.STEP_STARTED,
-                task_id=task.task_id,
-                message="Executing the selected model workflow.",
-                data={"step_id": execute_step.step_id},
-            )
-        )
+        execution: ExecutionResult | None = None
+        for index, step in enumerate(state.steps):
+            state.current_step_index = index
+            if not state.dependencies_completed(step):
+                step.status = StepStatus.FAILED
+                step.error = "Step dependencies were not completed."
+                raise RuntimeError(f"Cannot execute step '{step.step_id}': dependencies incomplete")
 
-        try:
-            execution = self._run_with_recovery(task, route.model, execute_step, events)
-        except Exception as exc:
-            execute_step.status = StepStatus.FAILED
-            state.current_step_index = state.steps.index(execute_step)
-            events.append(
-                ExecutionEvent(
-                    event_type=EventType.TASK_FAILED,
-                    task_id=task.task_id,
-                    message="NEXUS task failed after exhausting execution retries.",
-                    data={"error_type": type(exc).__name__, "attempts": execute_step.attempts},
+            if not step.execution_required:
+                step.status = StepStatus.COMPLETED
+                step.observation = "Kernel-managed step completed without model execution."
+                events.append(
+                    ExecutionEvent(
+                        event_type=EventType.STEP_COMPLETED,
+                        task_id=task.task_id,
+                        message=f"Planning/control step completed: {step.step_id}.",
+                        data={"step_id": step.step_id, "execution_required": False},
+                    )
                 )
-            )
-            raise
+                continue
 
-        execute_step.result = execution.output
-        execute_step.status = StepStatus.COMPLETED
-
-        for call in execution.tool_calls:
+            step.status = StepStatus.RUNNING
             events.append(
                 ExecutionEvent(
-                    event_type=EventType.TOOL_CALLED,
+                    event_type=EventType.STEP_STARTED,
                     task_id=task.task_id,
-                    message=f"Tool executed: {call.tool_name}.",
-                    data={"tool_name": call.tool_name},
+                    message=f"Executing plan step: {step.step_id}.",
+                    data={"step_id": step.step_id, "objective": step.objective},
                 )
             )
 
-        events.append(
-            ExecutionEvent(
-                event_type=EventType.STEP_COMPLETED,
-                task_id=task.task_id,
-                message="Model execution completed.",
-                data={"step_id": execute_step.step_id, "attempts": execute_step.attempts},
+            step_task = self._step_task(task, step, state)
+            try:
+                execution = self._run_with_recovery(step_task, route.model, step, events)
+            except Exception as exc:
+                step.status = StepStatus.FAILED
+                events.append(
+                    ExecutionEvent(
+                        event_type=EventType.TASK_FAILED,
+                        task_id=task.task_id,
+                        message="NEXUS task failed after exhausting execution retries.",
+                        data={
+                            "step_id": step.step_id,
+                            "error_type": type(exc).__name__,
+                            "attempts": step.attempts,
+                        },
+                    )
+                )
+                raise
+
+            step.result = execution.output
+            step.observation = {
+                "response_id": execution.response_id,
+                "tool_call_count": len(execution.tool_calls),
+            }
+            step.status = StepStatus.COMPLETED
+
+            for call in execution.tool_calls:
+                events.append(
+                    ExecutionEvent(
+                        event_type=EventType.TOOL_CALLED,
+                        task_id=task.task_id,
+                        message=f"Tool executed: {call.tool_name}.",
+                        data={"tool_name": call.tool_name, "step_id": step.step_id},
+                    )
+                )
+
+            events.append(
+                ExecutionEvent(
+                    event_type=EventType.STEP_COMPLETED,
+                    task_id=task.task_id,
+                    message=f"Execution step completed: {step.step_id}.",
+                    data={"step_id": step.step_id, "attempts": step.attempts},
+                )
             )
-        )
+
+        if execution is None:
+            raise RuntimeError("Execution plan contained no executable step")
 
         verification_step = next(step for step in state.steps if step.step_id == "verify")
-        verification_step.status = StepStatus.RUNNING
         events.append(
             ExecutionEvent(
                 event_type=EventType.VERIFICATION_STARTED,
                 task_id=task.task_id,
                 message="Running observable output verification.",
+                data={"step_id": verification_step.step_id},
             )
         )
 
         verification = self._verifier.verify(task, execution.output, execution.tool_calls)
         state.verification_passed = verification.passed
         verification_step.result = verification.checks
+        verification_step.observation = {"issues": verification.issues}
         verification_step.error = "; ".join(verification.issues) or None
-        verification_step.status = (
-            StepStatus.COMPLETED if verification.passed else StepStatus.FAILED
-        )
+        verification_step.status = StepStatus.COMPLETED if verification.passed else StepStatus.FAILED
 
         events.append(
             ExecutionEvent(
