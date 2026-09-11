@@ -74,3 +74,26 @@ def test_create_task_defaults() -> None:
 def test_create_task_rejects_empty_objective() -> None:
     response = client.post("/api/v1/tasks", json={"objective": ""})
     assert response.status_code == 422
+
+
+def test_upload_dataset_returns_stable_reference() -> None:
+    response = client.post(
+        "/api/v1/datasets",
+        files={"file": ("sales.csv", b"name,value\na,10\nb,20\n", "text/csv")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    UUID(body["dataset_id"])
+    UUID(body["artifact_id"])
+    assert body["filename"] == "sales.csv"
+    assert body["file_format"] == "csv"
+    assert body["size_bytes"] == len(b"name,value\na,10\nb,20\n")
+
+
+def test_upload_dataset_rejects_unsupported_format() -> None:
+    response = client.post(
+        "/api/v1/datasets",
+        files={"file": ("sales.xml", b"<sales />", "application/xml")},
+    )
+    assert response.status_code == 415
