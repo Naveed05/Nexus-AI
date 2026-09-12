@@ -3,6 +3,7 @@ from uuid import UUID
 
 from nexus.api.main import _build_task, client, file_registry, retrieval_engine, workspace_registry
 from nexus.core.documents import DocumentChunker, DocumentWorkspace
+from nexus.core.knowledge import KnowledgeEngine, KnowledgeTool
 from nexus.core.retrieval import HashEmbeddingProvider, InMemoryVectorStore, JsonVectorStore, KnowledgeContextBuilder, RetrievalEngine
 from nexus.core.schemas import TaskCreate
 
@@ -57,8 +58,9 @@ def test_workspace_search_isolation() -> None:
     client.post(f"/api/v1/workspaces/{first.workspace_id}/documents", files={"file": ("first.txt", b"quantum computing research notes", "text/plain")})
     client.post(f"/api/v1/workspaces/{second.workspace_id}/documents", files={"file": ("second.txt", b"marine biology field notes", "text/plain")})
     results = client.post(f"/api/v1/workspaces/{first.workspace_id}/search", json={"query": "quantum computing", "top_k": 5}).json()
-    assert results and all(UUID(item["document_id"]) in workspace_registry.context(first.workspace_id).document_ids for item in results)
-    assert {"citation", "vector_score", "lexical_score"}.issubset(results[0])
+    assert results["results"] and all(UUID(item["document_id"]) in workspace_registry.context(first.workspace_id).document_ids for item in results["results"])
+    assert {"citation", "vector_score", "lexical_score"}.issubset(results["results"][0])
+    assert "[Source:" in results["context"]
 
 
 def test_retrieval_embedding_is_reproducible() -> None:
@@ -107,3 +109,17 @@ def test_unsupported_document_format_is_rejected() -> None:
     workspace = workspace_registry.create(name="Unsupported")
     response = client.post(f"/api/v1/workspaces/{workspace.workspace_id}/documents", files={"file": ("slides.pptx", b"not supported", "application/vnd.openxmlformats-officedocument.presentationml.presentation")})
     assert response.status_code == 415
+
+
+def test_knowledge_engine_ingest_search_and_tool() -> None:
+    with TemporaryDirectory() as root:
+        docs = DocumentWorkspace(Path(root) / "documents")
+        engine = KnowledgeEngine(docs, Path(root) / "knowledge.json")
+        workspace_id = UUID("00000000-0000-0000-0000-000000000123")
+        document, chunks = engine.ingest(b"NEXUS provides grounded research evidence.", filename="research.txt", workspace_id=workspace_id)
+        assert chunks == 1
+        result = engine.search("grounded research", workspace_id=workspace_id, top_k=1)
+        assert result.results and result.results[0].chunk.document_id == document.document_id
+        tool = KnowledgeTool(engine, lambda: workspace_id)
+        payload = tool.execute("research evidence", top_k=1)
+        assert payload["results"][0]["document_id"] == str(document.document_id)
