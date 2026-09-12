@@ -12,3 +12,5 @@ polars
 scikit-learn
 pandas
 pyarrow
+pypdf
+python-docx
