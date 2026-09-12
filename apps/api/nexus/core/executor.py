@@ -5,6 +5,7 @@ from typing import Any
 from openai import OpenAI
 
 from nexus.core.config import settings
+from nexus.core.knowledge import reset_knowledge_workspace, set_knowledge_workspace
 from nexus.core.models import ModelSpec
 from nexus.core.permissions import PermissionDecision, PermissionPolicy
 from nexus.core.task import Task
@@ -32,127 +33,48 @@ class ExecutionResult:
 
 class ToolPermissionPolicy:
     """Compatibility wrapper around NEXUS's centralized permission policy."""
-
-    def __init__(self, policy: PermissionPolicy | None = None) -> None:
-        self._policy = policy or PermissionPolicy()
-
+    def __init__(self, policy: PermissionPolicy | None = None) -> None: self._policy = policy or PermissionPolicy()
     def authorize(self, task: Task, tool: ToolSpec) -> None:
         decision = self._policy.decide(tool, task.risk_level)
-        if decision == PermissionDecision.ALLOW:
-            return
-        if decision == PermissionDecision.APPROVAL_REQUIRED:
-            raise PermissionError(
-                f"Tool '{tool.name}' requires explicit user approval before execution."
-            )
-        raise PermissionError(
-            f"Tool '{tool.name}' is blocked by the NEXUS permission policy."
-        )
+        if decision == PermissionDecision.ALLOW: return
+        if decision == PermissionDecision.APPROVAL_REQUIRED: raise PermissionError(f"Tool '{tool.name}' requires explicit user approval before execution.")
+        raise PermissionError(f"Tool '{tool.name}' is blocked by the NEXUS permission policy.")
 
 
 class ModelExecutor:
     """Executes routed NEXUS tasks through the Responses API and local tools."""
-
-    def __init__(
-        self,
-        client: OpenAI | None = None,
-        registry: ToolRegistry | None = None,
-        policy: ToolPermissionPolicy | None = None,
-        max_tool_rounds: int = 8,
-    ) -> None:
-        if max_tool_rounds < 1:
-            raise ValueError("max_tool_rounds must be at least 1")
-        self._client = client
-        self._registry = registry or tool_registry
-        self._policy = policy or ToolPermissionPolicy()
-        self._max_tool_rounds = max_tool_rounds
+    def __init__(self, client: OpenAI | None = None, registry: ToolRegistry | None = None, policy: ToolPermissionPolicy | None = None, max_tool_rounds: int = 8) -> None:
+        if max_tool_rounds < 1: raise ValueError("max_tool_rounds must be at least 1")
+        self._client = client; self._registry = registry or tool_registry; self._policy = policy or ToolPermissionPolicy(); self._max_tool_rounds = max_tool_rounds
 
     def _get_client(self) -> OpenAI:
-        if self._client is None:
-            self._client = OpenAI(api_key=settings.openai_api_key)
+        if self._client is None: self._client = OpenAI(api_key=settings.openai_api_key)
         return self._client
 
-    def execute(
-        self,
-        task: Task,
-        model: ModelSpec,
-        allowed_tools: tuple[str, ...] | None = None,
-    ) -> ExecutionResult:
-        """Execute a task, optionally constraining the model to selected tools.
-
-        ``allowed_tools=None`` preserves the original executor behavior. An
-        explicit empty tuple means that this step has no tool access.
-        """
+    def execute(self, task: Task, model: ModelSpec, allowed_tools: tuple[str, ...] | None = None) -> ExecutionResult:
         client = self._get_client()
-        if allowed_tools is None:
-            tools = self._registry.openai_tools()
-        else:
-            tools = [self._registry.get(name).as_openai_tool() for name in allowed_tools]
-
+        tools = self._registry.openai_tools() if allowed_tools is None else [self._registry.get(name).as_openai_tool() for name in allowed_tools]
         input_items: list[Any] = [task.objective]
-        if task.context:
-            input_items.append({"role": "user", "content": task.context})
+        if task.context: input_items.append({"role": "user", "content": task.context})
         tool_calls: list[ToolCallRecord] = []
         tool_rounds = 0
-
-        while True:
-            response = client.responses.create(
-                model=model.model_id,
-                input=input_items,
-                tools=tools,
-                tool_choice="auto" if tools else "none",
-            )
-
-            function_calls = [
-                item for item in response.output if item.type == "function_call"
-            ]
-            if not function_calls:
-                return ExecutionResult(
-                    model_key=model.key,
-                    model_id=model.model_id,
-                    response_id=response.id,
-                    output=response.output_text,
-                    tool_calls=tuple(tool_calls),
-                )
-
-            if tool_rounds >= self._max_tool_rounds:
-                raise RuntimeError("NEXUS tool execution limit exceeded")
-            tool_rounds += 1
-
-            input_items.extend(response.output)
-            tool_outputs: list[dict[str, Any]] = []
-
-            for call in function_calls:
-                arguments = json.loads(call.arguments)
-                tool = self._registry.get(call.name)
-
-                # Authorization failures are control-flow failures, not tool
-                # results. They must stop execution so a forbidden action can
-                # never be presented to the model as if it actually ran.
-                self._policy.authorize(task, tool)
-
-                try:
-                    result = tool.handler(**arguments)
-                    success = True
-                except Exception as exc:
-                    result = {"error": str(exc), "tool": call.name}
-                    success = False
-
-                tool_calls.append(
-                    ToolCallRecord(
-                        tool_name=call.name,
-                        arguments=arguments,
-                        result=result,
-                        risk_level=tool.risk_level,
-                        permission=tool.permission,
-                        success=success,
-                    )
-                )
-                tool_outputs.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": call.call_id,
-                        "output": json.dumps(result),
-                    }
-                )
-
-            input_items.extend(tool_outputs)
+        workspace_token = set_knowledge_workspace(task.workspace_id)
+        try:
+            while True:
+                response = client.responses.create(model=model.model_id, input=input_items, tools=tools, tool_choice="auto" if tools else "none")
+                function_calls = [item for item in response.output if item.type == "function_call"]
+                if not function_calls:
+                    return ExecutionResult(model_key=model.key, model_id=model.model_id, response_id=response.id, output=response.output_text, tool_calls=tuple(tool_calls))
+                if tool_rounds >= self._max_tool_rounds: raise RuntimeError("NEXUS tool execution limit exceeded")
+                tool_rounds += 1
+                input_items.extend(response.output)
+                tool_outputs: list[dict[str, Any]] = []
+                for call in function_calls:
+                    arguments = json.loads(call.arguments); tool = self._registry.get(call.name); self._policy.authorize(task, tool)
+                    try: result = tool.handler(**arguments); success = True
+                    except Exception as exc: result = {"error": str(exc), "tool": call.name}; success = False
+                    tool_calls.append(ToolCallRecord(tool_name=call.name, arguments=arguments, result=result, risk_level=tool.risk_level, permission=tool.permission, success=success))
+                    tool_outputs.append({"type": "function_call_output", "call_id": call.call_id, "output": json.dumps(result)})
+                input_items.extend(tool_outputs)
+        finally:
+            reset_knowledge_workspace(workspace_token)
