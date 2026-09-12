@@ -134,11 +134,15 @@ class RetrievalEngine:
             self._chunk_workspace[chunk.chunk_id] = document.workspace_id
         return len(chunks)
 
-    def search(self, query: str, *, workspace_id: UUID | None = None, top_k: int = 5) -> list[RetrievalResult]:
+    def search(self, query: str, *, workspace_id: UUID | None = None, top_k: int = 5, document_id: UUID | None = None) -> list[RetrievalResult]:
         if not query.strip() or top_k <= 0:
             return []
         candidates = self.store.search(self.embeddings.embed([query])[0], top_k=max(top_k * 8, top_k))
-        filtered = [item for item in candidates if workspace_id is None or self._chunk_workspace.get(item[0].chunk_id) == workspace_id]
+        filtered = [
+            item for item in candidates
+            if (workspace_id is None or self._chunk_workspace.get(item[0].chunk_id) == workspace_id)
+            and (document_id is None or item[0].document_id == document_id)
+        ]
         results = []
         for chunk, vector_score in filtered:
             lexical = _lexical_score(query, chunk.text)
