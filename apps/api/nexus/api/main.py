@@ -11,7 +11,7 @@ from nexus.core.documents import DocumentParseError, DocumentWorkspace
 from nexus.core.engine import engine
 from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
 from nexus.core.files import FileRegistry, LocalFileStore
-from nexus.core.knowledge import KnowledgeEngine
+from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
 from nexus.core.schemas import ExecutionResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tools import configure_dataset_workspace
@@ -25,6 +25,7 @@ file_store = LocalFileStore(settings.file_storage_path)
 file_registry = FileRegistry()
 document_workspace = DocumentWorkspace(Path(settings.file_storage_path) / "documents")
 knowledge_engine = KnowledgeEngine(document_workspace, settings.knowledge_index_path)
+configure_knowledge_engine(knowledge_engine)
 
 
 def _workspace_payload(workspace) -> dict:
@@ -34,17 +35,14 @@ def _file_payload(file_ref) -> dict:
     return {"file_id": str(file_ref.file_id), "workspace_id": str(file_ref.workspace_id) if file_ref.workspace_id else None, "filename": file_ref.filename, "mime_type": file_ref.mime_type, "size_bytes": file_ref.size_bytes, "metadata": file_ref.metadata, "created_at": file_ref.created_at.isoformat()}
 
 def _require_workspace(workspace_id: UUID):
-    try:
-        return workspace_registry.get(workspace_id)
-    except WorkspaceNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try: return workspace_registry.get(workspace_id)
+    except WorkspaceNotFoundError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 def _workspace_context_text(workspace_id: UUID | None) -> str | None:
     return workspace_registry.context(workspace_id).as_text() if workspace_id is not None else None
 
 def _build_task(payload: TaskCreate) -> Task:
-    if payload.workspace_id is not None:
-        _require_workspace(payload.workspace_id)
+    if payload.workspace_id is not None: _require_workspace(payload.workspace_id)
     context_parts = [part for part in (payload.context, _workspace_context_text(payload.workspace_id)) if part]
     return Task(**payload.model_dump(exclude={"context"}), context="\n".join(context_parts) or None)
 
@@ -88,8 +86,7 @@ async def upload_workspace_file(workspace_id: UUID, file: UploadFile = File(...)
     _require_workspace(workspace_id); filename = Path(file.filename or "").name
     if not filename: raise HTTPException(status_code=422, detail="filename cannot be empty")
     try:
-        file_ref = file_store.put(await file.read(), filename=filename, workspace_id=workspace_id, mime_type=file.content_type)
-        file_registry.register(file_ref); workspace_registry.context(workspace_id).add_file(file_ref.file_id)
+        file_ref = file_store.put(await file.read(), filename=filename, workspace_id=workspace_id, mime_type=file.content_type); file_registry.register(file_ref); workspace_registry.context(workspace_id).add_file(file_ref.file_id)
     except (TypeError, ValueError) as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _file_payload(file_ref)
 
@@ -109,22 +106,20 @@ def delete_workspace_file(workspace_id: UUID, file_id: UUID) -> Response:
     _require_workspace(workspace_id)
     try: file_ref = file_registry.get(file_id, workspace_id=workspace_id)
     except NexusFileNotFoundError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
-    file_store.delete(file_ref); file_registry.remove(file_id, workspace_id=workspace_id); workspace_registry.context(workspace_id).remove_file(file_id)
-    return Response(status_code=204)
+    file_store.delete(file_ref); file_registry.remove(file_id, workspace_id=workspace_id); workspace_registry.context(workspace_id).remove_file(file_id); return Response(status_code=204)
 
 @app.post("/api/v1/workspaces/{workspace_id}/documents", status_code=201)
 async def upload_workspace_document(workspace_id: UUID, file: UploadFile = File(...)) -> dict:
     _require_workspace(workspace_id); filename = Path(file.filename or "").name
     if not filename: raise HTTPException(status_code=422, detail="filename cannot be empty")
     try:
-        document, chunk_count = knowledge_engine.ingest(await file.read(), filename=filename, workspace_id=workspace_id, metadata={"content_type": file.content_type or "application/octet-stream"})
-        workspace_registry.context(workspace_id).add_document(document.document_id)
+        document, chunk_count = knowledge_engine.ingest(await file.read(), filename=filename, workspace_id=workspace_id, metadata={"content_type": file.content_type or "application/octet-stream"}); workspace_registry.context(workspace_id).add_document(document.document_id)
     except DocumentParseError as exc: raise HTTPException(status_code=415, detail=str(exc)) from exc
     return {"document_id": str(document.document_id), "workspace_id": str(workspace_id), "filename": document.filename, "file_format": document.file_format, "size_bytes": document.size_bytes, "artifact_id": str(document.artifact_id) if document.artifact_id else None, "chunk_count": chunk_count, "metadata": document.metadata}
 
 @app.get("/api/v1/workspaces/{workspace_id}/documents")
 def list_workspace_documents(workspace_id: UUID) -> list[dict]:
-    _require_workspace(workspace_id); context = workspace_registry.context(workspace_id); return [{"document_id": str(document_id)} for document_id in context.document_ids]
+    _require_workspace(workspace_id); return [{"document_id": str(document_id)} for document_id in workspace_registry.context(workspace_id).document_ids]
 
 @app.post("/api/v1/workspaces/{workspace_id}/search")
 def search_workspace(workspace_id: UUID, payload: dict) -> dict:
@@ -134,7 +129,5 @@ def search_workspace(workspace_id: UUID, payload: dict) -> dict:
     document_id = payload.get("document_id")
     try: parsed_document_id = UUID(str(document_id)) if document_id else None
     except ValueError as exc: raise HTTPException(status_code=422, detail="document_id must be a UUID") from exc
-    if parsed_document_id is not None and parsed_document_id not in workspace_registry.context(workspace_id).document_ids:
-        raise HTTPException(status_code=404, detail="Document does not belong to the requested workspace")
-    result = knowledge_engine.search(query, workspace_id=workspace_id, top_k=top_k, document_id=parsed_document_id)
-    return result.as_dict()
+    if parsed_document_id is not None and parsed_document_id not in workspace_registry.context(workspace_id).document_ids: raise HTTPException(status_code=404, detail="Document does not belong to the requested workspace")
+    return knowledge_engine.search(query, workspace_id=workspace_id, top_k=top_k, document_id=parsed_document_id).as_dict()
