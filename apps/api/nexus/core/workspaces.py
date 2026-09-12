@@ -40,6 +40,10 @@ class WorkspaceContext:
         if file_id not in self.file_ids:
             self.file_ids.append(file_id)
 
+    def remove_file(self, file_id: UUID) -> None:
+        if file_id in self.file_ids:
+            self.file_ids.remove(file_id)
+
     def add_dataset(self, dataset_id: UUID) -> None:
         if dataset_id not in self.dataset_ids:
             self.dataset_ids.append(dataset_id)
@@ -50,7 +54,7 @@ class WorkspaceContext:
 
 
 class WorkspaceRegistry:
-    """In-memory workspace registry for the Phase 6A foundation."""
+    """In-memory workspace registry for the Phase 6 foundation."""
 
     def __init__(self) -> None:
         self._workspaces: dict[UUID, WorkspaceRef] = {}
