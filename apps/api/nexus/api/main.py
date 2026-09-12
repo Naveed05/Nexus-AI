@@ -51,6 +51,31 @@ def _require_workspace(workspace_id: UUID):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+def _workspace_context_text(workspace_id: UUID | None) -> str | None:
+    if workspace_id is None:
+        return None
+    context = workspace_registry.context(workspace_id)
+    parts = [f"workspace_id: {workspace_id}"]
+    if context.file_ids:
+        parts.append("file_ids: " + ", ".join(str(value) for value in context.file_ids))
+    if context.dataset_ids:
+        parts.append("dataset_ids: " + ", ".join(str(value) for value in context.dataset_ids))
+    if context.artifact_ids:
+        parts.append("artifact_ids: " + ", ".join(str(value) for value in context.artifact_ids))
+    return "\n".join(parts)
+
+
+def _build_task(payload: TaskCreate) -> Task:
+    if payload.workspace_id is not None:
+        _require_workspace(payload.workspace_id)
+    workspace_context = _workspace_context_text(payload.workspace_id)
+    context_parts = [part for part in (payload.context, workspace_context) if part]
+    return Task(
+        **payload.model_dump(exclude={"context"}),
+        context="\n".join(context_parts) or None,
+    )
+
+
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "nexus-api"}
@@ -58,7 +83,7 @@ def health() -> dict[str, str]:
 
 @app.post("/api/v1/tasks", response_model=TaskResponse, status_code=201)
 def create_task(payload: TaskCreate) -> TaskResponse:
-    task = Task(**payload.model_dump())
+    task = _build_task(payload)
     route = engine.route_task(task)
     return TaskResponse(
         task_id=str(task.task_id),
@@ -68,12 +93,13 @@ def create_task(payload: TaskCreate) -> TaskResponse:
         created_at=task.created_at.isoformat(),
         capabilities=task.capabilities,
         selected_model=route.model.model_id,
+        workspace_id=str(task.workspace_id) if task.workspace_id else None,
     )
 
 
 @app.post("/api/v1/tasks/execute", response_model=ExecutionResponse, status_code=200)
 def execute_task(payload: TaskCreate) -> ExecutionResponse:
-    task = Task(**payload.model_dump())
+    task = _build_task(payload)
     result = engine.run(task)
     return ExecutionResponse(
         task_id=str(task.task_id),
