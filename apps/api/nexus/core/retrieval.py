@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 import math
 import re
+from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
@@ -16,7 +18,6 @@ class EmbeddingProvider(Protocol):
 
 class HashEmbeddingProvider:
     """Dependency-free deterministic embedding baseline for local development."""
-
     def __init__(self, dimensions: int = 256) -> None:
         if dimensions <= 0:
             raise ValueError("dimensions must be positive")
@@ -41,11 +42,10 @@ def _cosine(left: list[float], right: list[float]) -> float:
 
 def _lexical_score(query: str, text: str) -> float:
     query_terms = set(re.findall(r"\w+", query.lower()))
-    text_terms = re.findall(r"\w+", text.lower())
+    text_terms = set(re.findall(r"\w+", text.lower()))
     if not query_terms or not text_terms:
         return 0.0
-    counts = {term: text_terms.count(term) for term in query_terms}
-    return sum(1.0 for value in counts.values() if value > 0) / len(query_terms)
+    return len(query_terms & text_terms) / len(query_terms)
 
 
 @dataclass(frozen=True)
@@ -57,8 +57,7 @@ class RetrievalResult:
 
     @property
     def citation(self) -> str:
-        filename = self.chunk.metadata.get("filename", "document")
-        return f"{filename} — chunk {self.chunk.index + 1}"
+        return f"{self.chunk.metadata.get('filename', 'document')} — chunk {self.chunk.index + 1}"
 
 
 class VectorStore(Protocol):
@@ -84,14 +83,46 @@ class InMemoryVectorStore:
         return scored[:top_k]
 
 
+class JsonVectorStore(InMemoryVectorStore):
+    """Durable local vector store with atomic JSON persistence; swappable for pgvector."""
+    def __init__(self, path: str | Path) -> None:
+        super().__init__()
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._load()
+
+    def _load(self) -> None:
+        if not self.path.exists():
+            return
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            for item in payload.get("items", []):
+                chunk = DocumentChunk(chunk_id=UUID(item["chunk_id"]), document_id=UUID(item["document_id"]), text=item["text"], index=item["index"], metadata=item.get("metadata", {}))
+                self._items[chunk.chunk_id] = (chunk, [float(value) for value in item["vector"]])
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("Unable to load vector index") from exc
+
+    def _save(self) -> None:
+        payload = {"items": [{"chunk_id": str(chunk.chunk_id), "document_id": str(chunk.document_id), "text": chunk.text, "index": chunk.index, "metadata": chunk.metadata, "vector": vector} for chunk, vector in self._items.values()]}
+        temporary = self.path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(self.path)
+
+    def upsert(self, chunks: list[DocumentChunk], vectors: list[list[float]]) -> None:
+        super().upsert(chunks, vectors)
+        self._save()
+
+
 class RetrievalEngine:
     """Workspace-scoped hybrid retrieval with deterministic reranking."""
-
     def __init__(self, documents: DocumentWorkspace, *, embeddings: EmbeddingProvider | None = None, store: VectorStore | None = None) -> None:
         self.documents = documents
         self.embeddings = embeddings or HashEmbeddingProvider()
         self.store = store or InMemoryVectorStore()
         self._chunk_workspace: dict[UUID, UUID | None] = {}
+        for document_id, document in documents.documents.items():
+            for chunk in documents.get_chunks(document_id):
+                self._chunk_workspace[chunk.chunk_id] = document.workspace_id
 
     def index_document(self, document_id: UUID) -> int:
         document = self.documents.get(document_id)
@@ -108,18 +139,16 @@ class RetrievalEngine:
             return []
         candidates = self.store.search(self.embeddings.embed([query])[0], top_k=max(top_k * 8, top_k))
         filtered = [item for item in candidates if workspace_id is None or self._chunk_workspace.get(item[0].chunk_id) == workspace_id]
-        results: list[RetrievalResult] = []
+        results = []
         for chunk, vector_score in filtered:
             lexical = _lexical_score(query, chunk.text)
-            score = (0.7 * max(vector_score, 0.0)) + (0.3 * lexical)
-            results.append(RetrievalResult(chunk=chunk, score=score, vector_score=vector_score, lexical_score=lexical))
+            results.append(RetrievalResult(chunk=chunk, score=0.7 * max(vector_score, 0.0) + 0.3 * lexical, vector_score=vector_score, lexical_score=lexical))
         results.sort(key=lambda item: (item.score, item.vector_score, -item.chunk.index), reverse=True)
         return results[:top_k]
 
 
 class KnowledgeContextBuilder:
     """Builds compact, citation-bearing context from retrieved evidence."""
-
     def build(self, results: list[RetrievalResult], *, max_chars: int = 6000) -> str:
         if max_chars <= 0:
             return ""
