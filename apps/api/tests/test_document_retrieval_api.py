@@ -23,15 +23,18 @@ def test_document_ingestion_indexes_chunks_and_scopes_search() -> None:
         json={"query": "workspace retrieval knowledge", "top_k": 3},
     )
     assert results.status_code == 200
-    assert results.json()
-    assert results.json()[0]["document_id"] == str(document_id)
+    payload = results.json()
+    assert payload["results"]
+    assert payload["results"][0]["document_id"] == str(document_id)
+    assert "[Source:" in payload["context"]
 
     isolated = client.post(
         f"/api/v1/workspaces/{other.workspace_id}/search",
         json={"query": "workspace retrieval knowledge", "top_k": 3},
     )
     assert isolated.status_code == 200
-    assert isolated.json() == []
+    assert isolated.json()["results"] == []
+    assert isolated.json()["context"] == ""
 
 
 def test_document_endpoint_rejects_unsupported_format() -> None:
