@@ -11,7 +11,7 @@ from nexus.core.documents import DocumentParseError, DocumentWorkspace
 from nexus.core.engine import engine
 from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
 from nexus.core.files import FileRegistry, LocalFileStore
-from nexus.core.retrieval import JsonVectorStore, RetrievalEngine
+from nexus.core.knowledge import KnowledgeEngine
 from nexus.core.schemas import ExecutionResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tools import configure_dataset_workspace
@@ -24,7 +24,7 @@ configure_dataset_workspace(dataset_workspace)
 file_store = LocalFileStore(settings.file_storage_path)
 file_registry = FileRegistry()
 document_workspace = DocumentWorkspace(Path(settings.file_storage_path) / "documents")
-retrieval_engine = RetrievalEngine(document_workspace, store=JsonVectorStore(settings.knowledge_index_path))
+knowledge_engine = KnowledgeEngine(document_workspace, settings.knowledge_index_path)
 
 
 def _workspace_payload(workspace) -> dict:
@@ -117,17 +117,24 @@ async def upload_workspace_document(workspace_id: UUID, file: UploadFile = File(
     _require_workspace(workspace_id); filename = Path(file.filename or "").name
     if not filename: raise HTTPException(status_code=422, detail="filename cannot be empty")
     try:
-        document = document_workspace.register(await file.read(), filename=filename, workspace_id=workspace_id, metadata={"content_type": file.content_type or "application/octet-stream"})
-        retrieval_engine.index_document(document.document_id); workspace_registry.context(workspace_id).add_document(document.document_id)
+        document, chunk_count = knowledge_engine.ingest(await file.read(), filename=filename, workspace_id=workspace_id, metadata={"content_type": file.content_type or "application/octet-stream"})
+        workspace_registry.context(workspace_id).add_document(document.document_id)
     except DocumentParseError as exc: raise HTTPException(status_code=415, detail=str(exc)) from exc
-    return {"document_id": str(document.document_id), "workspace_id": str(workspace_id), "filename": document.filename, "file_format": document.file_format, "size_bytes": document.size_bytes, "artifact_id": str(document.artifact_id) if document.artifact_id else None, "chunk_count": len(document_workspace.get_chunks(document.document_id)), "metadata": document.metadata}
+    return {"document_id": str(document.document_id), "workspace_id": str(workspace_id), "filename": document.filename, "file_format": document.file_format, "size_bytes": document.size_bytes, "artifact_id": str(document.artifact_id) if document.artifact_id else None, "chunk_count": chunk_count, "metadata": document.metadata}
 
 @app.get("/api/v1/workspaces/{workspace_id}/documents")
 def list_workspace_documents(workspace_id: UUID) -> list[dict]:
-    context = workspace_registry.context(workspace_id); return [{"document_id": str(document_id)} for document_id in context.document_ids]
+    _require_workspace(workspace_id); context = workspace_registry.context(workspace_id); return [{"document_id": str(document_id)} for document_id in context.document_ids]
 
 @app.post("/api/v1/workspaces/{workspace_id}/search")
-def search_workspace(workspace_id: UUID, payload: dict) -> list[dict]:
-    _require_workspace(workspace_id); query = str(payload.get("query", "")).strip(); top_k = int(payload.get("top_k", 5))
-    results = retrieval_engine.search(query, workspace_id=workspace_id, top_k=top_k)
-    return [{"chunk_id": str(r.chunk.chunk_id), "document_id": str(r.chunk.document_id), "score": r.score, "vector_score": r.vector_score, "lexical_score": r.lexical_score, "citation": r.citation, "text": r.chunk.text, "metadata": r.chunk.metadata} for r in results]
+def search_workspace(workspace_id: UUID, payload: dict) -> dict:
+    _require_workspace(workspace_id); query = str(payload.get("query", "")).strip()
+    try: top_k = max(1, min(int(payload.get("top_k", 5)), 20))
+    except (TypeError, ValueError) as exc: raise HTTPException(status_code=422, detail="top_k must be an integer") from exc
+    document_id = payload.get("document_id")
+    try: parsed_document_id = UUID(str(document_id)) if document_id else None
+    except ValueError as exc: raise HTTPException(status_code=422, detail="document_id must be a UUID") from exc
+    if parsed_document_id is not None and parsed_document_id not in workspace_registry.context(workspace_id).document_ids:
+        raise HTTPException(status_code=404, detail="Document does not belong to the requested workspace")
+    result = knowledge_engine.search(query, workspace_id=workspace_id, top_k=top_k, document_id=parsed_document_id)
+    return result.as_dict()
