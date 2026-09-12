@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     openai_api_key: str | None = None
     dataset_storage_path: str = ".nexus/data"
+    file_storage_path: str = ".nexus/files"
 
     model_config = SettingsConfigDict(
         env_file=".env",
