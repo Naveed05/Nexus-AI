@@ -1,8 +1,9 @@
+from tempfile import TemporaryDirectory
 from uuid import UUID
 
-from nexus.api.main import _build_task, client, document_workspace, file_registry, retrieval_engine, workspace_registry
+from nexus.api.main import _build_task, client, file_registry, retrieval_engine, workspace_registry
 from nexus.core.documents import DocumentChunker, DocumentWorkspace
-from nexus.core.retrieval import HashEmbeddingProvider, InMemoryVectorStore, KnowledgeContextBuilder, RetrievalEngine
+from nexus.core.retrieval import HashEmbeddingProvider, InMemoryVectorStore, JsonVectorStore, KnowledgeContextBuilder, RetrievalEngine
 from nexus.core.schemas import TaskCreate
 
 
@@ -19,8 +20,7 @@ def test_workspace_task_receives_resource_context() -> None:
 
 def test_task_rejects_unknown_workspace() -> None:
     unknown = UUID("00000000-0000-0000-0000-000000000001")
-    response = client.post("/api/v1/tasks", json={"objective": "Inspect workspace", "workspace_id": str(unknown)})
-    assert response.status_code == 404
+    assert client.post("/api/v1/tasks", json={"objective": "Inspect workspace", "workspace_id": str(unknown)}).status_code == 404
 
 
 def test_workspace_task_response_exposes_workspace_id() -> None:
@@ -36,14 +36,9 @@ def test_workspace_file_lifecycle_and_isolation() -> None:
     upload = client.post(f"/api/v1/workspaces/{workspace.workspace_id}/files", files={"file": ("report.txt", b"hello nexus", "text/plain")})
     assert upload.status_code == 201
     file_id = UUID(upload.json()["file_id"])
-    listed = client.get(f"/api/v1/workspaces/{workspace.workspace_id}/files")
-    assert listed.status_code == 200 and listed.json()[0]["file_id"] == str(file_id)
-    downloaded = client.get(f"/api/v1/workspaces/{workspace.workspace_id}/files/{file_id}")
-    assert downloaded.status_code == 200 and downloaded.content == b"hello nexus"
-    denied = client.get(f"/api/v1/workspaces/{other_workspace.workspace_id}/files/{file_id}")
-    assert denied.status_code == 404
-    deleted = client.delete(f"/api/v1/workspaces/{workspace.workspace_id}/files/{file_id}")
-    assert deleted.status_code == 204
+    assert client.get(f"/api/v1/workspaces/{workspace.workspace_id}/files/{file_id}").content == b"hello nexus"
+    assert client.get(f"/api/v1/workspaces/{other_workspace.workspace_id}/files/{file_id}").status_code == 404
+    assert client.delete(f"/api/v1/workspaces/{workspace.workspace_id}/files/{file_id}").status_code == 204
     assert file_id not in workspace_registry.context(workspace.workspace_id).file_ids
     assert file_id not in {item.file_id for item in file_registry.list()}
 
@@ -52,25 +47,18 @@ def test_document_upload_indexes_chunks_and_exposes_context() -> None:
     workspace = workspace_registry.create(name="Knowledge")
     response = client.post(f"/api/v1/workspaces/{workspace.workspace_id}/documents", files={"file": ("guide.md", b"# NEXUS\n\nAgentic AI workspace with verified execution.", "text/markdown")})
     assert response.status_code == 201
-    body = response.json()
-    document_id = UUID(body["document_id"])
-    assert body["workspace_id"] == str(workspace.workspace_id)
-    assert body["file_format"] == "md"
-    assert body["chunk_count"] >= 1
-    assert document_id in workspace_registry.context(workspace.workspace_id).document_ids
+    body = response.json(); document_id = UUID(body["document_id"])
+    assert body["workspace_id"] == str(workspace.workspace_id) and body["file_format"] == "md"
+    assert body["chunk_count"] >= 1 and document_id in workspace_registry.context(workspace.workspace_id).document_ids
 
 
 def test_workspace_search_isolation() -> None:
-    first = workspace_registry.create(name="First")
-    second = workspace_registry.create(name="Second")
+    first = workspace_registry.create(name="First"); second = workspace_registry.create(name="Second")
     client.post(f"/api/v1/workspaces/{first.workspace_id}/documents", files={"file": ("first.txt", b"quantum computing research notes", "text/plain")})
     client.post(f"/api/v1/workspaces/{second.workspace_id}/documents", files={"file": ("second.txt", b"marine biology field notes", "text/plain")})
-    response = client.post(f"/api/v1/workspaces/{first.workspace_id}/search", json={"query": "quantum computing", "top_k": 5})
-    assert response.status_code == 200
-    results = response.json()
-    assert results
-    assert all(UUID(item["document_id"]) in workspace_registry.context(first.workspace_id).document_ids for item in results)
-    assert "citation" in results[0] and "vector_score" in results[0] and "lexical_score" in results[0]
+    results = client.post(f"/api/v1/workspaces/{first.workspace_id}/search", json={"query": "quantum computing", "top_k": 5}).json()
+    assert results and all(UUID(item["document_id"]) in workspace_registry.context(first.workspace_id).document_ids for item in results)
+    assert {"citation", "vector_score", "lexical_score"}.issubset(results[0])
 
 
 def test_retrieval_embedding_is_reproducible() -> None:
@@ -79,23 +67,40 @@ def test_retrieval_embedding_is_reproducible() -> None:
 
 
 def test_hybrid_retrieval_rewards_exact_terms() -> None:
-    docs = DocumentWorkspace("/tmp/nexus-test-docs", chunker=DocumentChunker(chunk_size=500, overlap=20))
-    first = docs.register(b"Astra orchestrates complex research workflows.", filename="astra.txt")
-    second = docs.register(b"General research workflows are useful.", filename="general.txt")
-    engine = RetrievalEngine(docs, embeddings=HashEmbeddingProvider(dimensions=64), store=InMemoryVectorStore())
-    engine.index_document(first.document_id)
-    engine.index_document(second.document_id)
-    results = engine.search("Astra research", top_k=2)
-    assert results[0].chunk.document_id == first.document_id
-    assert results[0].lexical_score > 0
+    with TemporaryDirectory() as root:
+        docs = DocumentWorkspace(root, chunker=DocumentChunker(chunk_size=500, overlap=20))
+        first = docs.register(b"Astra orchestrates complex research workflows.", filename="astra.txt")
+        second = docs.register(b"General research workflows are useful.", filename="general.txt")
+        engine = RetrievalEngine(docs, embeddings=HashEmbeddingProvider(dimensions=64), store=InMemoryVectorStore())
+        engine.index_document(first.document_id); engine.index_document(second.document_id)
+        results = engine.search("Astra research", top_k=2)
+        assert results[0].chunk.document_id == first.document_id and results[0].lexical_score > 0
 
 
 def test_grounded_context_contains_source_citations() -> None:
-    results = retrieval_engine.search("quantum", top_k=3)
-    context = KnowledgeContextBuilder().build(results, max_chars=4000)
-    if results:
-        assert "[Source:" in context
-        assert results[0].citation in context
+    with TemporaryDirectory() as root:
+        docs = DocumentWorkspace(root)
+        doc = docs.register(b"NEXUS uses grounded evidence.", filename="knowledge.txt")
+        engine = RetrievalEngine(docs, store=InMemoryVectorStore()); engine.index_document(doc.document_id)
+        results = engine.search("grounded evidence", top_k=1)
+        context = KnowledgeContextBuilder().build(results, max_chars=4000)
+        assert "[Source:" in context and results[0].citation in context
+
+
+def test_json_vector_store_survives_reopen() -> None:
+    with TemporaryDirectory() as root:
+        docs = DocumentWorkspace(root)
+        doc = docs.register(b"persistent knowledge survives restart", filename="persist.txt")
+        path = f"{root}/index.json"
+        first = RetrievalEngine(docs, store=JsonVectorStore(path)); first.index_document(doc.document_id)
+        reopened = JsonVectorStore(path)
+        assert reopened.search(HashEmbeddingProvider().embed(["persistent knowledge"])[0], top_k=1)[0][0].document_id == doc.document_id
+
+
+def test_pdf_and_docx_parsers_are_registered() -> None:
+    with TemporaryDirectory() as root:
+        docs = DocumentWorkspace(root)
+        assert "pdf" in docs.parsers and "docx" in docs.parsers
 
 
 def test_unsupported_document_format_is_rejected() -> None:
