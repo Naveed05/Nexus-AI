@@ -39,10 +39,26 @@ def _cosine(left: list[float], right: list[float]) -> float:
     return sum(a * b for a, b in zip(left, right))
 
 
+def _lexical_score(query: str, text: str) -> float:
+    query_terms = set(re.findall(r"\w+", query.lower()))
+    text_terms = re.findall(r"\w+", text.lower())
+    if not query_terms or not text_terms:
+        return 0.0
+    counts = {term: text_terms.count(term) for term in query_terms}
+    return sum(1.0 for value in counts.values() if value > 0) / len(query_terms)
+
+
 @dataclass(frozen=True)
 class RetrievalResult:
     chunk: DocumentChunk
     score: float
+    vector_score: float = 0.0
+    lexical_score: float = 0.0
+
+    @property
+    def citation(self) -> str:
+        filename = self.chunk.metadata.get("filename", "document")
+        return f"{filename} — chunk {self.chunk.index + 1}"
 
 
 class VectorStore(Protocol):
@@ -69,7 +85,7 @@ class InMemoryVectorStore:
 
 
 class RetrievalEngine:
-    """Indexes document chunks and retrieves only within an optional workspace."""
+    """Workspace-scoped hybrid retrieval with deterministic reranking."""
 
     def __init__(self, documents: DocumentWorkspace, *, embeddings: EmbeddingProvider | None = None, store: VectorStore | None = None) -> None:
         self.documents = documents
@@ -90,6 +106,30 @@ class RetrievalEngine:
     def search(self, query: str, *, workspace_id: UUID | None = None, top_k: int = 5) -> list[RetrievalResult]:
         if not query.strip() or top_k <= 0:
             return []
-        candidates = self.store.search(self.embeddings.embed([query])[0], top_k=max(top_k * 4, top_k))
-        results = [RetrievalResult(chunk=chunk, score=score) for chunk, score in candidates if workspace_id is None or self._chunk_workspace.get(chunk.chunk_id) == workspace_id]
+        candidates = self.store.search(self.embeddings.embed([query])[0], top_k=max(top_k * 8, top_k))
+        filtered = [item for item in candidates if workspace_id is None or self._chunk_workspace.get(item[0].chunk_id) == workspace_id]
+        results: list[RetrievalResult] = []
+        for chunk, vector_score in filtered:
+            lexical = _lexical_score(query, chunk.text)
+            score = (0.7 * max(vector_score, 0.0)) + (0.3 * lexical)
+            results.append(RetrievalResult(chunk=chunk, score=score, vector_score=vector_score, lexical_score=lexical))
+        results.sort(key=lambda item: (item.score, item.vector_score, -item.chunk.index), reverse=True)
         return results[:top_k]
+
+
+class KnowledgeContextBuilder:
+    """Builds compact, citation-bearing context from retrieved evidence."""
+
+    def build(self, results: list[RetrievalResult], *, max_chars: int = 6000) -> str:
+        if max_chars <= 0:
+            return ""
+        blocks: list[str] = []
+        used = 0
+        for result in results:
+            block = f"[Source: {result.citation}]\n{result.chunk.text.strip()}"
+            extra = len(block) + (2 if blocks else 0)
+            if used + extra > max_chars:
+                break
+            blocks.append(block)
+            used += extra
+        return "\n\n".join(blocks)
