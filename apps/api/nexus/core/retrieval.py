@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import math
 import re
 from typing import Protocol
@@ -26,7 +27,9 @@ class HashEmbeddingProvider:
         for text in texts:
             vector = [0.0] * self.dimensions
             for token in re.findall(r"\w+", text.lower()):
-                vector[hash(token) % self.dimensions] += 1.0
+                digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+                bucket = int.from_bytes(digest, "big") % self.dimensions
+                vector[bucket] += 1.0
             norm = math.sqrt(sum(value * value for value in vector))
             vectors.append([value / norm for value in vector] if norm else vector)
         return vectors
