@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Protocol
 from uuid import UUID, uuid4
 
-from .artifacts import Artifact, LocalArtifactStore
+from .artifacts import LocalArtifactStore
 
 
 class DocumentParseError(ValueError):
@@ -63,6 +63,38 @@ class PlainTextParser:
             raise DocumentParseError(f"Unable to decode {filename} as UTF-8") from exc
 
 
+class PDFParser:
+    formats = ("pdf",)
+
+    def parse(self, data: bytes, filename: str) -> str:
+        try:
+            from pypdf import PdfReader
+            import io
+            reader = PdfReader(io.BytesIO(data))
+            text = "\n\n".join((page.extract_text() or "").strip() for page in reader.pages).strip()
+        except Exception as exc:
+            raise DocumentParseError(f"Unable to parse {filename} as PDF") from exc
+        if not text:
+            raise DocumentParseError(f"No readable text found in {filename}")
+        return text
+
+
+class DOCXParser:
+    formats = ("docx",)
+
+    def parse(self, data: bytes, filename: str) -> str:
+        try:
+            from docx import Document
+            import io
+            document = Document(io.BytesIO(data))
+            text = "\n\n".join(p.text.strip() for p in document.paragraphs if p.text.strip()).strip()
+        except Exception as exc:
+            raise DocumentParseError(f"Unable to parse {filename} as DOCX") from exc
+        if not text:
+            raise DocumentParseError(f"No readable text found in {filename}")
+        return text
+
+
 class DocumentChunker:
     """Deterministic character-window chunker with paragraph preference."""
 
@@ -105,6 +137,8 @@ class DocumentWorkspace:
         self.documents: dict[UUID, DocumentRef] = {}
         self.chunks: dict[UUID, tuple[DocumentChunk, ...]] = {}
         self._register_parser(PlainTextParser())
+        self._register_parser(PDFParser())
+        self._register_parser(DOCXParser())
 
     def _register_parser(self, parser: DocumentParser) -> None:
         for fmt in parser.formats:
@@ -116,8 +150,6 @@ class DocumentWorkspace:
         if parser is None:
             raise DocumentParseError(f"Unsupported document format: {suffix or 'unknown'}")
         text = parser.parse(data, filename)
-        if not text:
-            raise DocumentParseError("Document contains no readable text")
         artifact = self.store.put(data, filename=Path(filename).name, artifact_type="document", mime_type=None, metadata=metadata)
         document = DocumentRef(workspace_id=workspace_id, filename=artifact.filename, file_format=suffix, size_bytes=len(data), artifact_id=artifact.artifact_id, metadata=dict(metadata or {}))
         self.documents[document.document_id] = document
