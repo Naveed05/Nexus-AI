@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -52,6 +53,38 @@ class KnowledgeEngine:
     def search(self, query: str, *, workspace_id: UUID | None = None, top_k: int = 5, document_id: UUID | None = None) -> KnowledgeSearch:
         results = self.retrieval.search(query, workspace_id=workspace_id, top_k=top_k, document_id=document_id)
         return KnowledgeSearch(query=query, workspace_id=workspace_id, results=tuple(results), context=self.context_builder.build(results))
+
+
+_active_knowledge_engine: KnowledgeEngine | None = None
+_active_workspace_id: ContextVar[UUID | None] = ContextVar("nexus_knowledge_workspace_id", default=None)
+
+
+def configure_knowledge_engine(engine: KnowledgeEngine | None) -> None:
+    global _active_knowledge_engine
+    _active_knowledge_engine = engine
+
+
+def set_knowledge_workspace(workspace_id: UUID | None):
+    return _active_workspace_id.set(workspace_id)
+
+
+def reset_knowledge_workspace(token) -> None:
+    _active_workspace_id.reset(token)
+
+
+def search_knowledge(query: str, top_k: int = 5, document_id: str | None = None) -> dict:
+    if _active_knowledge_engine is None:
+        raise RuntimeError("Knowledge engine is not configured")
+    try:
+        parsed_document_id = UUID(document_id) if document_id else None
+    except ValueError as exc:
+        raise ValueError(f"Invalid document_id: {document_id}") from exc
+    return _active_knowledge_engine.search(
+        query,
+        workspace_id=_active_workspace_id.get(),
+        top_k=max(1, min(int(top_k), 20)),
+        document_id=parsed_document_id,
+    ).as_dict()
 
 
 class KnowledgeTool:
