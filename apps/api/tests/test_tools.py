@@ -14,7 +14,7 @@ def test_calculator_rejects_unsupported_characters() -> None:
 
 def test_registry_exposes_openai_tool_schema() -> None:
     tools = tool_registry.openai_tools()
-    assert len(tools) == 6
+    assert len(tools) == 7
     assert {tool["name"] for tool in tools} == {
         "calculator",
         "profile_dataset",
@@ -22,6 +22,7 @@ def test_registry_exposes_openai_tool_schema() -> None:
         "profile_dataset_by_id",
         "analyze_dataset_by_id",
         "baseline_ml",
+        "search_knowledge",
     }
     assert all(tool["type"] == "function" for tool in tools)
     assert all(tool["strict"] is True for tool in tools)
