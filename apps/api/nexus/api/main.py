@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import Response
+from fastapi.testclient import TestClient
 
 from nexus.core.config import settings
 from nexus.core.dataset_workspace import DatasetWorkspace
@@ -15,6 +16,7 @@ from nexus.core.tools import configure_dataset_workspace
 from nexus.core.workspaces import WorkspaceNotFoundError, WorkspaceRegistry
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
+client = TestClient(app)
 dataset_workspace = DatasetWorkspace(settings.dataset_storage_path)
 configure_dataset_workspace(dataset_workspace)
 workspace_registry = WorkspaceRegistry()
