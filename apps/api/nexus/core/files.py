@@ -92,6 +92,14 @@ class LocalFileStore:
     def exists(self, file: FileRef) -> bool:
         return self._safe_path(file.storage_key).is_file()
 
+    def delete(self, file: FileRef) -> None:
+        """Delete the physical file if it exists."""
+        path = self._safe_path(file.storage_key)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
 
 class FileRegistry:
     """In-memory metadata registry for workspace file references."""
