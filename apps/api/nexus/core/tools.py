@@ -4,8 +4,8 @@ from uuid import UUID
 
 from nexus.core.data_engine import DataIntelligenceEngine
 from nexus.core.data_pipeline import DataPipeline
-from nexus.core.datasets import DatasetRef
 from nexus.core.dataset_workspace import DatasetNotFoundError, DatasetWorkspace
+from nexus.core.knowledge import search_knowledge
 from nexus.core.ml_tools import baseline_ml
 
 RISK_LEVELS = {"low", "medium", "high"}
@@ -60,8 +60,6 @@ class ToolRegistry:
         return [tool.as_openai_tool() for tool in self._tools.values()]
 
 
-# The application layer can inject a workspace at startup. Keeping it optional
-# preserves the existing csv_text tool APIs and their tests.
 _dataset_workspace: DatasetWorkspace | None = None
 
 
@@ -77,7 +75,6 @@ def _require_workspace() -> DatasetWorkspace:
 
 
 def calculator(expression: str) -> dict[str, str]:
-    """Evaluate basic arithmetic using a restricted expression character set."""
     allowed = set("0123456789+-*/(). %")
     if not expression or any(char not in allowed for char in expression):
         raise ValueError("Expression contains unsupported characters")
@@ -92,32 +89,13 @@ def _profile_frame(frame) -> dict[str, Any]:
     engine = DataIntelligenceEngine()
     profile = engine.profile(frame)
     quality = engine.quality_report(frame)
-    return {
-        "profile": {
-            "rows": profile.rows,
-            "columns": profile.columns,
-            "duplicate_rows": profile.duplicate_rows,
-            "memory_estimate_bytes": profile.memory_estimate_bytes,
-            "column_profiles": [
-                {
-                    "name": c.name,
-                    "dtype": c.dtype,
-                    "null_count": c.null_count,
-                    "null_ratio": c.null_ratio,
-                    "unique_count": c.unique_count,
-                }
-                for c in profile.column_profiles
-            ],
-        },
-        "quality": quality,
-    }
+    return {"profile": {"rows": profile.rows, "columns": profile.columns, "duplicate_rows": profile.duplicate_rows, "memory_estimate_bytes": profile.memory_estimate_bytes, "column_profiles": [{"name": c.name, "dtype": c.dtype, "null_count": c.null_count, "null_ratio": c.null_ratio, "unique_count": c.unique_count} for c in profile.column_profiles]}, "quality": quality}
 
 
 def profile_dataset(csv_text: str) -> dict[str, Any]:
     if not csv_text.strip():
         raise ValueError("CSV payload cannot be empty")
-    frame = DataIntelligenceEngine().load_bytes(csv_text.encode("utf-8"), "csv")
-    return _profile_frame(frame)
+    return _profile_frame(DataIntelligenceEngine().load_bytes(csv_text.encode("utf-8"), "csv"))
 
 
 def profile_dataset_by_id(dataset_id: str) -> dict[str, Any]:
@@ -131,8 +109,7 @@ def profile_dataset_by_id(dataset_id: str) -> dict[str, Any]:
 def analyze_dataset(csv_text: str, target: str | None = None) -> dict[str, Any]:
     if not csv_text.strip():
         raise ValueError("CSV payload cannot be empty")
-    frame = DataIntelligenceEngine().load_bytes(csv_text.encode("utf-8"), "csv")
-    return DataPipeline().analyze(frame, target=target)
+    return DataPipeline().analyze(DataIntelligenceEngine().load_bytes(csv_text.encode("utf-8"), "csv"), target=target)
 
 
 def analyze_dataset_by_id(dataset_id: str, target: str | None = None) -> dict[str, Any]:
@@ -144,21 +121,10 @@ def analyze_dataset_by_id(dataset_id: str, target: str | None = None) -> dict[st
 
 
 tool_registry = ToolRegistry()
-tool_registry.register(ToolSpec("calculator", "Perform basic arithmetic calculations.",
-    {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"], "additionalProperties": False},
-    "low", calculator, timeout_seconds=5.0))
-tool_registry.register(ToolSpec("profile_dataset", "Profile a UTF-8 CSV dataset and identify data-quality issues.",
-    {"type": "object", "properties": {"csv_text": {"type": "string"}}, "required": ["csv_text"], "additionalProperties": False},
-    "low", profile_dataset, timeout_seconds=15.0, cost_units=0.1))
-tool_registry.register(ToolSpec("analyze_dataset", "Analyze CSV data with cleaning, EDA, correlations, problem formulation, and recommendations.",
-    {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["csv_text", "target"], "additionalProperties": False},
-    "low", analyze_dataset, timeout_seconds=30.0, cost_units=0.5))
-tool_registry.register(ToolSpec("profile_dataset_by_id", "Profile a registered NEXUS dataset by dataset_id.",
-    {"type": "object", "properties": {"dataset_id": {"type": "string"}}, "required": ["dataset_id"], "additionalProperties": False},
-    "low", profile_dataset_by_id, timeout_seconds=15.0, cost_units=0.1))
-tool_registry.register(ToolSpec("analyze_dataset_by_id", "Analyze a registered NEXUS dataset by dataset_id.",
-    {"type": "object", "properties": {"dataset_id": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["dataset_id", "target"], "additionalProperties": False},
-    "low", analyze_dataset_by_id, timeout_seconds=30.0, cost_units=0.5))
-tool_registry.register(ToolSpec("baseline_ml", "Train and evaluate a conservative baseline ML model for an explicit target column.",
-    {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": "string"}}, "required": ["csv_text", "target"], "additionalProperties": False},
-    "medium", baseline_ml, permission="read", timeout_seconds=60.0, cost_units=2.0))
+tool_registry.register(ToolSpec("calculator", "Perform basic arithmetic calculations.", {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"], "additionalProperties": False}, "low", calculator, timeout_seconds=5.0))
+tool_registry.register(ToolSpec("profile_dataset", "Profile a UTF-8 CSV dataset and identify data-quality issues.", {"type": "object", "properties": {"csv_text": {"type": "string"}}, "required": ["csv_text"], "additionalProperties": False}, "low", profile_dataset, timeout_seconds=15.0, cost_units=0.1))
+tool_registry.register(ToolSpec("analyze_dataset", "Analyze CSV data with cleaning, EDA, correlations, problem formulation, and recommendations.", {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["csv_text", "target"], "additionalProperties": False}, "low", analyze_dataset, timeout_seconds=30.0, cost_units=0.5))
+tool_registry.register(ToolSpec("profile_dataset_by_id", "Profile a registered NEXUS dataset by dataset_id.", {"type": "object", "properties": {"dataset_id": {"type": "string"}}, "required": ["dataset_id"], "additionalProperties": False}, "low", profile_dataset_by_id, timeout_seconds=15.0, cost_units=0.1))
+tool_registry.register(ToolSpec("analyze_dataset_by_id", "Analyze a registered NEXUS dataset by dataset_id.", {"type": "object", "properties": {"dataset_id": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["dataset_id", "target"], "additionalProperties": False}, "low", analyze_dataset_by_id, timeout_seconds=30.0, cost_units=0.5))
+tool_registry.register(ToolSpec("baseline_ml", "Train and evaluate a conservative baseline ML model for an explicit target column.", {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": "string"}}, "required": ["csv_text", "target"], "additionalProperties": False}, "medium", baseline_ml, permission="read", timeout_seconds=60.0, cost_units=2.0))
+tool_registry.register(ToolSpec("search_knowledge", "Search workspace documents using hybrid retrieval and return grounded evidence with citations.", {"type": "object", "properties": {"query": {"type": "string"}, "top_k": {"type": "integer", "minimum": 1, "maximum": 20}, "document_id": {"type": ["string", "null"]}}, "required": ["query", "top_k", "document_id"], "additionalProperties": False}, "low", search_knowledge, timeout_seconds=15.0, cost_units=0.2))
