@@ -2,7 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import UUID
 
-from nexus.api.main import _build_task, client, file_registry, retrieval_engine, workspace_registry
+from nexus.api.main import _build_task, client, file_registry, workspace_registry
 from nexus.core.documents import DocumentChunker, DocumentWorkspace
 from nexus.core.knowledge import KnowledgeEngine, KnowledgeTool
 from nexus.core.retrieval import HashEmbeddingProvider, InMemoryVectorStore, JsonVectorStore, KnowledgeContextBuilder, RetrievalEngine
