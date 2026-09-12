@@ -186,4 +186,4 @@ def search_workspace(workspace_id: UUID, payload: dict) -> list[dict]:
     query = str(payload.get("query", "")).strip()
     top_k = int(payload.get("top_k", 5))
     results = retrieval_engine.search(query, workspace_id=workspace_id, top_k=top_k)
-    return [{"chunk_id": str(result.chunk.chunk_id), "document_id": str(result.chunk.document_id), "score": result.score, "text": result.chunk.text, "metadata": result.chunk.metadata} for result in results]
+    return [{"chunk_id": str(result.chunk.chunk_id), "document_id": str(result.chunk.document_id), "score": result.score, "vector_score": result.vector_score, "lexical_score": result.lexical_score, "citation": result.citation, "text": result.chunk.text, "metadata": result.chunk.metadata} for result in results]
