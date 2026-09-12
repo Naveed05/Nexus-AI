@@ -10,6 +10,7 @@ from nexus.core.state import AgentState, PlanStep, StepStatus
 from nexus.core.task import Task
 from nexus.core.tool_intelligence import ToolSelector
 from nexus.core.verification import OutputVerifier, VerificationResult
+from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,25 @@ class NexusEngine:
         """Select the model and expose safe routing metadata without executing it."""
         decision = self._router.decide(task)
         return RouteResult(task=task, model=decision.model, decision=decision)
+
+    def _resolve_workspace_context(self, task: Task) -> Task:
+        """Attach workspace resource references before planning or tool selection."""
+        if task.workspace_id is None:
+            return task
+        try:
+            context = workspace_registry.context(task.workspace_id)
+        except WorkspaceNotFoundError:
+            raise
+
+        workspace_text = context.as_text()
+        existing = task.context.strip() if task.context else ""
+        if workspace_text in existing:
+            return task
+        return task.model_copy(
+            update={
+                "context": "\n".join(part for part in (existing, workspace_text) if part) or None,
+            }
+        )
 
     def _execute_compatibly(
         self,
@@ -156,6 +176,7 @@ class NexusEngine:
         )
 
     def run(self, task: Task) -> EngineResult:
+        task = self._resolve_workspace_context(task)
         route = self.route_task(task)
         state = AgentState(task_id=task.task_id, objective=task.objective)
         events: list[ExecutionEvent] = [
