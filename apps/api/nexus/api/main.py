@@ -13,13 +13,12 @@ from nexus.core.files import FileRegistry, LocalFileStore
 from nexus.core.schemas import ExecutionResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tools import configure_dataset_workspace
-from nexus.core.workspaces import WorkspaceNotFoundError, WorkspaceRegistry
+from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 client = TestClient(app)
 dataset_workspace = DatasetWorkspace(settings.dataset_storage_path)
 configure_dataset_workspace(dataset_workspace)
-workspace_registry = WorkspaceRegistry()
 file_store = LocalFileStore(settings.file_storage_path)
 file_registry = FileRegistry()
 
@@ -56,15 +55,7 @@ def _require_workspace(workspace_id: UUID):
 def _workspace_context_text(workspace_id: UUID | None) -> str | None:
     if workspace_id is None:
         return None
-    context = workspace_registry.context(workspace_id)
-    parts = [f"workspace_id: {workspace_id}"]
-    if context.file_ids:
-        parts.append("file_ids: " + ", ".join(str(value) for value in context.file_ids))
-    if context.dataset_ids:
-        parts.append("dataset_ids: " + ", ".join(str(value) for value in context.dataset_ids))
-    if context.artifact_ids:
-        parts.append("artifact_ids: " + ", ".join(str(value) for value in context.artifact_ids))
-    return "\n".join(parts)
+    return workspace_registry.context(workspace_id).as_text()
 
 
 def _build_task(payload: TaskCreate) -> Task:
