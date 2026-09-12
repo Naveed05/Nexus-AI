@@ -52,6 +52,17 @@ class WorkspaceContext:
         if artifact_id not in self.artifact_ids:
             self.artifact_ids.append(artifact_id)
 
+    def as_text(self) -> str:
+        """Serialize resource references into safe agent context metadata."""
+        parts = [f"workspace_id: {self.workspace.workspace_id}"]
+        if self.file_ids:
+            parts.append("file_ids: " + ", ".join(str(value) for value in self.file_ids))
+        if self.dataset_ids:
+            parts.append("dataset_ids: " + ", ".join(str(value) for value in self.dataset_ids))
+        if self.artifact_ids:
+            parts.append("artifact_ids: " + ", ".join(str(value) for value in self.artifact_ids))
+        return "\n".join(parts)
+
 
 class WorkspaceRegistry:
     """In-memory workspace registry for the Phase 6 foundation."""
@@ -94,3 +105,6 @@ class WorkspaceRegistry:
         del self._workspaces[workspace_id]
         self._contexts.pop(workspace_id, None)
         return workspace
+
+
+workspace_registry = WorkspaceRegistry()
