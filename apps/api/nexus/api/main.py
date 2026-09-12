@@ -1,17 +1,54 @@
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import Response
 
 from nexus.core.config import settings
 from nexus.core.dataset_workspace import DatasetWorkspace
 from nexus.core.engine import engine
+from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
+from nexus.core.files import FileRegistry, LocalFileStore
 from nexus.core.schemas import ExecutionResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tools import configure_dataset_workspace
+from nexus.core.workspaces import WorkspaceNotFoundError, WorkspaceRegistry
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 dataset_workspace = DatasetWorkspace(settings.dataset_storage_path)
 configure_dataset_workspace(dataset_workspace)
+workspace_registry = WorkspaceRegistry()
+file_store = LocalFileStore(settings.file_storage_path)
+file_registry = FileRegistry()
+
+
+def _workspace_payload(workspace) -> dict:
+    return {
+        "workspace_id": str(workspace.workspace_id),
+        "name": workspace.name,
+        "owner_id": workspace.owner_id,
+        "metadata": workspace.metadata,
+        "created_at": workspace.created_at.isoformat(),
+    }
+
+
+def _file_payload(file_ref) -> dict:
+    return {
+        "file_id": str(file_ref.file_id),
+        "workspace_id": str(file_ref.workspace_id) if file_ref.workspace_id else None,
+        "filename": file_ref.filename,
+        "mime_type": file_ref.mime_type,
+        "size_bytes": file_ref.size_bytes,
+        "metadata": file_ref.metadata,
+        "created_at": file_ref.created_at.isoformat(),
+    }
+
+
+def _require_workspace(workspace_id: UUID):
+    try:
+        return workspace_registry.get(workspace_id)
+    except WorkspaceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/health")
@@ -76,3 +113,91 @@ async def upload_dataset(file: UploadFile = File(...)) -> dict:
         "artifact_id": str(dataset.artifact_id) if dataset.artifact_id else None,
         "metadata": dataset.metadata,
     }
+
+
+@app.post("/api/v1/workspaces", status_code=201)
+def create_workspace(payload: dict) -> dict:
+    name = str(payload.get("name", "Workspace"))
+    owner_id = payload.get("owner_id")
+    metadata = payload.get("metadata")
+    if metadata is not None and not isinstance(metadata, dict):
+        raise HTTPException(status_code=422, detail="metadata must be an object")
+    try:
+        workspace = workspace_registry.create(
+            name=name,
+            owner_id=owner_id,
+            metadata=metadata,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _workspace_payload(workspace)
+
+
+@app.get("/api/v1/workspaces")
+def list_workspaces() -> list[dict]:
+    return [_workspace_payload(workspace) for workspace in workspace_registry.list()]
+
+
+@app.get("/api/v1/workspaces/{workspace_id}")
+def get_workspace(workspace_id: UUID) -> dict:
+    return _workspace_payload(_require_workspace(workspace_id))
+
+
+@app.post("/api/v1/workspaces/{workspace_id}/files", status_code=201)
+async def upload_workspace_file(
+    workspace_id: UUID,
+    file: UploadFile = File(...),
+) -> dict:
+    _require_workspace(workspace_id)
+    filename = Path(file.filename or "").name
+    if not filename:
+        raise HTTPException(status_code=422, detail="filename cannot be empty")
+
+    data = await file.read()
+    try:
+        file_ref = file_store.put(
+            data,
+            filename=filename,
+            workspace_id=workspace_id,
+            mime_type=file.content_type,
+        )
+        file_registry.register(file_ref)
+        workspace_registry.context(workspace_id).add_file(file_ref.file_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _file_payload(file_ref)
+
+
+@app.get("/api/v1/workspaces/{workspace_id}/files")
+def list_workspace_files(workspace_id: UUID) -> list[dict]:
+    _require_workspace(workspace_id)
+    return [_file_payload(file_ref) for file_ref in file_registry.list(workspace_id=workspace_id)]
+
+
+@app.get("/api/v1/workspaces/{workspace_id}/files/{file_id}")
+def download_workspace_file(workspace_id: UUID, file_id: UUID) -> Response:
+    _require_workspace(workspace_id)
+    try:
+        file_ref = file_registry.get(file_id, workspace_id=workspace_id)
+        data = file_store.get(file_ref)
+    except NexusFileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(
+        content=data,
+        media_type=file_ref.mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{file_ref.filename}"'},
+    )
+
+
+@app.delete("/api/v1/workspaces/{workspace_id}/files/{file_id}", status_code=204)
+def delete_workspace_file(workspace_id: UUID, file_id: UUID) -> Response:
+    _require_workspace(workspace_id)
+    try:
+        file_ref = file_registry.get(file_id, workspace_id=workspace_id)
+    except NexusFileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    file_store.delete(file_ref)
+    file_registry.remove(file_id, workspace_id=workspace_id)
+    workspace_registry.context(workspace_id).remove_file(file_id)
+    return Response(status_code=204)
