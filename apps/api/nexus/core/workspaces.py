@@ -35,6 +35,7 @@ class WorkspaceContext:
     file_ids: list[UUID] = field(default_factory=list)
     dataset_ids: list[UUID] = field(default_factory=list)
     artifact_ids: list[UUID] = field(default_factory=list)
+    document_ids: list[UUID] = field(default_factory=list)
 
     def add_file(self, file_id: UUID) -> None:
         if file_id not in self.file_ids:
@@ -52,6 +53,14 @@ class WorkspaceContext:
         if artifact_id not in self.artifact_ids:
             self.artifact_ids.append(artifact_id)
 
+    def add_document(self, document_id: UUID) -> None:
+        if document_id not in self.document_ids:
+            self.document_ids.append(document_id)
+
+    def remove_document(self, document_id: UUID) -> None:
+        if document_id in self.document_ids:
+            self.document_ids.remove(document_id)
+
     def as_text(self) -> str:
         """Serialize resource references into safe agent context metadata."""
         parts = [f"workspace_id: {self.workspace.workspace_id}"]
@@ -61,6 +70,8 @@ class WorkspaceContext:
             parts.append("dataset_ids: " + ", ".join(str(value) for value in self.dataset_ids))
         if self.artifact_ids:
             parts.append("artifact_ids: " + ", ".join(str(value) for value in self.artifact_ids))
+        if self.document_ids:
+            parts.append("document_ids: " + ", ".join(str(value) for value in self.document_ids))
         return "\n".join(parts)
 
 
@@ -71,18 +82,8 @@ class WorkspaceRegistry:
         self._workspaces: dict[UUID, WorkspaceRef] = {}
         self._contexts: dict[UUID, WorkspaceContext] = {}
 
-    def create(
-        self,
-        *,
-        name: str,
-        owner_id: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> WorkspaceRef:
-        workspace = WorkspaceRef(
-            name=name,
-            owner_id=owner_id,
-            metadata=dict(metadata or {}),
-        )
+    def create(self, *, name: str, owner_id: str | None = None, metadata: dict[str, Any] | None = None) -> WorkspaceRef:
+        workspace = WorkspaceRef(name=name, owner_id=owner_id, metadata=dict(metadata or {}))
         self._workspaces[workspace.workspace_id] = workspace
         self._contexts[workspace.workspace_id] = WorkspaceContext(workspace=workspace)
         return workspace
