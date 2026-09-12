@@ -36,8 +36,8 @@ def test_selector_uses_reference_tool_when_dataset_id_is_in_context() -> None:
 
 def test_selector_returns_no_tool_when_step_has_no_match() -> None:
     decision = ToolSelector().select(
-        Task(objective="Research the latest approaches"),
-        PlanStep("research", "Research the latest approaches"),
+        Task(objective="Perform an unsupported operation"),
+        PlanStep("unsupported_step", "Perform an unsupported operation"),
     )
     assert decision.tool is None
     assert decision.score == 0.0
