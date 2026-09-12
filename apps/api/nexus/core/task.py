@@ -25,6 +25,7 @@ class Task(BaseModel):
     task_id: UUID = Field(default_factory=uuid4)
     objective: str = Field(min_length=1, max_length=20_000)
     context: str | None = None
+    workspace_id: UUID | None = None
     constraints: list[str] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
     risk_level: RiskLevel = RiskLevel.LOW
