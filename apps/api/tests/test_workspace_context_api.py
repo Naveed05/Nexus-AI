@@ -7,6 +7,10 @@ from nexus.core.documents import DocumentChunker, DocumentWorkspace
 from nexus.core.knowledge import KnowledgeEngine, KnowledgeTool
 from nexus.core.retrieval import HashEmbeddingProvider, InMemoryVectorStore, JsonVectorStore, KnowledgeContextBuilder, RetrievalEngine
 from nexus.core.schemas import TaskCreate
+from nexus.core.state import PlanStep
+from nexus.core.task import Task
+from nexus.core.tool_intelligence import ToolSelector
+from nexus.core.tools import tool_registry
 
 
 def test_workspace_task_receives_resource_context() -> None:
@@ -124,3 +128,18 @@ def test_knowledge_engine_ingest_search_and_tool() -> None:
         tool = KnowledgeTool(engine, lambda: workspace_id)
         payload = tool.execute("research evidence", top_k=1)
         assert payload["results"][0]["document_id"] == str(document.document_id)
+
+
+def test_knowledge_tool_is_registered_and_selected_for_research() -> None:
+    assert tool_registry.get("search_knowledge").name == "search_knowledge"
+    workspace = workspace_registry.create(name="Research Tools")
+    task = Task(objective="Research the workspace documents", workspace_id=workspace.workspace_id)
+    decision = ToolSelector().select(task, PlanStep(step_id="research", objective="Search workspace evidence"))
+    assert decision.tool is not None and decision.tool.name == "search_knowledge"
+
+
+def test_knowledge_tool_schema_is_strict_and_scoped() -> None:
+    schema = tool_registry.get("search_knowledge").as_openai_tool()
+    assert schema["strict"] is True
+    assert schema["parameters"]["required"] == ["query", "top_k", "document_id"]
+    assert "additionalProperties" not in schema["parameters"] or schema["parameters"]["additionalProperties"] is False
