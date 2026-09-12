@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from nexus.core.task import RiskLevel, TaskStatus
@@ -6,6 +8,7 @@ from nexus.core.task import RiskLevel, TaskStatus
 class TaskCreate(BaseModel):
     objective: str = Field(min_length=1, max_length=20_000)
     context: str | None = None
+    workspace_id: UUID | None = None
     constraints: list[str] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
     risk_level: RiskLevel = RiskLevel.LOW
@@ -20,6 +23,7 @@ class TaskResponse(BaseModel):
     created_at: str
     capabilities: list[str]
     selected_model: str
+    workspace_id: str | None = None
 
 
 class ExecutionResponse(BaseModel):
