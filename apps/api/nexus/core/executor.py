@@ -121,6 +121,7 @@ class ModelExecutor:
                             permission=tool.permission,
                             success=success,
                         )
+                    )
                     if call.name == "search_knowledge" and success and isinstance(result, dict):
                         for evidence in result.get("results", []):
                             if isinstance(evidence, dict):
