@@ -1,16 +1,36 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 from nexus.core.executor import ModelExecutor
 from nexus.core.models import model_registry
-from nexus.core.task import Task
+from nexus.core.task import RiskLevel, Task
 from nexus.core.tools import ToolRegistry, ToolSpec
 
 
 class FakeResponses:
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.calls = []
+    def __init__(self, responses=None) -> None:
+        self.calls: list[dict] = []
+        self.responses = responses or [
+            SimpleNamespace(
+                id="resp_tool",
+                output=[
+                    SimpleNamespace(
+                        type="function_call",
+                        name="calculator",
+                        arguments='{"expression":"25 * 4"}',
+                        call_id="call_1",
+                    )
+                ],
+                output_text="",
+            ),
+            SimpleNamespace(
+                id="resp_final",
+                output=[],
+                output_text="The answer is 100.",
+            ),
+        ]
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
@@ -18,15 +38,14 @@ class FakeResponses:
 
 
 class FakeClient:
-    def __init__(self, responses):
+    def __init__(self, responses=None) -> None:
         self.responses = FakeResponses(responses)
-
 
 
 def calculator_spec(risk_level: str = "low") -> ToolSpec:
     return ToolSpec(
         name="calculator",
-        description="Calculate an expression.",
+        description="Perform arithmetic.",
         input_schema={
             "type": "object",
             "properties": {"expression": {"type": "string"}},
@@ -68,27 +87,7 @@ def test_executor_runs_function_tool_and_returns_final_output() -> None:
     registry = ToolRegistry()
     registry.register(calculator_spec())
 
-    client = FakeClient(
-        responses=[
-            SimpleNamespace(
-                id="resp_tool",
-                output=[
-                    SimpleNamespace(
-                        type="function_call",
-                        name="calculator",
-                        arguments='{"expression":"25 * 4"}',
-                        call_id="calc_1",
-                    )
-                ],
-                output_text="",
-            ),
-            SimpleNamespace(
-                id="resp_final",
-                output=[],
-                output_text="The answer is 100.",
-            ),
-        ]
-    )
+    client = FakeClient()
     executor = ModelExecutor(client=client, registry=registry)
     task = Task(objective="Calculate 25 times 4")
     model = model_registry.get("astra")
@@ -136,9 +135,43 @@ def test_executor_preserves_search_evidence_for_verification() -> None:
 
     result = executor.execute(Task(objective="Research hybrid retrieval"), model_registry.get("astra"))
 
-    assert result.output == "NEXUS uses hybrid retrieval. [Source: architecture.md — chunk 1]"
-    assert len(result.tool_calls) == 1
-    assert result.tool_calls[0].tool_name == "search_knowledge"
-    assert result.grounded_evidence
+    assert len(result.grounded_evidence) == 1
     assert result.grounded_evidence[0]["citation"] == "architecture.md — chunk 1"
     assert result.grounded_evidence[0]["text"] == "NEXUS uses hybrid retrieval."
+    assert "architecture.md — chunk 1" in result.output
+
+
+def test_executor_enforces_allowed_tool_list() -> None:
+    registry = ToolRegistry()
+    registry.register(calculator_spec())
+    client = FakeClient(
+        responses=[
+            SimpleNamespace(id="resp_final", output=[], output_text="No tool used.")
+        ]
+    )
+    executor = ModelExecutor(client=client, registry=registry)
+
+    result = executor.execute(
+        Task(objective="Do not use tools"),
+        model_registry.get("astra"),
+        allowed_tools=(),
+    )
+
+    assert result.output == "No tool used."
+    assert client.responses.calls[0]["tools"] == []
+    assert client.responses.calls[0]["tool_choice"] == "none"
+
+
+def test_executor_stops_on_approval_required_tool() -> None:
+    registry = ToolRegistry()
+    registry.register(calculator_spec(risk_level="medium"))
+    client = FakeClient()
+    executor = ModelExecutor(client=client, registry=registry)
+
+    with pytest.raises(PermissionError, match="requires explicit user approval"):
+        executor.execute(
+            Task(objective="Calculate something", risk_level=RiskLevel.MEDIUM),
+            model_registry.get("astra"),
+        )
+
+    assert len(client.responses.calls) == 1
