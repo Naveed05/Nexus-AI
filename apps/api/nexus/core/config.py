@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "NEXUS AI"
     environment: str = "development"
     openai_api_key: str | None = None
+    embedding_model: str = "text-embedding-3-small"
     dataset_storage_path: str = ".nexus/data"
     file_storage_path: str = ".nexus/files"
     knowledge_index_path: str = ".nexus/knowledge/index.json"
