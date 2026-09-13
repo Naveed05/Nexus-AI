@@ -6,18 +6,36 @@ from nexus.core.task import Task
 
 
 class FakeExecutor:
+    def __init__(self) -> None:
+        self.calls: list[Task] = []
+
     def execute(self, task: Task, model, allowed_tools=()) -> ExecutionResult:
+        self.calls.append(task)
+        evidence = ()
+        if task.objective.lower().startswith("research"):
+            evidence = (
+                {
+                    "citation": "research.txt — chunk 1",
+                    "document_id": "doc-1",
+                    "chunk_id": "chunk-1",
+                    "text": "NEXUS supports grounded research workflows.",
+                },
+            )
         return ExecutionResult(
             model_key=model.key,
             model_id=model.model_id,
-            response_id="resp_test",
-            output="verified-looking test output",
+            response_id=f"resp_{len(self.calls)}",
+            output="[Source: research.txt — chunk 1] verified-looking test output"
+            if evidence
+            else "verified-looking test output",
             tool_calls=(),
+            grounded_evidence=evidence,
         )
 
 
 def test_engine_builds_plan_and_verifies_output() -> None:
-    engine = NexusEngine(executor=FakeExecutor())
+    executor = FakeExecutor()
+    engine = NexusEngine(executor=executor)
     task = Task(objective="Analyze the sample dataset")
 
     result = engine.run(task)
@@ -58,3 +76,18 @@ def test_engine_routes_without_executing() -> None:
     assert route.model.model_id == "gpt-6-astra"
     assert route.decision.model == route.model
     assert route.decision.score == 95.0
+
+
+def test_engine_carries_retrieved_evidence_into_downstream_steps() -> None:
+    executor = FakeExecutor()
+    engine = NexusEngine(executor=executor)
+    task = Task(objective="Research NEXUS grounding")
+
+    result = engine.run(task)
+
+    assert result.state.verification_passed is True
+    syntheses = [call for call in executor.calls if call.objective.lower().startswith("synthesize")]
+    assert syntheses
+    assert "GROUNDED EVIDENCE" in (syntheses[0].context or "")
+    assert "[Source: research.txt — chunk 1]" in (syntheses[0].context or "")
+    assert "NEXUS supports grounded research workflows." in (syntheses[0].context or "")
