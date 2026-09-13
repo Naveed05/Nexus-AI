@@ -38,3 +38,21 @@ class ExecutionResponse(BaseModel):
     grounding: list[dict]
     tool_calls: int
     events: list[str]
+
+
+class ResearchRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=20_000)
+    workspace_id: UUID
+    max_queries: int = Field(default=4, ge=1, le=8)
+    results_per_query: int = Field(default=5, ge=1, le=20)
+
+
+class ResearchResponse(BaseModel):
+    question: str
+    workspace_id: str
+    queries: list[str]
+    evidence_count: int
+    source_count: int
+    document_count: int
+    sources: list[dict]
+    synthesis: dict
