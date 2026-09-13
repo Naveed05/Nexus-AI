@@ -83,6 +83,35 @@ def knowledge_spec() -> ToolSpec:
     )
 
 
+def research_spec() -> ToolSpec:
+    return ToolSpec(
+        name="research_knowledge",
+        description="Research workspace knowledge.",
+        input_schema={
+            "type": "object",
+            "properties": {"question": {"type": "string"}},
+            "required": ["question"],
+            "additionalProperties": False,
+        },
+        risk_level="low",
+        handler=lambda question: {
+            "question": question,
+            "sources": [
+                {
+                    "chunk_id": str(uuid4()),
+                    "document_id": str(uuid4()),
+                    "text": "Research evidence supports the claim.",
+                    "citation": "research.md — chunk 2",
+                    "query": question,
+                }
+            ],
+            "synthesis": {
+                "context": "[Source: research.md — chunk 2]\nResearch evidence supports the claim."
+            },
+        },
+    )
+
+
 def test_executor_runs_function_tool_and_returns_final_output() -> None:
     registry = ToolRegistry()
     registry.register(calculator_spec())
@@ -139,6 +168,40 @@ def test_executor_preserves_search_evidence_for_verification() -> None:
     assert result.grounded_evidence[0]["citation"] == "architecture.md — chunk 1"
     assert result.grounded_evidence[0]["text"] == "NEXUS uses hybrid retrieval."
     assert "architecture.md — chunk 1" in result.output
+
+
+def test_executor_preserves_research_tool_evidence_for_verification() -> None:
+    registry = ToolRegistry()
+    registry.register(research_spec())
+    client = FakeClient(
+        responses=[
+            SimpleNamespace(
+                id="resp_research_tool",
+                output=[
+                    SimpleNamespace(
+                        type="function_call",
+                        name="research_knowledge",
+                        arguments='{"question":"NEXUS verification"}',
+                        call_id="research_2",
+                    )
+                ],
+                output_text="",
+            ),
+            SimpleNamespace(
+                id="resp_research_final",
+                output=[],
+                output_text="Research evidence supports the claim. [Source: research.md — chunk 2]",
+            ),
+        ]
+    )
+    executor = ModelExecutor(client=client, registry=registry)
+
+    result = executor.execute(Task(objective="Research NEXUS verification"), model_registry.get("astra"))
+
+    assert len(result.grounded_evidence) == 1
+    assert result.grounded_evidence[0]["citation"] == "research.md — chunk 2"
+    assert result.grounded_evidence[0]["text"] == "Research evidence supports the claim."
+    assert result.grounded_evidence[0]["query"] == "NEXUS verification"
 
 
 def test_executor_enforces_allowed_tool_list() -> None:
