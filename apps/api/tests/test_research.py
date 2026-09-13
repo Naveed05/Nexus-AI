@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 import nexus.core.research as research_module
-from nexus.core.research import ResearchEngine, ResearchSource, synthesize_evidence
+from nexus.core.research import ResearchAgent, ResearchEngine, ResearchSource, synthesize_evidence
 
 
 def test_build_queries_is_bounded_and_deduplicated() -> None:
@@ -38,12 +38,20 @@ def test_research_deduplicates_evidence_and_preserves_query(monkeypatch) -> None
     assert result.sources[0].query == result.queries[0]
 
 
+def test_research_agent_returns_coherent_research_result(monkeypatch) -> None:
+    def fake_search(query: str, top_k: int = 5):
+        return {"results": [{"document_id": "doc-a", "chunk_id": query, "citation": f"{query}.md — chunk 1", "text": "Grounded evidence.", "score": 0.8}]}
+
+    monkeypatch.setattr(research_module, "search_knowledge", fake_search)
+    result = ResearchAgent(ResearchEngine(max_queries=2, results_per_query=2)).run("AI safety")
+    assert result.plan is not None
+    assert result.plan.queries == result.queries
+    assert result.synthesis.source_count == 2
+    assert result.synthesis.confidence_band in {"moderate", "high"}
+
+
 def test_synthesize_evidence_sorts_sources_and_preserves_citations() -> None:
-    sources = (
-        ResearchSource("b.md — chunk 2", "doc-b", "chunk-b", "Lower confidence", 0.4, "limitations"),
-        ResearchSource("a.md — chunk 1", "doc-a", "chunk-a", "Strong evidence", 0.9, "primary"),
-        ResearchSource("a.md — chunk 3", "doc-a", "chunk-c", "Supporting evidence", 0.7, "evidence"),
-    )
+    sources = (ResearchSource("b.md — chunk 2", "doc-b", "chunk-b", "Lower confidence", 0.4, "limitations"), ResearchSource("a.md — chunk 1", "doc-a", "chunk-a", "Strong evidence", 0.9, "primary"), ResearchSource("a.md — chunk 3", "doc-a", "chunk-c", "Supporting evidence", 0.7, "evidence"))
     synthesis = synthesize_evidence("Research question", sources)
     assert synthesis.source_count == 3
     assert synthesis.document_count == 2
@@ -79,10 +87,7 @@ def test_synthesize_evidence_empty_sources_has_zero_quality() -> None:
 
 
 def test_synthesize_evidence_exposes_query_provenance_and_markdown() -> None:
-    sources = (
-        ResearchSource("notes.md — chunk 1", "doc-a", "chunk-a", "Important evidence", 0.9, "primary"),
-        ResearchSource("paper.pdf — chunk 2", "doc-b", "chunk-b", "Supporting evidence", 0.8, "supporting"),
-    )
+    sources = (ResearchSource("notes.md — chunk 1", "doc-a", "chunk-a", "Important evidence", 0.9, "primary"), ResearchSource("paper.pdf — chunk 2", "doc-b", "chunk-b", "Supporting evidence", 0.8, "supporting"))
     synthesis = synthesize_evidence("Research question", sources)
     assert dict(synthesis.provenance) == {"primary": ("notes.md — chunk 1",), "supporting": ("paper.pdf — chunk 2",)}
     payload = synthesis.as_dict()
