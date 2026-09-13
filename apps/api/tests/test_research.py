@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 import nexus.core.research as research_module
-from nexus.core.research import ResearchEngine
+from nexus.core.research import ResearchEngine, ResearchSource, synthesize_evidence
 
 
 def test_build_queries_is_bounded_and_deduplicated() -> None:
@@ -9,6 +9,15 @@ def test_build_queries_is_bounded_and_deduplicated() -> None:
     assert queries[0] == "AI safety and agent verification"
     assert len(queries) == len(set(queries))
     assert len(queries) >= 3
+
+
+def test_research_plan_assigns_query_roles() -> None:
+    plan = ResearchEngine.plan_queries("AI safety and agent verification", max_queries=4)
+    assert plan.queries[0] == "AI safety and agent verification"
+    assert plan.query_roles[0] == "primary_question"
+    assert "supporting_evidence" in plan.query_roles
+    assert "limitations" in plan.query_roles
+    assert len(plan.queries) == len(plan.query_roles)
 
 
 def test_research_deduplicates_evidence_and_preserves_query(monkeypatch) -> None:
@@ -40,6 +49,20 @@ def test_research_deduplicates_evidence_and_preserves_query(monkeypatch) -> None
     assert result.evidence_count == 1
     assert result.sources[0].citation == "notes.md — chunk 1"
     assert result.sources[0].query == result.queries[0]
+
+
+def test_synthesize_evidence_sorts_sources_and_preserves_citations() -> None:
+    sources = (
+        ResearchSource("b.md — chunk 2", "doc-b", "chunk-b", "Lower confidence", 0.4, "limitations"),
+        ResearchSource("a.md — chunk 1", "doc-a", "chunk-a", "Strong evidence", 0.9, "primary"),
+        ResearchSource("a.md — chunk 3", "doc-a", "chunk-c", "Supporting evidence", 0.7, "evidence"),
+    )
+    synthesis = synthesize_evidence("Research question", sources)
+    assert synthesis.source_count == 3
+    assert synthesis.document_count == 2
+    assert synthesis.evidence_blocks[0].startswith("[Source: a.md — chunk 1]")
+    assert "Strong evidence" in synthesis.context
+    assert "Query: limitations" in synthesis.context
 
 
 def test_research_rejects_empty_question() -> None:
