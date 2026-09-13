@@ -148,6 +148,7 @@ class ModelExecutor:
                             permission=tool.permission,
                             success=success,
                         )
+                    )
                     if success:
                         self._capture_grounded_evidence(call.name, result, grounded_evidence)
                     tool_outputs.append(
