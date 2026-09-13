@@ -57,6 +57,30 @@ def test_verifier_accepts_research_output_with_retrieved_citation() -> None:
 
     assert result.passed is True
     assert result.checks["grounded_research"] is True
+    assert result.grounding[0].supported is True
+
+
+def test_verifier_rejects_citation_not_supported_by_evidence() -> None:
+    task = Task(task_id=uuid4(), objective="Research hybrid retrieval")
+    tool_call = SimpleNamespace(tool_name="search_knowledge")
+    evidence = (
+        {
+            "citation": "architecture.md — chunk 1",
+            "text": "NEXUS uses hybrid retrieval.",
+        },
+    )
+
+    result = OutputVerifier().verify(
+        task,
+        "Mars is made entirely of cheese. [Source: architecture.md — chunk 1]",
+        (tool_call,),
+        grounded_evidence=evidence,
+    )
+
+    assert result.passed is False
+    assert result.checks["grounded_research"] is False
+    assert result.grounding[0].supported is False
+    assert "not supported" in result.issues[0]
 
 
 def test_verifier_rejects_research_output_without_citation() -> None:
@@ -116,3 +140,10 @@ def test_verifier_rejects_research_without_retrieved_evidence() -> None:
     assert result.passed is False
     assert result.checks["grounded_research"] is False
     assert "no retrieved evidence" in result.issues[0]
+
+
+def test_non_research_task_does_not_require_grounding() -> None:
+    task = Task(task_id=uuid4(), objective="Calculate 2 + 2")
+    result = OutputVerifier().verify(task, "4")
+    assert result.passed is True
+    assert result.grounding == ()
