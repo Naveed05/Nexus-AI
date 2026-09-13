@@ -1,11 +1,12 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from uuid import UUID
 
 from nexus.api.main import _build_task, client, file_registry, workspace_registry
 from nexus.core.documents import DocumentChunker, DocumentWorkspace
 from nexus.core.knowledge import KnowledgeEngine, KnowledgeTool
-from nexus.core.retrieval import HashEmbeddingProvider, InMemoryVectorStore, JsonVectorStore, KnowledgeContextBuilder, RetrievalEngine
+from nexus.core.retrieval import HashEmbeddingProvider, InMemoryVectorStore, JsonVectorStore, KnowledgeContextBuilder, OpenAIEmbeddingProvider, RetrievalEngine
 from nexus.core.schemas import TaskCreate
 from nexus.core.state import PlanStep
 from nexus.core.task import Task
@@ -71,6 +72,36 @@ def test_workspace_search_isolation() -> None:
 def test_retrieval_embedding_is_reproducible() -> None:
     provider = HashEmbeddingProvider(dimensions=64)
     assert provider.embed(["NEXUS agentic workspace"])[0] == provider.embed(["NEXUS agentic workspace"])[0]
+
+
+def test_openai_embedding_provider_preserves_input_order() -> None:
+    class FakeEmbeddings:
+        def create(self, *, model, input):
+            assert model == "text-embedding-3-small"
+            assert input == ["first", "second"]
+            return SimpleNamespace(data=[
+                SimpleNamespace(index=1, embedding=[0.2, 0.3]),
+                SimpleNamespace(index=0, embedding=[0.4, 0.5]),
+            ])
+
+    client_stub = SimpleNamespace(embeddings=FakeEmbeddings())
+    provider = OpenAIEmbeddingProvider(client=client_stub, model="text-embedding-3-small")
+    assert provider.embed(["first", "second"]) == [[0.4, 0.5], [0.2, 0.3]]
+    assert provider.embed([]) == []
+
+
+def test_openai_embedding_provider_rejects_mismatched_response_count() -> None:
+    class FakeEmbeddings:
+        def create(self, *, model, input):
+            return SimpleNamespace(data=[SimpleNamespace(index=0, embedding=[1.0, 0.0])])
+
+    provider = OpenAIEmbeddingProvider(client=SimpleNamespace(embeddings=FakeEmbeddings()), model="test")
+    try:
+        provider.embed(["first", "second"])
+    except ValueError as exc:
+        assert "unexpected number" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for mismatched embedding count")
 
 
 def test_hybrid_retrieval_rewards_exact_terms() -> None:
