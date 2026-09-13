@@ -46,7 +46,9 @@ class ResearchSynthesis:
     question: str
     source_count: int
     document_count: int
+    query_count: int
     evidence_blocks: tuple[str, ...]
+    evidence_quality_score: float
 
     @property
     def context(self) -> str:
@@ -54,7 +56,8 @@ class ResearchSynthesis:
             return "No supporting evidence was retrieved."
         header = (
             f"RESEARCH EVIDENCE ({self.source_count} sources across "
-            f"{self.document_count} documents):"
+            f"{self.document_count} documents, {self.query_count} queries; "
+            f"evidence quality {self.evidence_quality_score:.2f}):"
         )
         return header + "\n\n" + "\n\n".join(self.evidence_blocks)
 
@@ -63,7 +66,9 @@ class ResearchSynthesis:
             "question": self.question,
             "source_count": self.source_count,
             "document_count": self.document_count,
+            "query_count": self.query_count,
             "evidence_blocks": list(self.evidence_blocks),
+            "evidence_quality_score": self.evidence_quality_score,
             "context": self.context,
         }
 
@@ -191,16 +196,28 @@ def synthesize_evidence(question: str, sources: tuple[ResearchSource, ...]) -> R
     if not clean:
         raise ValueError("Research question cannot be empty")
     ordered = sorted(sources, key=lambda source: source.score, reverse=True)
+    selected = [source for source in ordered[:12] if source.text.strip()]
     blocks = tuple(
         f"[Source: {source.citation}]\nQuery: {source.query}\n{source.text[:2000]}"
-        for source in ordered[:12]
-        if source.text.strip()
+        for source in selected
     )
+    if selected:
+        average_score = sum(max(0.0, min(1.0, source.score)) for source in selected) / len(selected)
+        document_diversity = min(1.0, len({source.document_id for source in selected}) / 3.0)
+        query_diversity = min(1.0, len({source.query for source in selected}) / 3.0)
+        evidence_quality_score = round(
+            0.6 * average_score + 0.2 * document_diversity + 0.2 * query_diversity,
+            4,
+        )
+    else:
+        evidence_quality_score = 0.0
     return ResearchSynthesis(
         question=clean,
-        source_count=len(blocks),
-        document_count=len({source.document_id for source in ordered[:12] if source.text.strip()}),
+        source_count=len(selected),
+        document_count=len({source.document_id for source in selected}),
+        query_count=len({source.query for source in selected}),
         evidence_blocks=blocks,
+        evidence_quality_score=evidence_quality_score,
     )
 
 
