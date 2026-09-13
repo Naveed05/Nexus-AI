@@ -4,7 +4,6 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
-import os
 import re
 from pathlib import Path
 from typing import Protocol
@@ -90,6 +89,14 @@ def build_embedding_provider() -> EmbeddingProvider:
             raise ValueError("OPENAI_API_KEY is required when embedding_provider=openai")
         return OpenAIEmbeddingProvider()
     return HashEmbeddingProvider()
+
+
+def _embedding_signature(provider: object) -> str:
+    """Return a stable signature while keeping custom test providers backward compatible."""
+    signature = getattr(provider, "signature", None)
+    if signature:
+        return str(signature)
+    return provider.__class__.__module__ + ":" + provider.__class__.__qualname__
 
 
 def _cosine(left: list[float], right: list[float]) -> float:
@@ -216,10 +223,10 @@ class RetrievalEngine:
         self.embeddings = embeddings or build_embedding_provider()
         self.store = store or InMemoryVectorStore()
         if isinstance(self.store, JsonVectorStore):
-            self.store.embedding_signature = self.embeddings.signature
+            self.store.embedding_signature = _embedding_signature(self.embeddings)
             if self.store.needs_rebuild:
                 self.store._items.clear()
-                self.store._loaded_signature = self.embeddings.signature
+                self.store._loaded_signature = self.store.embedding_signature
         self._chunk_workspace: dict[UUID, UUID | None] = {}
         for document_id, document in documents.documents.items():
             for chunk in documents.get_chunks(document_id):
