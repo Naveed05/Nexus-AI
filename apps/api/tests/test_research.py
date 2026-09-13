@@ -60,9 +60,21 @@ def test_synthesize_evidence_sorts_sources_and_preserves_citations() -> None:
     synthesis = synthesize_evidence("Research question", sources)
     assert synthesis.source_count == 3
     assert synthesis.document_count == 2
+    assert synthesis.query_count == 3
+    assert 0.0 < synthesis.evidence_quality_score <= 1.0
     assert synthesis.evidence_blocks[0].startswith("[Source: a.md — chunk 1]")
     assert "Strong evidence" in synthesis.context
     assert "Query: limitations" in synthesis.context
+    assert "evidence quality" in synthesis.context
+
+
+def test_synthesize_evidence_empty_sources_has_zero_quality() -> None:
+    synthesis = synthesize_evidence("Research question", ())
+    assert synthesis.source_count == 0
+    assert synthesis.document_count == 0
+    assert synthesis.query_count == 0
+    assert synthesis.evidence_quality_score == 0.0
+    assert synthesis.context == "No supporting evidence was retrieved."
 
 
 def test_research_rejects_empty_question() -> None:
