@@ -23,6 +23,8 @@ class FakeExecutor:
                 },
             )
             output = "NEXUS supports grounded research workflows. [Source: research.txt — chunk 1]"
+        elif "GROUNDED EVIDENCE" in (task.context or ""):
+            output = "NEXUS supports grounded research workflows. [Source: research.txt — chunk 1]"
         return ExecutionResult(
             model_key=model.key,
             model_id=model.model_id,
