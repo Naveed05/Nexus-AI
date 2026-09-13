@@ -14,6 +14,7 @@ def test_verifier_accepts_valid_observable_output() -> None:
     assert result.checks["objective_present"] is True
     assert result.checks["tool_calls_recorded"] is True
     assert result.checks["grounded_research"] is True
+    assert result.grounding_score == 1.0
 
 
 def test_verifier_rejects_empty_output() -> None:
@@ -58,6 +59,7 @@ def test_verifier_accepts_research_output_with_retrieved_citation() -> None:
     assert result.passed is True
     assert result.checks["grounded_research"] is True
     assert result.grounding[0].supported is True
+    assert result.grounding_score == 1.0
 
 
 def test_verifier_rejects_citation_not_supported_by_evidence() -> None:
@@ -80,6 +82,7 @@ def test_verifier_rejects_citation_not_supported_by_evidence() -> None:
     assert result.passed is False
     assert result.checks["grounded_research"] is False
     assert result.grounding[0].supported is False
+    assert result.grounding_score == 0.0
     assert "not supported" in result.issues[0]
 
 
@@ -103,6 +106,7 @@ def test_verifier_rejects_research_output_without_citation() -> None:
     assert result.passed is False
     assert result.checks["grounded_research"] is False
     assert "does not contain a citation" in result.issues[0]
+    assert result.grounding_score == 0.0
 
 
 def test_verifier_rejects_citation_not_in_retrieved_evidence() -> None:
@@ -124,6 +128,7 @@ def test_verifier_rejects_citation_not_in_retrieved_evidence() -> None:
 
     assert result.passed is False
     assert result.checks["grounded_research"] is False
+    assert result.grounding_score == 0.0
     assert "unsupported citations" in result.issues[0]
 
 
@@ -139,6 +144,7 @@ def test_verifier_rejects_research_without_retrieved_evidence() -> None:
 
     assert result.passed is False
     assert result.checks["grounded_research"] is False
+    assert result.grounding_score == 0.0
     assert "no retrieved evidence" in result.issues[0]
 
 
@@ -147,3 +153,4 @@ def test_non_research_task_does_not_require_grounding() -> None:
     result = OutputVerifier().verify(task, "4")
     assert result.passed is True
     assert result.grounding == ()
+    assert result.grounding_score == 1.0
