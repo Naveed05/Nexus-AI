@@ -27,23 +27,10 @@ def test_research_deduplicates_evidence_and_preserves_query(monkeypatch) -> None
 
     def fake_search(query: str, top_k: int = 5):
         calls.append((query, top_k))
-        return {
-            "results": [
-                {
-                    "document_id": str(document_id),
-                    "chunk_id": str(chunk_id),
-                    "citation": "notes.md — chunk 1",
-                    "text": "Verified evidence.",
-                    "score": 0.9,
-                }
-            ]
-        }
+        return {"results": [{"document_id": str(document_id), "chunk_id": str(chunk_id), "citation": "notes.md — chunk 1", "text": "Verified evidence.", "score": 0.9}]}
 
     monkeypatch.setattr(research_module, "search_knowledge", fake_search)
-    result = ResearchEngine(max_queries=2, results_per_query=4).research(
-        "AI safety", workspace_id=uuid4()
-    )
-
+    result = ResearchEngine(max_queries=2, results_per_query=4).research("AI safety", workspace_id=uuid4())
     assert len(calls) == 2
     assert all(top_k == 4 for _, top_k in calls)
     assert result.evidence_count == 1
@@ -72,19 +59,7 @@ def test_synthesize_evidence_sorts_sources_and_preserves_citations() -> None:
 
 
 def test_synthesize_evidence_limits_single_document_dominance() -> None:
-    sources = tuple(
-        ResearchSource(
-            f"doc-a.md — chunk {index}",
-            "doc-a",
-            f"chunk-{index}",
-            f"Evidence {index}",
-            1.0 - index * 0.01,
-            "primary",
-        )
-        for index in range(6)
-    ) + (
-        ResearchSource("doc-b.md — chunk 1", "doc-b", "chunk-b1", "Diverse evidence", 0.7, "supporting"),
-    )
+    sources = tuple(ResearchSource(f"doc-a.md — chunk {index}", "doc-a", f"chunk-{index}", f"Evidence {index}", 1.0 - index * 0.01, "primary") for index in range(6)) + (ResearchSource("doc-b.md — chunk 1", "doc-b", "chunk-b1", "Diverse evidence", 0.7, "supporting"),)
     synthesis = synthesize_evidence("Research question", sources)
     assert synthesis.source_count == 4
     assert sum(1 for block in synthesis.evidence_blocks if "doc-a.md" in block) == 3
@@ -101,6 +76,22 @@ def test_synthesize_evidence_empty_sources_has_zero_quality() -> None:
     assert synthesis.evidence_quality_score == 0.0
     assert synthesis.confidence_band == "none"
     assert synthesis.context == "No supporting evidence was retrieved."
+
+
+def test_synthesize_evidence_exposes_query_provenance_and_markdown() -> None:
+    sources = (
+        ResearchSource("notes.md — chunk 1", "doc-a", "chunk-a", "Important evidence", 0.9, "primary"),
+        ResearchSource("paper.pdf — chunk 2", "doc-b", "chunk-b", "Supporting evidence", 0.8, "supporting"),
+    )
+    synthesis = synthesize_evidence("Research question", sources)
+    assert dict(synthesis.provenance) == {"primary": ("notes.md — chunk 1",), "supporting": ("paper.pdf — chunk 2",)}
+    payload = synthesis.as_dict()
+    assert payload["provenance"]["primary"] == ["notes.md — chunk 1"]
+    markdown = synthesis.to_markdown()
+    assert markdown.startswith("# Research Report: Research question")
+    assert "## Evidence" in markdown
+    assert "## Query Provenance" in markdown
+    assert "notes.md — chunk 1" in markdown
 
 
 def test_research_rejects_empty_question() -> None:
