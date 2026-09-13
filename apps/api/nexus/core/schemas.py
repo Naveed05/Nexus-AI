@@ -32,5 +32,9 @@ class ExecutionResponse(BaseModel):
     response_id: str
     output: str
     verification_passed: bool
+    verification_checks: dict[str, bool]
+    verification_issues: list[str]
+    grounding_score: float
+    grounding: list[dict]
     tool_calls: int
     events: list[str]
