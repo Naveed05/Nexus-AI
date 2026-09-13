@@ -25,10 +25,16 @@ class OutputVerifier:
     _citation_pattern = re.compile(r"\[Source:\s*([^\]]+)\]")
 
     @staticmethod
-    def _is_research_task(task: Task, tool_calls: tuple[Any, ...]) -> bool:
+    def _is_research_task(
+        task: Task,
+        tool_calls: tuple[Any, ...],
+        grounded_evidence: tuple[dict[str, Any], ...],
+    ) -> bool:
         capabilities = {capability.lower() for capability in task.capabilities}
-        return bool(capabilities.intersection({"research", "synthesize"})) or any(
-            getattr(call, "tool_name", "") == "search_knowledge" for call in tool_calls
+        return (
+            bool(capabilities.intersection({"research", "synthesize"}))
+            or bool(grounded_evidence)
+            or any(getattr(call, "tool_name", "") == "search_knowledge" for call in tool_calls)
         )
 
     def _verify_grounding(
@@ -38,7 +44,7 @@ class OutputVerifier:
         tool_calls: tuple[Any, ...],
         grounded_evidence: tuple[dict[str, Any], ...],
     ) -> tuple[bool, str]:
-        if not self._is_research_task(task, tool_calls):
+        if not self._is_research_task(task, tool_calls, grounded_evidence):
             return True, "Grounding check not required for this task."
 
         if not grounded_evidence:
