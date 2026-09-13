@@ -177,7 +177,6 @@ class NexusEngine:
             if key in seen:
                 continue
             seen.add(key)
-            # Keep downstream prompts bounded while retaining enough source text to ground synthesis.
             lines.append(f"[Source: {citation}]\n{text[:2000]}")
             if len(seen) >= 12:
                 break
@@ -394,7 +393,11 @@ class NexusEngine:
         )
         state.verification_passed = verification.passed
         verification_step.result = verification.checks
-        verification_step.observation = {"issues": verification.issues}
+        verification_step.observation = {
+            "issues": verification.issues,
+            "grounding_score": verification.grounding_score,
+            "grounding_count": len(verification.grounding),
+        }
         verification_step.error = "; ".join(verification.issues) or None
         verification_step.status = StepStatus.COMPLETED if verification.passed else StepStatus.FAILED
 
@@ -403,7 +406,13 @@ class NexusEngine:
                 event_type=EventType.VERIFICATION_COMPLETED,
                 task_id=task.task_id,
                 message="Output verification completed.",
-                data={"passed": verification.passed, "checks": verification.checks},
+                data={
+                    "passed": verification.passed,
+                    "checks": verification.checks,
+                    "grounding_score": verification.grounding_score,
+                    "grounding_count": len(verification.grounding),
+                    "grounded_evidence_count": len(all_grounded_evidence),
+                },
             )
         )
 
