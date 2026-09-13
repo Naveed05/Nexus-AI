@@ -72,7 +72,7 @@ def test_upload_dataset_rejects_unsupported_format() -> None:
 
 
 def test_research_endpoint_returns_structured_cited_evidence(monkeypatch) -> None:
-    workspace = workspace_registry.create("Research API Test")
+    workspace = workspace_registry.create(name="Research API Test")
     source = ResearchSource("notes.md — chunk 1", "doc-1", "chunk-1", "Evidence text", 0.95, "AI safety")
     expected = ResearchResult("AI safety", ("AI safety",), (source,), ResearchEngine.plan_queries("AI safety", 1))
 
