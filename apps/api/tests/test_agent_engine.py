@@ -12,6 +12,7 @@ class FakeExecutor:
     def execute(self, task: Task, model, allowed_tools=()) -> ExecutionResult:
         self.calls.append(task)
         evidence = ()
+        output = "verified-looking test output"
         if task.objective.lower().startswith("research"):
             evidence = (
                 {
@@ -21,13 +22,12 @@ class FakeExecutor:
                     "text": "NEXUS supports grounded research workflows.",
                 },
             )
+            output = "NEXUS supports grounded research workflows. [Source: research.txt — chunk 1]"
         return ExecutionResult(
             model_key=model.key,
             model_id=model.model_id,
             response_id=f"resp_{len(self.calls)}",
-            output="[Source: research.txt — chunk 1] verified-looking test output"
-            if evidence
-            else "verified-looking test output",
+            output=output,
             tool_calls=(),
             grounded_evidence=evidence,
         )
