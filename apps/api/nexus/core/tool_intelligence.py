@@ -20,7 +20,9 @@ class ToolSelector:
         "inspect_data": ("profile_dataset",),
         "analyze_data": ("analyze_dataset", "baseline_ml"),
         "research": ("research_knowledge", "search_knowledge"),
-        "synthesize": ("search_knowledge",),
+        # Synthesis must consume evidence gathered by the research step rather
+        # than performing a second, potentially unrelated retrieval.
+        "synthesize": (),
         "execute": ("calculator",),
     }
 
