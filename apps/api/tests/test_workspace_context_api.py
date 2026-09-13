@@ -162,11 +162,12 @@ def test_knowledge_engine_ingest_search_and_tool() -> None:
 
 
 def test_knowledge_tool_is_registered_and_selected_for_research() -> None:
-    assert tool_registry.get("search_knowledge").name == "search_knowledge"
+    assert tool_registry.get("research_knowledge").name == "research_knowledge"
     workspace = workspace_registry.create(name="Research Tools")
     task = Task(objective="Research the workspace documents", workspace_id=workspace.workspace_id)
     decision = ToolSelector().select(task, PlanStep(step_id="research", objective="Search workspace evidence"))
-    assert decision.tool is not None and decision.tool.name == "search_knowledge"
+    assert decision.tool is not None and decision.tool.name == "research_knowledge"
+    assert "highest-priority compatible tool" in decision.reasons
 
 
 def test_knowledge_tool_schema_is_strict_and_scoped() -> None:
