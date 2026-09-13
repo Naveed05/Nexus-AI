@@ -57,7 +57,28 @@ def create_task(payload: TaskCreate) -> TaskResponse:
 @app.post("/api/v1/tasks/execute", response_model=ExecutionResponse, status_code=200)
 def execute_task(payload: TaskCreate) -> ExecutionResponse:
     task = _build_task(payload); result = engine.run(task)
-    return ExecutionResponse(task_id=str(task.task_id), model=result.model.model_id, response_id=result.execution.response_id, output=result.execution.output, verification_passed=result.state.verification_passed, tool_calls=len(result.execution.tool_calls), events=[event.event_type.value for event in result.events])
+    verification = result.verification
+    return ExecutionResponse(
+        task_id=str(task.task_id),
+        model=result.model.model_id,
+        response_id=result.execution.response_id,
+        output=result.execution.output,
+        verification_passed=result.state.verification_passed,
+        verification_checks=verification.checks,
+        verification_issues=list(verification.issues),
+        grounding_score=verification.grounding_score,
+        grounding=[
+            {
+                "citation": item.citation,
+                "claim": item.claim,
+                "overlap_score": item.overlap_score,
+                "supported": item.supported,
+            }
+            for item in verification.grounding
+        ],
+        tool_calls=len(result.execution.tool_calls),
+        events=[event.event_type.value for event in result.events],
+    )
 
 @app.post("/api/v1/datasets", status_code=201)
 async def upload_dataset(file: UploadFile = File(...)) -> dict:
