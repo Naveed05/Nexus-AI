@@ -160,14 +160,44 @@ class NexusEngine:
         assert last_error is not None
         raise last_error
 
-    def _step_task(self, task: Task, step: PlanStep, state: AgentState) -> Task:
+    @staticmethod
+    def _evidence_context(grounded_evidence: list[dict]) -> str:
+        """Build a bounded, citation-preserving evidence pack for downstream steps."""
+        if not grounded_evidence:
+            return ""
+
+        lines: list[str] = ["GROUNDED EVIDENCE (use this evidence for research synthesis):"]
+        seen: set[tuple[str, str]] = set()
+        for evidence in grounded_evidence:
+            citation = str(evidence.get("citation") or "").strip()
+            text = str(evidence.get("text") or "").strip()
+            if not citation or not text:
+                continue
+            key = (citation, text)
+            if key in seen:
+                continue
+            seen.add(key)
+            # Keep downstream prompts bounded while retaining enough source text to ground synthesis.
+            lines.append(f"[Source: {citation}]\n{text[:2000]}")
+            if len(seen) >= 12:
+                break
+        return "\n\n".join(lines) if len(lines) > 1 else ""
+
+    def _step_task(
+        self,
+        task: Task,
+        step: PlanStep,
+        state: AgentState,
+        grounded_evidence: list[dict] | None = None,
+    ) -> Task:
         """Create an isolated task view for one executable plan step."""
         completed_outputs = [
             f"{item.step_id}: {item.result}"
             for item in state.steps
             if item.status == StepStatus.COMPLETED and item.result is not None
         ]
-        context_parts = [part for part in (task.context, *completed_outputs) if part]
+        evidence_context = self._evidence_context(grounded_evidence or [])
+        context_parts = [part for part in (task.context, evidence_context, *completed_outputs) if part]
         return task.model_copy(
             update={
                 "objective": step.objective,
@@ -289,7 +319,7 @@ class NexusEngine:
                     )
                 )
 
-            step_task = self._step_task(task, step, state)
+            step_task = self._step_task(task, step, state, all_grounded_evidence)
             try:
                 execution = self._run_with_recovery(
                     step_task,
