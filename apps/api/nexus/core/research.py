@@ -47,17 +47,30 @@ class ResearchSynthesis:
     source_count: int
     document_count: int
     query_count: int
+    query_coverage: tuple[tuple[str, int], ...]
     evidence_blocks: tuple[str, ...]
     evidence_quality_score: float
+
+    @property
+    def confidence_band(self) -> str:
+        if self.evidence_quality_score >= 0.75:
+            return "high"
+        if self.evidence_quality_score >= 0.45:
+            return "moderate"
+        if self.evidence_quality_score > 0.0:
+            return "low"
+        return "none"
 
     @property
     def context(self) -> str:
         if not self.evidence_blocks:
             return "No supporting evidence was retrieved."
+        coverage = ", ".join(f"{query}: {count}" for query, count in self.query_coverage)
         header = (
             f"RESEARCH EVIDENCE ({self.source_count} sources across "
             f"{self.document_count} documents, {self.query_count} queries; "
-            f"evidence quality {self.evidence_quality_score:.2f}):"
+            f"evidence quality {self.evidence_quality_score:.2f}; "
+            f"confidence {self.confidence_band}; coverage {coverage}):"
         )
         return header + "\n\n" + "\n\n".join(self.evidence_blocks)
 
@@ -67,8 +80,10 @@ class ResearchSynthesis:
             "source_count": self.source_count,
             "document_count": self.document_count,
             "query_count": self.query_count,
+            "query_coverage": dict(self.query_coverage),
             "evidence_blocks": list(self.evidence_blocks),
             "evidence_quality_score": self.evidence_quality_score,
+            "confidence_band": self.confidence_band,
             "context": self.context,
         }
 
@@ -211,11 +226,18 @@ def synthesize_evidence(question: str, sources: tuple[ResearchSource, ...]) -> R
         )
     else:
         evidence_quality_score = 0.0
+    coverage = tuple(
+        sorted(
+            ((query, sum(1 for source in selected if source.query == query)) for query in {source.query for source in selected}),
+            key=lambda item: item[0],
+        )
+    )
     return ResearchSynthesis(
         question=clean,
         source_count=len(selected),
         document_count=len({source.document_id for source in selected}),
         query_count=len({source.query for source in selected}),
+        query_coverage=coverage,
         evidence_blocks=blocks,
         evidence_quality_score=evidence_quality_score,
     )
