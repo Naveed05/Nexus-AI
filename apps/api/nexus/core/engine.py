@@ -221,6 +221,7 @@ class NexusEngine:
         )
 
         execution: ExecutionResult | None = None
+        all_grounded_evidence: list[dict] = []
         for index, step in enumerate(state.steps):
             state.current_step_index = index
             if not state.dependencies_completed(step):
@@ -313,11 +314,13 @@ class NexusEngine:
                 )
                 raise
 
+            all_grounded_evidence.extend(execution.grounded_evidence)
             step.result = execution.output
             step.observation = {
                 "response_id": execution.response_id,
                 "tool_call_count": len(execution.tool_calls),
                 "tool_names": [call.tool_name for call in execution.tool_calls],
+                "grounded_evidence_count": len(execution.grounded_evidence),
             }
             step.status = StepStatus.COMPLETED
 
@@ -353,7 +356,17 @@ class NexusEngine:
             )
         )
 
-        verification = self._verifier.verify(task, execution.output, execution.tool_calls)
+        all_tool_calls = tuple(
+            call
+            for step in state.steps
+            for call in getattr(step, "tool_calls", ())
+        )
+        verification = self._verifier.verify(
+            task,
+            execution.output,
+            execution.tool_calls,
+            grounded_evidence=tuple(all_grounded_evidence),
+        )
         state.verification_passed = verification.passed
         verification_step.result = verification.checks
         verification_step.observation = {"issues": verification.issues}
