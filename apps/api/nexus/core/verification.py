@@ -27,6 +27,7 @@ class VerificationResult:
     checks: dict[str, bool]
     issues: tuple[str, ...] = ()
     grounding: tuple[GroundingAssessment, ...] = ()
+    grounding_score: float = 1.0
 
 
 class OutputVerifier:
@@ -77,7 +78,6 @@ class OutputVerifier:
                 citation = citation.strip()
                 evidence = available.get(citation, "")
                 overlap = cls._match_claim_to_evidence(claim, evidence) if evidence else 0.0
-                # A cited claim needs either two meaningful shared terms or at least 25% coverage.
                 claim_tokens = cls._tokens(claim)
                 shared = len(cls._tokens(claim) & cls._tokens(evidence)) if evidence else 0
                 supported = bool(evidence) and (shared >= 2 or overlap >= 0.25)
@@ -167,9 +167,14 @@ class OutputVerifier:
             "tool_calls_recorded": "Tool calls are recorded correctly." if tools_recorded else "A tool call is missing its name.",
             "grounded_research": grounding_message,
         }
+        grounding_score = round(
+            sum(item.overlap_score for item in grounding) / len(grounding),
+            3,
+        ) if grounding else (1.0 if not self._is_research_task(task, tool_calls, grounded_evidence) else 0.0)
         return VerificationResult(
             passed=all(checks.values()),
             checks=checks,
             issues=tuple(messages[name] for name, passed in checks.items() if not passed),
             grounding=grounding,
+            grounding_score=grounding_score,
         )
