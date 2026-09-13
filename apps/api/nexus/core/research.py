@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from contextvars import Token
 from dataclasses import dataclass
 from uuid import UUID
 
-from .knowledge import search_knowledge
+from .knowledge import reset_knowledge_workspace, search_knowledge, set_knowledge_workspace
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,7 @@ class ResearchEngine:
             raise ValueError("max_queries must be greater than zero")
         if results_per_query <= 0:
             raise ValueError("results_per_query must be greater than zero")
-        self.max_queries = max_queries
+        self.max_queries = min(max_queries, 8)
         self.results_per_query = min(results_per_query, 20)
 
     @staticmethod
@@ -62,10 +63,11 @@ class ResearchEngine:
         if not clean:
             raise ValueError("Research question cannot be empty")
         queries = [clean]
-        if " and " in clean.lower():
+        lowered = clean.lower()
+        if " and " in lowered:
             parts = [part.strip(" ,") for part in clean.split(" and ") if part.strip(" ,")]
             queries.extend(parts[:2])
-        elif " vs " in clean.lower():
+        elif " vs " in lowered:
             parts = [part.strip(" ,") for part in clean.split(" vs ") if part.strip(" ,")]
             queries.extend(parts[:2])
         queries.append(f"evidence for {clean}")
@@ -76,23 +78,30 @@ class ResearchEngine:
         queries = self.build_queries(question)[: self.max_queries]
         sources: list[ResearchSource] = []
         seen: set[tuple[str, str]] = set()
-        for query in queries:
-            result = search_knowledge(query, self.results_per_query)
-            for item in result.get("results", []):
-                key = (str(item.get("document_id", "")), str(item.get("chunk_id", "")))
-                if key in seen:
-                    continue
-                seen.add(key)
-                sources.append(
-                    ResearchSource(
-                        citation=str(item.get("citation", "")),
-                        document_id=key[0],
-                        chunk_id=key[1],
-                        text=str(item.get("text", "")),
-                        score=float(item.get("score", 0.0)),
-                        query=query,
+        token: Token | None = None
+        if workspace_id is not None:
+            token = set_knowledge_workspace(workspace_id)
+        try:
+            for query in queries:
+                result = search_knowledge(query, self.results_per_query)
+                for item in result.get("results", []):
+                    key = (str(item.get("document_id", "")), str(item.get("chunk_id", "")))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    sources.append(
+                        ResearchSource(
+                            citation=str(item.get("citation", "")),
+                            document_id=key[0],
+                            chunk_id=key[1],
+                            text=str(item.get("text", "")),
+                            score=float(item.get("score", 0.0)),
+                            query=query,
+                        )
                     )
-                )
+        finally:
+            if token is not None:
+                reset_knowledge_workspace(token)
         return ResearchResult(question=" ".join(question.split()), queries=queries, sources=tuple(sources))
 
 
