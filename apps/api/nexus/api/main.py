@@ -12,7 +12,8 @@ from nexus.core.engine import engine
 from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
 from nexus.core.files import FileRegistry, LocalFileStore
 from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
-from nexus.core.schemas import ExecutionResponse, TaskCreate, TaskResponse
+from nexus.core.research import ResearchEngine
+from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tools import configure_dataset_workspace
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
@@ -26,6 +27,7 @@ file_registry = FileRegistry()
 document_workspace = DocumentWorkspace(Path(settings.file_storage_path) / "documents")
 knowledge_engine = KnowledgeEngine(document_workspace, settings.knowledge_index_path)
 configure_knowledge_engine(knowledge_engine)
+research_engine = ResearchEngine()
 
 
 def _workspace_payload(workspace) -> dict:
@@ -59,25 +61,26 @@ def execute_task(payload: TaskCreate) -> ExecutionResponse:
     task = _build_task(payload); result = engine.run(task)
     verification = result.verification
     return ExecutionResponse(
-        task_id=str(task.task_id),
-        model=result.model.model_id,
-        response_id=result.execution.response_id,
-        output=result.execution.output,
-        verification_passed=result.state.verification_passed,
-        verification_checks=verification.checks,
-        verification_issues=list(verification.issues),
+        task_id=str(task.task_id), model=result.model.model_id, response_id=result.execution.response_id, output=result.execution.output,
+        verification_passed=result.state.verification_passed, verification_checks=verification.checks, verification_issues=list(verification.issues),
         grounding_score=verification.grounding_score,
-        grounding=[
-            {
-                "citation": item.citation,
-                "claim": item.claim,
-                "overlap_score": item.overlap_score,
-                "supported": item.supported,
-            }
-            for item in verification.grounding
-        ],
-        tool_calls=len(result.execution.tool_calls),
-        events=[event.event_type.value for event in result.events],
+        grounding=[{"citation": item.citation, "claim": item.claim, "overlap_score": item.overlap_score, "supported": item.supported} for item in verification.grounding],
+        tool_calls=len(result.execution.tool_calls), events=[event.event_type.value for event in result.events],
+    )
+
+@app.post("/api/v1/research", response_model=ResearchResponse, status_code=200)
+def research(payload: ResearchRequest) -> ResearchResponse:
+    _require_workspace(payload.workspace_id)
+    try:
+        result = research_engine.research(payload.question, workspace_id=payload.workspace_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    body = result.as_dict()
+    synthesis = body["synthesis"]
+    return ResearchResponse(
+        question=body["question"], workspace_id=str(payload.workspace_id), queries=body["queries"],
+        evidence_count=body["evidence_count"], source_count=synthesis["source_count"],
+        document_count=synthesis["document_count"], sources=body["sources"], synthesis=synthesis,
     )
 
 @app.post("/api/v1/datasets", status_code=201)
