@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from uuid import uuid4
 
 from nexus.core.task import Task
@@ -12,6 +13,7 @@ def test_verifier_accepts_valid_observable_output() -> None:
     assert result.checks["non_empty_output"] is True
     assert result.checks["objective_present"] is True
     assert result.checks["tool_calls_recorded"] is True
+    assert result.checks["grounded_research"] is True
 
 
 def test_verifier_rejects_empty_output() -> None:
@@ -32,3 +34,85 @@ def test_verifier_rejects_missing_objective() -> None:
     assert result.passed is False
     assert result.checks["objective_present"] is False
     assert "Task objective is empty." in result.issues
+
+
+def test_verifier_accepts_research_output_with_retrieved_citation() -> None:
+    task = Task(task_id=uuid4(), objective="Research hybrid retrieval")
+    tool_call = SimpleNamespace(tool_name="search_knowledge")
+    evidence = (
+        {
+            "citation": "architecture.md — chunk 1",
+            "document_id": str(uuid4()),
+            "chunk_id": str(uuid4()),
+            "text": "NEXUS uses hybrid retrieval.",
+        },
+    )
+
+    result = OutputVerifier().verify(
+        task,
+        "NEXUS uses hybrid retrieval. [Source: architecture.md — chunk 1]",
+        (tool_call,),
+        grounded_evidence=evidence,
+    )
+
+    assert result.passed is True
+    assert result.checks["grounded_research"] is True
+
+
+def test_verifier_rejects_research_output_without_citation() -> None:
+    task = Task(task_id=uuid4(), objective="Research hybrid retrieval")
+    tool_call = SimpleNamespace(tool_name="search_knowledge")
+    evidence = (
+        {
+            "citation": "architecture.md — chunk 1",
+            "text": "NEXUS uses hybrid retrieval.",
+        },
+    )
+
+    result = OutputVerifier().verify(
+        task,
+        "NEXUS uses hybrid retrieval.",
+        (tool_call,),
+        grounded_evidence=evidence,
+    )
+
+    assert result.passed is False
+    assert result.checks["grounded_research"] is False
+    assert "does not contain a citation" in result.issues[0]
+
+
+def test_verifier_rejects_citation_not_in_retrieved_evidence() -> None:
+    task = Task(task_id=uuid4(), objective="Research hybrid retrieval")
+    tool_call = SimpleNamespace(tool_name="search_knowledge")
+    evidence = (
+        {
+            "citation": "architecture.md — chunk 1",
+            "text": "NEXUS uses hybrid retrieval.",
+        },
+    )
+
+    result = OutputVerifier().verify(
+        task,
+        "NEXUS uses hybrid retrieval. [Source: unknown.md — chunk 9]",
+        (tool_call,),
+        grounded_evidence=evidence,
+    )
+
+    assert result.passed is False
+    assert result.checks["grounded_research"] is False
+    assert "unsupported citations" in result.issues[0]
+
+
+def test_verifier_rejects_research_without_retrieved_evidence() -> None:
+    task = Task(task_id=uuid4(), objective="Research hybrid retrieval")
+    tool_call = SimpleNamespace(tool_name="search_knowledge")
+
+    result = OutputVerifier().verify(
+        task,
+        "NEXUS uses hybrid retrieval. [Source: architecture.md — chunk 1]",
+        (tool_call,),
+    )
+
+    assert result.passed is False
+    assert result.checks["grounded_research"] is False
+    assert "no retrieved evidence" in result.issues[0]
