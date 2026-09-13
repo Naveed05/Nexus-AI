@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
@@ -56,6 +57,31 @@ def calculator_spec(risk_level: str = "low") -> ToolSpec:
     )
 
 
+def knowledge_spec() -> ToolSpec:
+    return ToolSpec(
+        name="search_knowledge",
+        description="Search workspace documents.",
+        input_schema={
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        handler=lambda query: {
+            "query": query,
+            "results": [
+                {
+                    "chunk_id": str(uuid4()),
+                    "document_id": str(uuid4()),
+                    "text": "NEXUS uses hybrid retrieval.",
+                    "citation": "architecture.md — chunk 1",
+                }
+            ],
+            "context": "[Source: architecture.md — chunk 1]\nNEXUS uses hybrid retrieval.",
+        },
+    )
+
+
 def test_executor_runs_function_tool_and_returns_final_output() -> None:
     registry = ToolRegistry()
     registry.register(calculator_spec())
@@ -78,6 +104,40 @@ def test_executor_runs_function_tool_and_returns_final_output() -> None:
 
     second_input = client.responses.calls[1]["input"]
     assert any(item["type"] == "function_call_output" for item in second_input if isinstance(item, dict))
+
+
+def test_executor_preserves_search_evidence_for_verification() -> None:
+    registry = ToolRegistry()
+    registry.register(knowledge_spec())
+    client = FakeClient(
+        responses=[
+            SimpleNamespace(
+                id="resp_research_tool",
+                output=[
+                    SimpleNamespace(
+                        type="function_call",
+                        name="search_knowledge",
+                        arguments='{"query":"hybrid retrieval"}',
+                        call_id="research_1",
+                    )
+                ],
+                output_text="",
+            ),
+            SimpleNamespace(
+                id="resp_research_final",
+                output=[],
+                output_text="NEXUS uses hybrid retrieval. [Source: architecture.md — chunk 1]",
+            ),
+        ]
+    )
+    executor = ModelExecutor(client=client, registry=registry)
+
+    result = executor.execute(Task(objective="Research hybrid retrieval"), model_registry.get("astra"))
+
+    assert len(result.grounded_evidence) == 1
+    assert result.grounded_evidence[0]["citation"] == "architecture.md — chunk 1"
+    assert result.grounded_evidence[0]["text"] == "NEXUS uses hybrid retrieval."
+    assert "architecture.md — chunk 1" in result.output
 
 
 def test_executor_enforces_allowed_tool_list() -> None:
