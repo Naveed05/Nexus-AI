@@ -127,14 +127,28 @@ class ResearchEngine:
         clean = " ".join(question.split())
         if not clean:
             raise ValueError("Research question cannot be empty")
-        queries = ResearchEngine.build_queries(clean)[: max(1, min(max_queries, 8))]
+        limit = max(1, min(max_queries, 8))
+        candidates = ResearchEngine.build_queries(clean)
+        primary = candidates[0]
+        evidence = next((query for query in candidates if query.startswith("evidence for ")), None)
+        limitations = next((query for query in candidates if query.startswith("limitations of ")), None)
+        subtopics = [
+            query
+            for query in candidates[1:]
+            if query != evidence and query != limitations
+        ]
+        ordered = [primary]
+        for query in (evidence, limitations, *subtopics):
+            if query is not None and query not in ordered:
+                ordered.append(query)
+        queries = tuple(ordered[:limit])
         roles = []
-        for index, query in enumerate(queries):
-            if index == 0:
+        for query in queries:
+            if query == primary:
                 roles.append("primary_question")
-            elif query.startswith("evidence for "):
+            elif query == evidence:
                 roles.append("supporting_evidence")
-            elif query.startswith("limitations of "):
+            elif query == limitations:
                 roles.append("limitations")
             else:
                 roles.append("subtopic")
