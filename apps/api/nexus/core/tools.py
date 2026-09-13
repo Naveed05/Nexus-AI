@@ -7,6 +7,7 @@ from nexus.core.data_pipeline import DataPipeline
 from nexus.core.dataset_workspace import DatasetNotFoundError, DatasetWorkspace
 from nexus.core.knowledge import search_knowledge
 from nexus.core.ml_tools import baseline_ml
+from nexus.core.research import research_knowledge
 
 RISK_LEVELS = {"low", "medium", "high"}
 PERMISSION_LEVELS = {"read", "modify", "high_risk"}
@@ -128,3 +129,4 @@ tool_registry.register(ToolSpec("profile_dataset_by_id", "Profile a registered N
 tool_registry.register(ToolSpec("analyze_dataset_by_id", "Analyze a registered NEXUS dataset by dataset_id.", {"type": "object", "properties": {"dataset_id": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["dataset_id", "target"], "additionalProperties": False}, "low", analyze_dataset_by_id, timeout_seconds=30.0, cost_units=0.5))
 tool_registry.register(ToolSpec("baseline_ml", "Train and evaluate a conservative baseline ML model for an explicit target column.", {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": "string"}}, "required": ["csv_text", "target"], "additionalProperties": False}, "medium", baseline_ml, permission="read", timeout_seconds=60.0, cost_units=2.0))
 tool_registry.register(ToolSpec("search_knowledge", "Search workspace documents using hybrid retrieval and return grounded evidence with citations.", {"type": "object", "properties": {"query": {"type": "string"}, "top_k": {"type": "integer", "minimum": 1, "maximum": 20}, "document_id": {"type": ["string", "null"]}}, "required": ["query", "top_k", "document_id"], "additionalProperties": False}, "low", search_knowledge, timeout_seconds=15.0, cost_units=0.2))
+tool_registry.register(ToolSpec("research_knowledge", "Run bounded evidence-first research across workspace knowledge and return deduplicated cited sources.", {"type": "object", "properties": {"question": {"type": "string"}, "max_queries": {"type": "integer", "minimum": 1, "maximum": 8}, "results_per_query": {"type": "integer", "minimum": 1, "maximum": 20}}, "required": ["question", "max_queries", "results_per_query"], "additionalProperties": False}, "low", research_knowledge, timeout_seconds=45.0, cost_units=0.8))
