@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
+from openai import OpenAI
+
+from .config import settings
 from .documents import DocumentChunk, DocumentWorkspace
 
 
@@ -36,7 +39,31 @@ class HashEmbeddingProvider:
         return vectors
 
 
+class OpenAIEmbeddingProvider:
+    """Production embedding provider backed by the configured OpenAI embedding model."""
+
+    def __init__(self, client: OpenAI | None = None, model: str | None = None) -> None:
+        self._client = client
+        self.model = model or settings.embedding_model
+
+    def _get_client(self) -> OpenAI:
+        if self._client is None:
+            self._client = OpenAI(api_key=settings.openai_api_key)
+        return self._client
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        response = self._get_client().embeddings.create(model=self.model, input=texts)
+        data = sorted(response.data, key=lambda item: item.index)
+        if len(data) != len(texts):
+            raise ValueError("Embedding provider returned an unexpected number of vectors")
+        return [list(item.embedding) for item in data]
+
+
 def _cosine(left: list[float], right: list[float]) -> float:
+    if len(left) != len(right):
+        raise ValueError("Embedding vectors must have equal dimensions")
     return sum(a * b for a, b in zip(left, right))
 
 
