@@ -19,7 +19,7 @@ class ToolSelector:
     _step_preferences: dict[str, tuple[str, ...]] = {
         "inspect_data": ("profile_dataset",),
         "analyze_data": ("analyze_dataset", "baseline_ml"),
-        "research": ("search_knowledge",),
+        "research": ("research_knowledge", "search_knowledge"),
         "synthesize": ("search_knowledge",),
         "execute": ("calculator",),
     }
