@@ -71,6 +71,27 @@ def test_synthesize_evidence_sorts_sources_and_preserves_citations() -> None:
     assert "coverage" in synthesis.context
 
 
+def test_synthesize_evidence_limits_single_document_dominance() -> None:
+    sources = tuple(
+        ResearchSource(
+            f"doc-a.md — chunk {index}",
+            "doc-a",
+            f"chunk-{index}",
+            f"Evidence {index}",
+            1.0 - index * 0.01,
+            "primary",
+        )
+        for index in range(6)
+    ) + (
+        ResearchSource("doc-b.md — chunk 1", "doc-b", "chunk-b1", "Diverse evidence", 0.7, "supporting"),
+    )
+    synthesis = synthesize_evidence("Research question", sources)
+    assert synthesis.source_count == 4
+    assert sum(1 for block in synthesis.evidence_blocks if "doc-a.md" in block) == 3
+    assert sum(1 for block in synthesis.evidence_blocks if "doc-b.md" in block) == 1
+    assert synthesis.document_count == 2
+
+
 def test_synthesize_evidence_empty_sources_has_zero_quality() -> None:
     synthesis = synthesize_evidence("Research question", ())
     assert synthesis.source_count == 0
