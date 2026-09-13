@@ -205,13 +205,27 @@ class ResearchEngine:
         return ResearchResult(question=plan.question, queries=plan.queries, sources=tuple(sources), plan=plan)
 
 
+def _select_diverse_sources(sources: tuple[ResearchSource, ...], *, limit: int = 12, per_document: int = 3) -> list[ResearchSource]:
+    """Select high-scoring evidence while preventing one document from dominating."""
+    selected: list[ResearchSource] = []
+    document_counts: dict[str, int] = {}
+    for source in sorted(sources, key=lambda source: source.score, reverse=True):
+        count = document_counts.get(source.document_id, 0)
+        if count >= per_document:
+            continue
+        selected.append(source)
+        document_counts[source.document_id] = count + 1
+        if len(selected) >= limit:
+            break
+    return selected
+
+
 def synthesize_evidence(question: str, sources: tuple[ResearchSource, ...]) -> ResearchSynthesis:
     """Build bounded, citation-preserving synthesis context for a downstream agent."""
     clean = " ".join(question.split())
     if not clean:
         raise ValueError("Research question cannot be empty")
-    ordered = sorted(sources, key=lambda source: source.score, reverse=True)
-    selected = [source for source in ordered[:12] if source.text.strip()]
+    selected = [source for source in _select_diverse_sources(sources) if source.text.strip()]
     blocks = tuple(
         f"[Source: {source.citation}]\nQuery: {source.query}\n{source.text[:2000]}"
         for source in selected
