@@ -93,3 +93,22 @@ def test_engine_carries_retrieved_evidence_into_downstream_steps() -> None:
     assert "GROUNDED EVIDENCE" in (syntheses[0].context or "")
     assert "[Source: research.txt — chunk 1]" in (syntheses[0].context or "")
     assert "NEXUS supports grounded research workflows." in (syntheses[0].context or "")
+
+
+def test_engine_emits_verification_telemetry() -> None:
+    executor = FakeExecutor()
+    engine = NexusEngine(executor=executor)
+    result = engine.run(Task(objective="Research NEXUS grounding"))
+
+    verification_event = next(
+        event for event in result.events
+        if event.event_type.value == "verification_completed"
+    )
+    assert verification_event.data["passed"] is True
+    assert verification_event.data["grounding_count"] == 1
+    assert verification_event.data["grounded_evidence_count"] == 1
+    assert verification_event.data["grounding_score"] > 0
+
+    verification_step = next(step for step in result.state.steps if step.step_id == "verify")
+    assert verification_step.observation["grounding_count"] == 1
+    assert verification_step.observation["grounding_score"] > 0
