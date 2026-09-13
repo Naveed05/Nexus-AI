@@ -356,11 +356,6 @@ class NexusEngine:
             )
         )
 
-        all_tool_calls = tuple(
-            call
-            for step in state.steps
-            for call in getattr(step, "tool_calls", ())
-        )
         verification = self._verifier.verify(
             task,
             execution.output,
