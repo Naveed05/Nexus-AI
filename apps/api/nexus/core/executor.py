@@ -69,6 +69,33 @@ class ModelExecutor:
             self._client = OpenAI(api_key=settings.openai_api_key)
         return self._client
 
+    @staticmethod
+    def _capture_grounded_evidence(
+        tool_name: str,
+        result: Any,
+        target: list[dict[str, Any]],
+    ) -> None:
+        """Extract citation-bearing evidence from knowledge and research tools."""
+        if tool_name == "search_knowledge" and isinstance(result, dict):
+            items = result.get("results", [])
+        elif tool_name == "research_knowledge" and isinstance(result, dict):
+            items = result.get("sources", [])
+        else:
+            return
+
+        for evidence in items:
+            if not isinstance(evidence, dict):
+                continue
+            target.append(
+                {
+                    "citation": evidence.get("citation"),
+                    "document_id": evidence.get("document_id"),
+                    "chunk_id": evidence.get("chunk_id"),
+                    "text": evidence.get("text", ""),
+                    "query": evidence.get("query"),
+                }
+            )
+
     def execute(self, task: Task, model: ModelSpec, allowed_tools: tuple[str, ...] | None = None) -> ExecutionResult:
         client = self._get_client()
         tools = self._registry.openai_tools() if allowed_tools is None else [self._registry.get(name).as_openai_tool() for name in allowed_tools]
@@ -121,18 +148,8 @@ class ModelExecutor:
                             permission=tool.permission,
                             success=success,
                         )
-                    )
-                    if call.name == "search_knowledge" and success and isinstance(result, dict):
-                        for evidence in result.get("results", []):
-                            if isinstance(evidence, dict):
-                                grounded_evidence.append(
-                                    {
-                                        "citation": evidence.get("citation"),
-                                        "document_id": evidence.get("document_id"),
-                                        "chunk_id": evidence.get("chunk_id"),
-                                        "text": evidence.get("text", ""),
-                                    }
-                                )
+                    if success:
+                        self._capture_grounded_evidence(call.name, result, grounded_evidence)
                     tool_outputs.append(
                         {
                             "type": "function_call_output",
