@@ -64,15 +64,11 @@ class ResearchSynthesis:
 
     def to_markdown(self) -> str:
         lines = [f"# Research Report: {self.question}", "", f"- Sources: {self.source_count}", f"- Documents: {self.document_count}", f"- Queries with evidence: {self.query_count}", f"- Evidence quality: {self.evidence_quality_score:.2f}", f"- Confidence band: {self.confidence_band}", "", "## Evidence", ""]
-        if self.evidence_blocks:
-            lines.extend(self.evidence_blocks)
-        else:
-            lines.append("No supporting evidence was retrieved.")
+        lines.extend(self.evidence_blocks or ("No supporting evidence was retrieved.",))
         lines.extend(["", "## Query Provenance", ""])
         for query, citations in self.provenance:
             lines.append(f"- **{query}**")
-            for citation in citations:
-                lines.append(f"  - {citation}")
+            lines.extend(f"  - {citation}" for citation in citations)
         return "\n".join(lines)
 
 
@@ -96,7 +92,7 @@ class ResearchResult:
 
 
 class ResearchEngine:
-    """Runs bounded, evidence-first research over the configured knowledge workspace."""
+    """Runs bounded, evidence-first retrieval over the configured knowledge workspace."""
 
     def __init__(self, *, max_queries: int = 4, results_per_query: int = 5) -> None:
         if max_queries <= 0:
@@ -159,6 +155,20 @@ class ResearchEngine:
         return ResearchResult(plan.question, plan.queries, tuple(sources), plan)
 
 
+class ResearchAgent:
+    """Coordinates planning, bounded evidence gathering, and synthesis as one research workflow."""
+
+    def __init__(self, engine: ResearchEngine | None = None) -> None:
+        self.engine = engine or ResearchEngine()
+
+    def run(self, question: str, *, workspace_id: UUID | None = None) -> ResearchResult:
+        result = self.engine.research(question, workspace_id=workspace_id)
+        # Materialize synthesis here so callers receive one coherent research
+        # workflow result and do not need to repeat the synthesis operation.
+        _ = result.synthesis
+        return result
+
+
 def _select_diverse_sources(sources: tuple[ResearchSource, ...], *, limit: int = 12, per_document: int = 3) -> list[ResearchSource]:
     selected: list[ResearchSource] = []
     document_counts: dict[str, int] = {}
@@ -193,4 +203,4 @@ def synthesize_evidence(question: str, sources: tuple[ResearchSource, ...]) -> R
 
 
 def research_knowledge(question: str, max_queries: int = 4, results_per_query: int = 5) -> dict:
-    return ResearchEngine(max_queries=max_queries, results_per_query=results_per_query).research(question).as_dict()
+    return ResearchAgent(ResearchEngine(max_queries=max_queries, results_per_query=results_per_query)).run(question).as_dict()
