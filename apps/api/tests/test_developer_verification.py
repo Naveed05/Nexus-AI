@@ -27,6 +27,17 @@ def test_verification_runner_executes_bounded_pytest(tmp_path: Path):
     assert "passed" in result.output
 
 
+def test_verification_runner_preserves_extra_generated_pytest_args(tmp_path: Path):
+    (tmp_path / "test_smoke.py").write_text("def test_smoke():\n    assert True\n", encoding="utf-8")
+    runner = VerificationRunner(tmp_path)
+
+    result = runner.run("PYTHONPATH=. pytest -q test_smoke.py", timeout_seconds=30)
+
+    assert result.status == "passed"
+    assert result.exit_code == 0
+    assert "1 passed" in result.output
+
+
 def test_developer_verification_service_normalizes_runner_result(tmp_path: Path):
     agent = DeveloperAgent(CodebaseIndexer(tmp_path))
     runner = VerificationRunner(tmp_path)
