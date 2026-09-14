@@ -428,6 +428,13 @@ class NexusEngine:
             )
         )
 
+        if verification.passed:
+            self._memory.remember_task_outcome(
+                task.objective,
+                execution.output,
+                workspace_id=task.workspace_id,
+            )
+
         for step in state.steps:
             if step.status == StepStatus.PENDING:
                 step.status = StepStatus.SKIPPED
