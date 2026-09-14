@@ -96,3 +96,34 @@ def test_research_endpoint_returns_structured_cited_evidence(monkeypatch) -> Non
 def test_research_endpoint_rejects_unknown_workspace() -> None:
     response = client.post("/api/v1/research", json={"question": "AI safety", "workspace_id": str(UUID(int=0))})
     assert response.status_code == 404
+
+
+def test_memory_api_is_workspace_scoped_and_supports_recall_lifecycle() -> None:
+    workspace = workspace_registry.create(name="Memory API Test")
+    other_workspace = workspace_registry.create(name="Other Memory API Test")
+
+    created = client.post("/api/v1/memories", json={"workspace_id": str(workspace.workspace_id), "content": "Use deterministic pytest checks", "tags": ["Testing"], "importance": 0.8})
+    assert created.status_code == 201
+    memory = created.json()
+    assert memory["tags"] == ["testing"]
+
+    other = client.post("/api/v1/memories", json={"workspace_id": str(other_workspace.workspace_id), "content": "Use pytest checks", "importance": 1.0})
+    assert other.status_code == 201
+
+    listed = client.get(f"/api/v1/workspaces/{workspace.workspace_id}/memories")
+    assert listed.status_code == 200
+    assert [item["memory_id"] for item in listed.json()] == [memory["memory_id"]]
+
+    recalled = client.post(f"/api/v1/workspaces/{workspace.workspace_id}/memories/recall", json={"query": "deterministic pytest"})
+    assert recalled.status_code == 200
+    assert recalled.json()["matches"][0]["memory_id"] == memory["memory_id"]
+    assert recalled.json()["matches"][0]["confidence"] > 0
+
+    deleted = client.delete(f"/api/v1/workspaces/{workspace.workspace_id}/memories/{memory['memory_id']}")
+    assert deleted.status_code == 204
+    assert client.get(f"/api/v1/workspaces/{workspace.workspace_id}/memories").json() == []
+
+
+def test_memory_api_rejects_unknown_workspace() -> None:
+    response = client.get(f"/api/v1/workspaces/{UUID(int=0)}/memories")
+    assert response.status_code == 404
