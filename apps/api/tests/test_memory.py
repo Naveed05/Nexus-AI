@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 import pytest
@@ -67,6 +68,21 @@ def test_memory_deduplicates_and_reinforces_existing_record() -> None:
 
     with pytest.raises(ValueError):
         store.reinforce(record.memory_id, workspace_id=workspace, amount=-0.1)
+
+
+def test_memory_sqlite_store_is_safe_for_concurrent_api_requests(tmp_path) -> None:
+    store = MemoryStore(tmp_path / "memory.db")
+    workspace = uuid4()
+
+    def write_memory(index: int) -> None:
+        store.remember(f"Concurrent memory {index}", workspace_id=workspace, tags=("concurrent",), importance=0.5)
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(write_memory, range(24)))
+
+    records = store.list(workspace_id=workspace)
+    assert len(records) == 24
+    assert {record.content for record in records} == {f"Concurrent memory {index}" for index in range(24)}
 
 
 def test_memory_validation_rejects_invalid_inputs() -> None:
