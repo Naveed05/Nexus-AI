@@ -36,6 +36,22 @@ class MemoryStore:
         self._records[record.memory_id] = record
         return record
 
+    def remember_task_outcome(self, objective: str, output: str, *, workspace_id: UUID | None = None) -> MemoryRecord:
+        """Store a bounded successful outcome so future tasks can reuse verified context."""
+        clean_objective = objective.strip()
+        clean_output = output.strip()
+        if not clean_objective:
+            raise ValueError("objective cannot be empty")
+        if not clean_output:
+            raise ValueError("output cannot be empty")
+        content = f"Task: {clean_objective}\nVerified outcome: {clean_output[:2000]}"
+        return self.remember(
+            content,
+            workspace_id=workspace_id,
+            tags=("task-outcome", "verified"),
+            importance=0.7,
+        )
+
     def recall(self, query: str, *, workspace_id: UUID | None = None, top_k: int = 5) -> tuple[MemoryRecord, ...]:
         if not query.strip():
             raise ValueError("query cannot be empty")
