@@ -1,5 +1,6 @@
 from nexus.core.engine import NexusEngine
 from nexus.core.executor import ExecutionResult
+from nexus.core.memory import MemoryStore
 from nexus.core.models import model_registry
 from nexus.core.state import StepStatus
 from nexus.core.task import Task
@@ -112,3 +113,26 @@ def test_engine_emits_verification_telemetry() -> None:
     verification_step = next(step for step in result.state.steps if step.step_id == "verify")
     assert verification_step.observation["grounding_count"] == 1
     assert verification_step.observation["grounding_score"] > 0
+
+
+def test_engine_recalls_and_captures_verified_workspace_memory() -> None:
+    memory = MemoryStore()
+    workspace_id = Task(objective="Analyze the sample dataset").workspace_id
+    assert workspace_id is None
+
+    first_executor = FakeExecutor()
+    first_engine = NexusEngine(executor=first_executor, memory=memory)
+    first_engine.run(Task(objective="Analyze the sample dataset"))
+
+    records = memory.list(workspace_id=None)
+    assert len(records) == 1
+    assert "Verified outcome:" in records[0].content
+    assert "verified" in records[0].tags
+
+    second_executor = FakeExecutor()
+    second_engine = NexusEngine(executor=second_executor, memory=memory)
+    second_engine.run(Task(objective="Analyze the sample dataset"))
+
+    assert second_executor.calls
+    assert "RECALLED MEMORY (workspace-scoped):" in (second_executor.calls[0].context or "")
+    assert "Verified outcome:" in (second_executor.calls[0].context or "")
