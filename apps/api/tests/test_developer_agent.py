@@ -107,3 +107,37 @@ def test_developer_agent_builds_verification_plan(tmp_path: Path):
     assert verification.full_command == "PYTHONPATH=. pytest -q"
     assert any("does not execute" in item for item in verification.rationale)
     assert verification.as_dict()["focused_command"] == "PYTHONPATH=. pytest -q"
+
+
+def test_developer_agent_analyzes_downstream_impact(tmp_path: Path):
+    (tmp_path / "service.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "router.py").write_text("from service import run\ndef route():\n    return run()\n", encoding="utf-8")
+    (tmp_path / "api.py").write_text("from router import route\ndef endpoint():\n    return route()\n", encoding="utf-8")
+    indexer = CodebaseIndexer(tmp_path)
+    indexer.build()
+    agent = DeveloperAgent(indexer)
+
+    report = agent.analyze_impact(("service.py",), depth=2)
+
+    assert report.changed_files == ("service.py",)
+    assert report.affected_files == ("api.py", "router.py")
+    assert report.affected_count == 2
+    assert any("router.py" in item for item in report.evidence)
+    assert report.as_dict()["affected_count"] == 2
+
+
+def test_developer_agent_normalizes_verification_result(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+
+    passed = agent.verification_result("PYTHONPATH=. pytest -q", exit_code=0, output="12 passed")
+    failed = agent.verification_result("PYTHONPATH=. pytest -q", exit_code=1, output="1 failed")
+    pending = agent.verification_result("PYTHONPATH=. pytest -q", exit_code=None, output="")
+
+    assert passed.status == "passed"
+    assert failed.status == "failed"
+    assert pending.status == "not_run"
+    assert passed.output == "12 passed"
+    assert any("exit code" in item for item in passed.evidence)
+
+    with pytest.raises(ValueError, match="command"):
+        agent.verification_result("", exit_code=0, output="")
