@@ -3,6 +3,7 @@ import inspect
 
 from nexus.core.events import EventType, ExecutionEvent
 from nexus.core.executor import ExecutionResult, ModelExecutor
+from nexus.core.memory import MemoryStore, memory_store
 from nexus.core.models import ModelSpec
 from nexus.core.planner import TaskPlanner
 from nexus.core.router import RoutingDecision, TaskRouter
@@ -55,6 +56,7 @@ class NexusEngine:
         verifier: OutputVerifier | None = None,
         tool_selector: ToolSelector | None = None,
         retry_policy: RetryPolicy | None = None,
+        memory: MemoryStore | None = None,
     ) -> None:
         self._router = router or TaskRouter()
         self._executor = executor or ModelExecutor()
@@ -62,6 +64,7 @@ class NexusEngine:
         self._verifier = verifier or OutputVerifier()
         self._tool_selector = tool_selector or ToolSelector()
         self._retry_policy = retry_policy or RetryPolicy()
+        self._memory = memory or memory_store
 
     def route_task(self, task: Task) -> RouteResult:
         """Select the model and expose safe routing metadata without executing it."""
@@ -69,23 +72,32 @@ class NexusEngine:
         return RouteResult(task=task, model=decision.model, decision=decision)
 
     def _resolve_workspace_context(self, task: Task) -> Task:
-        """Attach workspace resource references before planning or tool selection."""
-        if task.workspace_id is None:
-            return task
-        try:
-            context = workspace_registry.context(task.workspace_id)
-        except WorkspaceNotFoundError:
-            raise
-
-        workspace_text = context.as_text()
+        """Attach workspace resources and bounded recalled memory before planning."""
+        context_parts: list[str] = []
         existing = task.context.strip() if task.context else ""
-        if workspace_text in existing:
-            return task
-        return task.model_copy(
-            update={
-                "context": "\n".join(part for part in (existing, workspace_text) if part) or None,
-            }
+        if existing:
+            context_parts.append(existing)
+
+        if task.workspace_id is not None:
+            try:
+                context = workspace_registry.context(task.workspace_id)
+            except WorkspaceNotFoundError:
+                raise
+            context_parts.append(context.as_text())
+
+        recalled_memory = self._memory.recall_context(
+            task.objective,
+            workspace_id=task.workspace_id,
+            top_k=5,
+            max_chars=6_000,
         )
+        if recalled_memory:
+            context_parts.append(recalled_memory)
+
+        merged_context = "\n".join(dict.fromkeys(context_parts))
+        if merged_context == existing:
+            return task
+        return task.model_copy(update={"context": merged_context or None})
 
     def _execute_compatibly(
         self,
