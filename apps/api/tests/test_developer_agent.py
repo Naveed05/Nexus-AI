@@ -1,6 +1,8 @@
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 from nexus.core.code_index import CodebaseIndexer
 from nexus.core.developer_agent import DeveloperAction, DeveloperAgent
 from nexus.core.task import Task
@@ -68,3 +70,40 @@ def test_developer_agent_builds_reviewable_dependency_aware_patch_plan(tmp_path:
     )
     assert plan.confidence > 0
     assert plan.as_dict()["steps"]
+
+
+def test_developer_agent_builds_non_mutating_patch_artifact(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+    before = "def route(task):\n    return task\n"
+    after = "def route(task):\n    return task.id\n"
+
+    artifact = agent.build_patch_artifact({"router.py": (before, after)})
+
+    assert artifact.files == ("router.py",)
+    assert "--- a/router.py" in artifact.diff
+    assert "+++ b/router.py" in artifact.diff
+    assert "-    return task" in artifact.diff
+    assert "+    return task.id" in artifact.diff
+    assert artifact.additions == 1
+    assert artifact.deletions == 1
+    assert (tmp_path / "router.py").exists() is False
+
+
+def test_developer_agent_rejects_unsafe_patch_paths(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+
+    with pytest.raises(ValueError, match="unsafe patch path"):
+        agent.build_patch_artifact({"../secrets.env": ("x\n", "y\n")})
+
+
+def test_developer_agent_builds_verification_plan(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+    task = Task(objective="fix the router implementation")
+    patch = agent.plan_patch(task, query="route")
+
+    verification = agent.build_verification_plan(patch)
+
+    assert verification.focused_command == "PYTHONPATH=. pytest -q"
+    assert verification.full_command == "PYTHONPATH=. pytest -q"
+    assert any("does not execute" in item for item in verification.rationale)
+    assert verification.as_dict()["focused_command"] == "PYTHONPATH=. pytest -q"
