@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+import ast
 import hashlib
 import os
+import re
+from pathlib import Path
 from typing import Iterable
 from uuid import UUID
 
@@ -27,12 +29,21 @@ class CodeSearchResult:
     matches: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class CodeDependency:
+    """A deterministic source-to-source dependency edge."""
+
+    source: str
+    target: str
+    kind: str
+
+
 class CodebaseIndexer:
     """Secure, deterministic local codebase index for developer workflows.
 
-    The index intentionally stores bounded source text in memory. It is a foundation
-    that can later be replaced by a persistent/vector-backed implementation without
-    changing the developer-agent contract.
+    The index intentionally stores bounded source text in memory. It can later be
+    replaced by a persistent/vector-backed implementation without changing the
+    developer-agent contract.
     """
 
     _LANGUAGES = {
@@ -52,6 +63,8 @@ class CodebaseIndexer:
     _SENSITIVE_NAMES = {".env", ".env.local", ".env.production", ".env.development"}
     _MAX_FILE_BYTES = 512_000
     _MAX_TEXT_CHARS = 500_000
+    _IMPORT_RE = re.compile(r"(?:from\s+([\w./-]+)\s+import|import\s+([\w./-]+))")
+    _JS_IMPORT_RE = re.compile(r"(?:from|import\s*\()\s*[\"']([^\"']+)[\"']|import\s+[\w*{}, ]+\s+from\s+[\"']([^\"']+)[\"']")
 
     def __init__(self, root: str | Path, *, workspace_id: UUID | None = None) -> None:
         self.root = Path(root).resolve()
@@ -59,6 +72,7 @@ class CodebaseIndexer:
             raise ValueError(f"codebase root is not a directory: {self.root}")
         self.workspace_id = workspace_id
         self._files: dict[str, CodeFile] = {}
+        self._dependencies: tuple[CodeDependency, ...] = ()
 
     def _safe_relative(self, path: Path) -> str:
         return path.resolve().relative_to(self.root).as_posix()
@@ -78,6 +92,64 @@ class CodebaseIndexer:
                 except OSError:
                     continue
                 yield path
+
+    def _python_dependencies(self, file: CodeFile) -> tuple[str, ...]:
+        try:
+            tree = ast.parse(file.text, filename=file.path)
+        except SyntaxError:
+            return ()
+        modules: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                modules.add(node.module)
+        return tuple(sorted(modules))
+
+    def _text_dependencies(self, file: CodeFile) -> tuple[str, ...]:
+        modules: set[str] = set()
+        pattern = self._IMPORT_RE if file.language == "python" else self._JS_IMPORT_RE
+        for match in pattern.finditer(file.text):
+            modules.update(group for group in match.groups() if group)
+        return tuple(sorted(modules))
+
+    def _resolve_local_target(self, source: CodeFile, imported: str) -> str | None:
+        if imported.startswith("."):
+            base = Path(source.path).parent / imported
+            candidates = [base]
+            if base.suffix == "":
+                candidates.extend(base.with_suffix(ext) for ext in (".py", ".js", ".jsx", ".ts", ".tsx"))
+                candidates.append(base / "__init__.py")
+            for candidate in candidates:
+                normalized = candidate.as_posix()
+                if normalized in self._files:
+                    return normalized
+            return None
+        normalized = imported.replace(".", "/")
+        candidates = [normalized]
+        if "/" not in imported and source.language == "python":
+            candidates.insert(0, (Path(source.path).parent / imported).as_posix())
+        for candidate in candidates:
+            for suffix in ("", ".py", ".js", ".jsx", ".ts", ".tsx"):
+                path = candidate + suffix
+                if path in self._files:
+                    return path
+        return None
+
+    def _build_dependencies(self) -> tuple[CodeDependency, ...]:
+        edges: set[tuple[str, str, str]] = set()
+        for file in self._files.values():
+            imported_modules = (
+                self._python_dependencies(file)
+                if file.language == "python"
+                else self._text_dependencies(file)
+            )
+            for imported in imported_modules:
+                target = self._resolve_local_target(file, imported)
+                if target and target != file.path:
+                    kind = "import"
+                    edges.add((file.path, target, kind))
+        return tuple(CodeDependency(*edge) for edge in sorted(edges))
 
     def build(self) -> tuple[CodeFile, ...]:
         indexed: dict[str, CodeFile] = {}
@@ -99,10 +171,14 @@ class CodebaseIndexer:
                 text=text,
             )
         self._files = indexed
+        self._dependencies = self._build_dependencies()
         return tuple(sorted(indexed.values(), key=lambda item: item.path))
 
     def files(self) -> tuple[CodeFile, ...]:
         return tuple(sorted(self._files.values(), key=lambda item: item.path))
+
+    def dependencies(self) -> tuple[CodeDependency, ...]:
+        return self._dependencies
 
     def search(self, query: str, *, top_k: int = 10) -> tuple[CodeSearchResult, ...]:
         terms = tuple(term.lower() for term in query.split() if term.strip())
@@ -129,5 +205,6 @@ class CodebaseIndexer:
             "workspace_id": str(self.workspace_id) if self.workspace_id else None,
             "root": str(self.root),
             "file_count": len(self._files),
+            "dependency_count": len(self._dependencies),
             "languages": dict(sorted(languages.items())),
         }
