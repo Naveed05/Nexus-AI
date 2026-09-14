@@ -77,9 +77,7 @@ class CodebaseIndexer:
             dirs[:] = [name for name in dirs if name not in self._IGNORED_DIRS]
             for name in files:
                 path = Path(current) / name
-                if name in self._SENSITIVE_NAMES:
-                    continue
-                if path.suffix.lower() not in self._LANGUAGES:
+                if name in self._SENSITIVE_NAMES or path.suffix.lower() not in self._LANGUAGES:
                     continue
                 try:
                     if path.stat().st_size > self._MAX_FILE_BYTES:
@@ -138,11 +136,7 @@ class CodebaseIndexer:
     def _build_dependencies(self) -> tuple[CodeDependency, ...]:
         edges: set[tuple[str, str, str]] = set()
         for file in self._files.values():
-            imported_modules = (
-                self._python_dependencies(file)
-                if file.language == "python"
-                else self._text_dependencies(file)
-            )
+            imported_modules = self._python_dependencies(file) if file.language == "python" else self._text_dependencies(file)
             for imported in imported_modules:
                 target = self._resolve_local_target(file, imported)
                 if target and target != file.path:
@@ -177,6 +171,28 @@ class CodebaseIndexer:
 
     def dependencies(self) -> tuple[CodeDependency, ...]:
         return self._dependencies
+
+    def dependency_neighbors(self, path: str, *, depth: int = 1) -> tuple[str, ...]:
+        """Return deterministic transitive local dependency neighbors for a file."""
+        if path not in self._files:
+            return ()
+        if depth < 1:
+            return ()
+        adjacency: dict[str, set[str]] = {}
+        for edge in self._dependencies:
+            adjacency.setdefault(edge.source, set()).add(edge.target)
+            adjacency.setdefault(edge.target, set())
+        seen = {path}
+        frontier = {path}
+        for _ in range(depth):
+            next_frontier: set[str] = set()
+            for current in frontier:
+                next_frontier.update(adjacency.get(current, set()) - seen)
+            seen.update(next_frontier)
+            frontier = next_frontier
+            if not frontier:
+                break
+        return tuple(sorted(seen - {path}))
 
     def search(self, query: str, *, top_k: int = 10) -> tuple[CodeSearchResult, ...]:
         terms = tuple(term.lower() for term in query.split() if term.strip())
