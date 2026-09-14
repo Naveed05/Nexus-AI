@@ -26,14 +26,47 @@ def test_memory_context_is_bounded_and_forget_is_workspace_scoped() -> None:
     other_workspace = uuid4()
     record = store.remember("Use the repository's deterministic test suite", workspace_id=workspace, tags=("testing",))
 
-    context = store.recall_context("deterministic test", workspace_id=workspace, max_chars=80)
-    assert context.startswith("RECALLED MEMORY (workspace-scoped):")
-    assert len(context) <= 80
+    context = store.recall_context("deterministic test", workspace_id=workspace, max_chars=300)
+    assert context.startswith("RECALLED MEMORY (workspace-scoped; use only when relevant):")
+    assert "confidence=" in context
+    assert "relevance=" in context
+    assert len(context) <= 300
 
     with pytest.raises(KeyError):
         store.forget(record.memory_id, workspace_id=other_workspace)
     assert store.forget(record.memory_id, workspace_id=workspace) == record
     assert store.list(workspace_id=workspace) == ()
+
+
+def test_memory_recall_exposes_deterministic_confidence() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    record = store.remember("Verified Python testing workflow", workspace_id=workspace, importance=0.5)
+
+    matches = store.recall_ranked("Python testing", workspace_id=workspace)
+
+    assert len(matches) == 1
+    assert matches[0].record == record
+    assert matches[0].relevance == 1.0
+    assert matches[0].confidence == 0.9
+
+
+def test_memory_deduplicates_and_reinforces_existing_record() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    record = store.remember("Use pytest for API regression checks", workspace_id=workspace, tags=("Testing",), importance=0.4)
+    duplicate = store.remember("Use pytest for API regression checks", workspace_id=workspace, tags=("testing",), importance=0.8)
+
+    assert duplicate.memory_id == record.memory_id
+    assert duplicate.importance == 0.8
+    assert len(store.list(workspace_id=workspace)) == 1
+
+    reinforced = store.reinforce(record.memory_id, workspace_id=workspace, amount=0.3)
+    assert reinforced.importance == 1.0
+    assert reinforced.updated_at >= duplicate.updated_at
+
+    with pytest.raises(ValueError):
+        store.reinforce(record.memory_id, workspace_id=workspace, amount=-0.1)
 
 
 def test_memory_validation_rejects_invalid_inputs() -> None:
