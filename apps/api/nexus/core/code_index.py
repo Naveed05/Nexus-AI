@@ -39,12 +39,7 @@ class CodeDependency:
 
 
 class CodebaseIndexer:
-    """Secure, deterministic local codebase index for developer workflows.
-
-    The index intentionally stores bounded source text in memory. It can later be
-    replaced by a persistent/vector-backed implementation without changing the
-    developer-agent contract.
-    """
+    """Secure, deterministic local codebase index for developer workflows."""
 
     _LANGUAGES = {
         ".py": "python", ".pyi": "python", ".js": "javascript", ".jsx": "javascript",
@@ -103,19 +98,23 @@ class CodebaseIndexer:
             if isinstance(node, ast.Import):
                 modules.update(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
-                modules.add(node.module)
+                modules.add("." * node.level + node.module)
         return tuple(sorted(modules))
 
     def _text_dependencies(self, file: CodeFile) -> tuple[str, ...]:
         modules: set[str] = set()
-        pattern = self._IMPORT_RE if file.language == "python" else self._JS_IMPORT_RE
-        for match in pattern.finditer(file.text):
+        for match in self._JS_IMPORT_RE.finditer(file.text):
             modules.update(group for group in match.groups() if group)
         return tuple(sorted(modules))
 
     def _resolve_local_target(self, source: CodeFile, imported: str) -> str | None:
         if imported.startswith("."):
-            base = Path(source.path).parent / imported
+            leading_dots = len(imported) - len(imported.lstrip("."))
+            module = imported[leading_dots:].replace(".", "/")
+            base_dir = Path(source.path).parent
+            for _ in range(max(leading_dots - 1, 0)):
+                base_dir = base_dir.parent
+            base = base_dir / module
             candidates = [base]
             if base.suffix == "":
                 candidates.extend(base.with_suffix(ext) for ext in (".py", ".js", ".jsx", ".ts", ".tsx"))
@@ -147,8 +146,7 @@ class CodebaseIndexer:
             for imported in imported_modules:
                 target = self._resolve_local_target(file, imported)
                 if target and target != file.path:
-                    kind = "import"
-                    edges.add((file.path, target, kind))
+                    edges.add((file.path, target, "import"))
         return tuple(CodeDependency(*edge) for edge in sorted(edges))
 
     def build(self) -> tuple[CodeFile, ...]:
