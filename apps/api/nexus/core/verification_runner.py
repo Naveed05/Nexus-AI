@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -49,10 +50,15 @@ class VerificationRunner:
         if any(part in {"--shell", "--exec", "-c"} for part in parts[3:]):
             raise ValueError("shell execution flags are not allowed")
 
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(self.root)
+        executable_parts = ["pytest", *parts[3:]]
+
         try:
             completed = subprocess.run(
-                parts,
+                executable_parts,
                 cwd=self.root,
+                env=env,
                 check=False,
                 capture_output=True,
                 text=True,
