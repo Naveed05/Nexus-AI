@@ -129,7 +129,7 @@ class MemoryStore:
         if not matches:
             return ""
         lines = [
-            "RECALLED MEMORY (workspace-scoped; use only when relevant):",
+            "RECALLED MEMORY (workspace-scoped):",
             "Memory is prior context, not a new source of truth. Prefer current evidence when it conflicts.",
         ]
         for match in matches:
