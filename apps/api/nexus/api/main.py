@@ -12,6 +12,7 @@ from nexus.core.engine import engine
 from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
 from nexus.core.files import FileRegistry, LocalFileStore
 from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
+from nexus.core.memory import memory_store
 from nexus.core.research import ResearchEngine
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
@@ -36,6 +37,9 @@ def _workspace_payload(workspace) -> dict:
 def _file_payload(file_ref) -> dict:
     return {"file_id": str(file_ref.file_id), "workspace_id": str(file_ref.workspace_id) if file_ref.workspace_id else None, "filename": file_ref.filename, "mime_type": file_ref.mime_type, "size_bytes": file_ref.size_bytes, "metadata": file_ref.metadata, "created_at": file_ref.created_at.isoformat()}
 
+def _memory_payload(record) -> dict:
+    return {"memory_id": str(record.memory_id), "workspace_id": str(record.workspace_id) if record.workspace_id else None, "content": record.content, "tags": list(record.tags), "importance": record.importance, "created_at": record.created_at.isoformat(), "updated_at": record.updated_at.isoformat()}
+
 def _require_workspace(workspace_id: UUID):
     try: return workspace_registry.get(workspace_id)
     except WorkspaceNotFoundError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -50,6 +54,42 @@ def _build_task(payload: TaskCreate) -> Task:
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]: return {"status": "ok", "service": "nexus-api"}
+
+@app.post("/api/v1/memories", status_code=201)
+def create_memory(payload: dict) -> dict:
+    workspace_id = payload.get("workspace_id")
+    try: parsed_workspace = UUID(str(workspace_id)) if workspace_id else None
+    except ValueError as exc: raise HTTPException(status_code=422, detail="workspace_id must be a UUID") from exc
+    if parsed_workspace is not None: _require_workspace(parsed_workspace)
+    tags = payload.get("tags", [])
+    if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+        raise HTTPException(status_code=422, detail="tags must be an array of strings")
+    try:
+        record = memory_store.remember(str(payload.get("content", "")), workspace_id=parsed_workspace, tags=tuple(tags), importance=float(payload.get("importance", 0.5)))
+    except (TypeError, ValueError) as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _memory_payload(record)
+
+@app.get("/api/v1/workspaces/{workspace_id}/memories")
+def list_memories(workspace_id: UUID) -> list[dict]:
+    _require_workspace(workspace_id)
+    return [_memory_payload(record) for record in memory_store.list(workspace_id=workspace_id)]
+
+@app.post("/api/v1/workspaces/{workspace_id}/memories/recall")
+def recall_memories(workspace_id: UUID, payload: dict) -> dict:
+    _require_workspace(workspace_id)
+    query = str(payload.get("query", "")).strip()
+    try: top_k = max(1, min(int(payload.get("top_k", 5)), 20))
+    except (TypeError, ValueError) as exc: raise HTTPException(status_code=422, detail="top_k must be an integer") from exc
+    try: matches = memory_store.recall_ranked(query, workspace_id=workspace_id, top_k=top_k)
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"query": query, "workspace_id": str(workspace_id), "matches": [{**_memory_payload(match.record), "relevance": match.relevance, "confidence": match.confidence} for match in matches]}
+
+@app.delete("/api/v1/workspaces/{workspace_id}/memories/{memory_id}", status_code=204)
+def delete_memory(workspace_id: UUID, memory_id: UUID) -> Response:
+    _require_workspace(workspace_id)
+    try: memory_store.forget(memory_id, workspace_id=workspace_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(status_code=204)
 
 @app.post("/api/v1/tasks", response_model=TaskResponse, status_code=201)
 def create_task(payload: TaskCreate) -> TaskResponse:
