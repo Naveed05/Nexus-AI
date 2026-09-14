@@ -29,3 +29,21 @@ def test_developer_agent_infers_core_actions():
     assert DeveloperAgent.infer_action("fix the failing implementation") is DeveloperAction.PATCH
     assert DeveloperAgent.infer_action("run tests and verify") is DeveloperAction.TEST
     assert DeveloperAgent.infer_action("debug this error") is DeveloperAction.DIAGNOSE
+
+
+def test_developer_agent_diagnoses_failure_with_code_evidence(tmp_path: Path):
+    (tmp_path / "executor.py").write_text(
+        "def execute(task):\n    raise ValueError('invalid task')\n", encoding="utf-8"
+    )
+    (tmp_path / "router.py").write_text(
+        "def route(task):\n    return execute(task)\n", encoding="utf-8"
+    )
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+
+    diagnosis = agent.diagnose("ValueError in executor.py: invalid task")
+
+    assert diagnosis.likely_files
+    assert "executor.py" in diagnosis.likely_files
+    assert diagnosis.confidence > 0
+    assert any("executor.py" in item for item in diagnosis.evidence)
+    assert diagnosis.as_dict()["symptom"]
