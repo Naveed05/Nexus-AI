@@ -58,6 +58,40 @@ class DeveloperPatchPlan:
 
 
 @dataclass(frozen=True)
+class DeveloperPatchArtifact:
+    """A concrete, reviewable unified diff generated without mutating files."""
+
+    files: tuple[str, ...]
+    diff: str
+    additions: int
+    deletions: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "files": list(self.files),
+            "diff": self.diff,
+            "additions": self.additions,
+            "deletions": self.deletions,
+        }
+
+
+@dataclass(frozen=True)
+class DeveloperVerificationPlan:
+    """Safe validation commands derived from a developer patch plan."""
+
+    focused_command: str
+    full_command: str
+    rationale: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "focused_command": self.focused_command,
+            "full_command": self.full_command,
+            "rationale": list(self.rationale),
+        }
+
+
+@dataclass(frozen=True)
 class DeveloperContext:
     """Evidence-backed code context prepared for a developer workflow."""
 
@@ -94,6 +128,7 @@ class DeveloperAgent:
         r"(?:error|exception|failure|failed|traceback|assertionerror|typeerror|valueerror|keyerror)\b[^\n]{0,180}",
         re.IGNORECASE,
     )
+    _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_.\-/]+$")
 
     def __init__(self, indexer: CodebaseIndexer) -> None:
         self.indexer = indexer
@@ -168,4 +203,59 @@ class DeveloperAgent:
             steps=steps,
             validation=validation,
             confidence=confidence,
+        )
+
+    def build_patch_artifact(
+        self,
+        changes: dict[str, tuple[str, str]],
+        *,
+        context_lines: int = 3,
+    ) -> DeveloperPatchArtifact:
+        """Build a unified diff from explicit before/after text without writing files."""
+        if context_lines < 0 or context_lines > 20:
+            raise ValueError("context_lines must be between 0 and 20")
+        import difflib
+
+        chunks: list[str] = []
+        additions = 0
+        deletions = 0
+        for path in sorted(changes):
+            if not path or not self._SAFE_PATH_RE.fullmatch(path) or path.startswith("/") or ".." in Path(path).parts:
+                raise ValueError(f"unsafe patch path: {path}")
+            before, after = changes[path]
+            before_lines = before.splitlines(keepends=True)
+            after_lines = after.splitlines(keepends=True)
+            diff = list(
+                difflib.unified_diff(
+                    before_lines,
+                    after_lines,
+                    fromfile=f"a/{path}",
+                    tofile=f"b/{path}",
+                    n=context_lines,
+                )
+            )
+            additions += sum(1 for line in diff if line.startswith("+") and not line.startswith("+++") )
+            deletions += sum(1 for line in diff if line.startswith("-") and not line.startswith("---") )
+            if diff:
+                chunks.append("".join(diff))
+        return DeveloperPatchArtifact(
+            files=tuple(sorted(changes)),
+            diff="\n".join(chunks),
+            additions=additions,
+            deletions=deletions,
+        )
+
+    def build_verification_plan(self, patch: DeveloperPatchPlan) -> DeveloperVerificationPlan:
+        """Translate a patch plan into deterministic, non-executing validation commands."""
+        focused = "PYTHONPATH=. pytest -q"
+        full = "PYTHONPATH=. pytest -q"
+        rationale = (
+            f"Focused validation covers the changed behavior in {len(patch.target_files)} target file(s).",
+            "Full validation reuses the repository API suite defined by CI.",
+            "Commands are returned for review; this method does not execute shell commands.",
+        )
+        return DeveloperVerificationPlan(
+            focused_command=focused,
+            full_command=full,
+            rationale=rationale,
         )
