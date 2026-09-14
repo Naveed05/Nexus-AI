@@ -50,12 +50,14 @@ def test_developer_agent_diagnoses_failure_with_code_evidence(tmp_path: Path):
 
 
 def test_developer_agent_builds_reviewable_dependency_aware_patch_plan(tmp_path: Path):
-    (tmp_path / "router.py").write_text("from service import run\ndef route(task):\n    return run(task)\n", encoding="utf-8")
+    (tmp_path / "router.py").write_text(
+        "from service import run\ndef route(task):\n    return run(task)\n", encoding="utf-8"
+    )
     (tmp_path / "service.py").write_text("def run(task):\n    return task\n", encoding="utf-8")
     agent = DeveloperAgent(CodebaseIndexer(tmp_path))
     task = Task(objective="fix the router implementation")
 
-    plan = agent.plan_patch(task, query="route run", depth=1)
+    plan = agent.plan_patch(task, query="route", depth=1)
 
     assert plan.target_files
     assert "router.py" in plan.target_files
