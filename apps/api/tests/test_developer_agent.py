@@ -47,3 +47,22 @@ def test_developer_agent_diagnoses_failure_with_code_evidence(tmp_path: Path):
     assert diagnosis.confidence > 0
     assert any("executor.py" in item for item in diagnosis.evidence)
     assert diagnosis.as_dict()["symptom"]
+
+
+def test_developer_agent_builds_reviewable_dependency_aware_patch_plan(tmp_path: Path):
+    (tmp_path / "router.py").write_text("from service import run\ndef route(task):\n    return run(task)\n", encoding="utf-8")
+    (tmp_path / "service.py").write_text("def run(task):\n    return task\n", encoding="utf-8")
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+    task = Task(objective="fix the router implementation")
+
+    plan = agent.plan_patch(task, query="route run", depth=1)
+
+    assert plan.target_files
+    assert "router.py" in plan.target_files
+    assert "service.py" in plan.dependency_files
+    assert plan.validation == (
+        "Run the focused regression tests for the changed behavior.",
+        "Run the broader API test suite before merging.",
+    )
+    assert plan.confidence > 0
+    assert plan.as_dict()["steps"]
