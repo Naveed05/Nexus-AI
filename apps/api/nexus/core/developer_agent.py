@@ -92,6 +92,44 @@ class DeveloperVerificationPlan:
 
 
 @dataclass(frozen=True)
+class DeveloperImpactReport:
+    """Deterministic change-impact evidence derived from the dependency graph."""
+
+    changed_files: tuple[str, ...]
+    affected_files: tuple[str, ...]
+    affected_count: int
+    evidence: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "changed_files": list(self.changed_files),
+            "affected_files": list(self.affected_files),
+            "affected_count": self.affected_count,
+            "evidence": list(self.evidence),
+        }
+
+
+@dataclass(frozen=True)
+class DeveloperVerificationResult:
+    """Structured verification evidence; execution is intentionally external."""
+
+    command: str
+    status: str
+    exit_code: int | None
+    output: str
+    evidence: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "command": self.command,
+            "status": self.status,
+            "exit_code": self.exit_code,
+            "output": self.output,
+            "evidence": list(self.evidence),
+        }
+
+
+@dataclass(frozen=True)
 class DeveloperContext:
     """Evidence-backed code context prepared for a developer workflow."""
 
@@ -223,19 +261,15 @@ class DeveloperAgent:
             if not path or not self._SAFE_PATH_RE.fullmatch(path) or path.startswith("/") or ".." in Path(path).parts:
                 raise ValueError(f"unsafe patch path: {path}")
             before, after = changes[path]
-            before_lines = before.splitlines(keepends=True)
-            after_lines = after.splitlines(keepends=True)
-            diff = list(
-                difflib.unified_diff(
-                    before_lines,
-                    after_lines,
-                    fromfile=f"a/{path}",
-                    tofile=f"b/{path}",
-                    n=context_lines,
-                )
-            )
-            additions += sum(1 for line in diff if line.startswith("+") and not line.startswith("+++") )
-            deletions += sum(1 for line in diff if line.startswith("-") and not line.startswith("---") )
+            diff = list(difflib.unified_diff(
+                before.splitlines(keepends=True),
+                after.splitlines(keepends=True),
+                fromfile=f"a/{path}",
+                tofile=f"b/{path}",
+                n=context_lines,
+            ))
+            additions += sum(1 for line in diff if line.startswith("+") and not line.startswith("+++"))
+            deletions += sum(1 for line in diff if line.startswith("-") and not line.startswith("---"))
             if diff:
                 chunks.append("".join(diff))
         return DeveloperPatchArtifact(
@@ -258,4 +292,63 @@ class DeveloperAgent:
             focused_command=focused,
             full_command=full,
             rationale=rationale,
+        )
+
+    def analyze_impact(self, changed_files: tuple[str, ...], *, depth: int = 1) -> DeveloperImpactReport:
+        """Report downstream local files affected by a proposed change."""
+        if depth < 1:
+            raise ValueError("depth must be at least 1")
+        normalized = tuple(sorted(dict.fromkeys(changed_files)))
+        reverse: dict[str, set[str]] = {}
+        for edge in self.indexer.dependencies():
+            reverse.setdefault(edge.target, set()).add(edge.source)
+        seen = set(normalized)
+        frontier = set(normalized)
+        for _ in range(depth):
+            next_frontier: set[str] = set()
+            for current in frontier:
+                next_frontier.update(reverse.get(current, set()) - seen)
+            seen.update(next_frontier)
+            frontier = next_frontier
+            if not frontier:
+                break
+        affected = tuple(sorted(seen - set(normalized)))
+        evidence = tuple(
+            f"{changed}: downstream local files include {', '.join(sorted(reverse.get(changed, set())))}"
+            for changed in normalized
+            if reverse.get(changed)
+        )
+        return DeveloperImpactReport(
+            changed_files=normalized,
+            affected_files=affected,
+            affected_count=len(affected),
+            evidence=evidence,
+        )
+
+    @staticmethod
+    def verification_result(
+        command: str,
+        *,
+        exit_code: int | None,
+        output: str,
+    ) -> DeveloperVerificationResult:
+        """Normalize externally collected command output into verification evidence."""
+        if not command.strip():
+            raise ValueError("command must not be empty")
+        if exit_code is None:
+            status = "not_run"
+        elif exit_code == 0:
+            status = "passed"
+        else:
+            status = "failed"
+        evidence = (
+            "Verification status is derived solely from the supplied exit code.",
+            "Command output is preserved as evidence; no command is executed here.",
+        )
+        return DeveloperVerificationResult(
+            command=command.strip(),
+            status=status,
+            exit_code=exit_code,
+            output=output,
+            evidence=evidence,
         )
