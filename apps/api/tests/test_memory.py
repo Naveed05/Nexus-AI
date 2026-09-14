@@ -27,7 +27,7 @@ def test_memory_context_is_bounded_and_forget_is_workspace_scoped() -> None:
     record = store.remember("Use the repository's deterministic test suite", workspace_id=workspace, tags=("testing",))
 
     context = store.recall_context("deterministic test", workspace_id=workspace, max_chars=300)
-    assert context.startswith("RECALLED MEMORY (workspace-scoped; use only when relevant):")
+    assert context.startswith("RECALLED MEMORY (workspace-scoped):")
     assert "confidence=" in context
     assert "relevance=" in context
     assert len(context) <= 300
