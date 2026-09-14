@@ -36,6 +36,28 @@ class DeveloperDiagnostic:
 
 
 @dataclass(frozen=True)
+class DeveloperPatchPlan:
+    """A reviewable patch plan; it never writes to the workspace by itself."""
+
+    objective: str
+    target_files: tuple[str, ...]
+    dependency_files: tuple[str, ...]
+    steps: tuple[str, ...]
+    validation: tuple[str, ...]
+    confidence: float
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "objective": self.objective,
+            "target_files": list(self.target_files),
+            "dependency_files": list(self.dependency_files),
+            "steps": list(self.steps),
+            "validation": list(self.validation),
+            "confidence": self.confidence,
+        }
+
+
+@dataclass(frozen=True)
 class DeveloperContext:
     """Evidence-backed code context prepared for a developer workflow."""
 
@@ -118,4 +140,32 @@ class DeveloperAgent:
             likely_files=tuple(match.file.path for match in matches),
             evidence=evidence,
             confidence=round(confidence, 2),
+        )
+
+    def plan_patch(self, task: Task, *, query: str | None = None, depth: int = 1, top_k: int = 5) -> DeveloperPatchPlan:
+        """Create a bounded, reviewable patch plan without modifying source files."""
+        context = self.prepare(task, query=query, top_k=top_k)
+        targets = tuple(match.file.path for match in context.matches)
+        dependencies: list[str] = []
+        for target in targets:
+            for neighbor in self.indexer.dependency_neighbors(target, depth=depth):
+                if neighbor not in targets and neighbor not in dependencies:
+                    dependencies.append(neighbor)
+        steps = (
+            "Inspect the highest-ranked source matches and their local dependency neighborhood.",
+            "Identify the smallest source change that satisfies the objective without touching unrelated files.",
+            "Keep the patch reviewable and do not modify secrets or ignored workspace files.",
+        )
+        validation = (
+            "Run the focused regression tests for the changed behavior.",
+            "Run the broader API test suite before merging.",
+        )
+        confidence = round(min(1.0, 0.35 + 0.12 * len(targets) + 0.05 * len(dependencies)), 2)
+        return DeveloperPatchPlan(
+            objective=task.objective,
+            target_files=targets,
+            dependency_files=tuple(sorted(dependencies)),
+            steps=steps,
+            validation=validation,
+            confidence=confidence,
         )
