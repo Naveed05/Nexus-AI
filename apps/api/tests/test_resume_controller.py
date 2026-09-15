@@ -11,6 +11,7 @@ def test_resume_restores_ready_state_from_checkpoint(tmp_path) -> None:
     task = Task(objective="Research a topic")
     state = OrchestratorState(plan=TaskDecomposer().decompose(task))
     state.start_step("understand")
+    state.plan.step_by_id("understand").attempts = 1
     state.fail_step("understand", "temporary")
     state.plan.step_by_id("understand").status = StepStatus.PENDING
     state.plan.step_by_id("understand").error = None
