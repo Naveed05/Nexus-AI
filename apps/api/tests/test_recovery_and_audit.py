@@ -47,3 +47,19 @@ def test_orchestration_audit_records_immutable_ordered_events() -> None:
 
     audit.clear()
     assert audit.events() == ()
+
+
+def test_orchestration_audit_persists_and_queries_events(tmp_path) -> None:
+    audit = OrchestrationAudit()
+    audit.record("started", "understand", attempt=1)
+    audit.record("completed", "understand", result="context")
+    audit.record("failed", "research", reason="timeout")
+
+    path = audit.save(tmp_path / "audit.json")
+    restored = OrchestrationAudit()
+    events = restored.load(path)
+
+    assert events == restored.events()
+    assert len(restored.query(step_id="understand")) == 2
+    assert [item.event for item in restored.query(event="completed")] == ["completed"]
+    assert restored.query(event="failed", step_id="research")[0].details["reason"] == "timeout"
