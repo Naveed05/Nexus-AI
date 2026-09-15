@@ -62,30 +62,24 @@ class OrchestrationEngine:
                 break
             ready = state.ready_steps()
             if not ready:
-                if state.status == "failed":
-                    step_id = state.current_step_id
-                    if step_id:
-                        decision = self._recovery.recover(state, step_id)
-                        if decision.action == "retry":
-                            retries += 1
-                            continue
                 break
 
             result = self._executor.execute_next(task, state, executor, verifier)
             if result is None:
                 break
             results.append(result)
-            if result.error is not None and state.status == "failed":
-                failed_step = next(
-                    step for step in state.plan.steps if step.error == result.error
-                )
-                decision = self._recovery.recover(state, failed_step.step_id)
-                if decision.action == "retry":
-                    retries += 1
-                else:
-                    break
+
             if checkpoint_path:
                 self._checkpoint.save(state, checkpoint_path)
+
+            if result.error is not None and state.status == "failed":
+                decision = self._recovery.recover(state, result.decision.step_id)
+                if decision.action == "retry":
+                    retries += 1
+                    if checkpoint_path:
+                        self._checkpoint.save(state, checkpoint_path)
+                    continue
+                break
 
         if checkpoint_path:
             self._checkpoint.save(state, checkpoint_path)
