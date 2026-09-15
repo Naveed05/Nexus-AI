@@ -1,6 +1,7 @@
 import pytest
 
 from nexus.core.execution_loop import OrchestrationExecutor
+from nexus.core.orchestration_audit import OrchestrationAudit
 from nexus.core.orchestrator import OrchestratorState, TaskDecomposer
 from nexus.core.task import Task
 
@@ -73,3 +74,47 @@ def test_execute_next_returns_none_when_no_step_is_ready() -> None:
         executor=lambda decision: "unused",
         verifier=lambda value: True,
     ) is None
+
+
+def test_execution_audit_records_successful_lifecycle() -> None:
+    task = Task(objective="Research a topic")
+    state = OrchestratorState(plan=TaskDecomposer().decompose(task))
+    audit = OrchestrationAudit()
+
+    result = OrchestrationExecutor(audit=audit).execute_next(
+        task,
+        state,
+        executor=lambda decision: "context",
+        verifier=lambda value: True,
+    )
+
+    assert result is not None
+    assert [event.event for event in audit.events()] == [
+        "started",
+        "executed",
+        "verified",
+        "completed",
+    ]
+    assert audit.events()[0].details["agent"] == "memory"
+
+
+def test_recovery_audit_records_retry_and_halt() -> None:
+    from nexus.core.recovery import RecoveryPolicy
+    from nexus.core.recovery_controller import RecoveryController
+
+    task = Task(objective="Write a summary")
+    state = OrchestratorState(plan=TaskDecomposer().decompose(task))
+    audit = OrchestrationAudit()
+    controller = RecoveryController(RecoveryPolicy(max_attempts=1), audit=audit)
+
+    state.start_step("understand")
+    state.fail_step("understand", "temporary")
+    controller.recover(state, "understand")
+
+    state.start_step("understand")
+    state.fail_step("understand", "again")
+    controller.recover(state, "understand")
+
+    assert [event.event for event in audit.events()] == ["retry", "halt"]
+    assert audit.events()[0].details["attempt"] == 1
+    assert audit.events()[1].details["attempt"] == 2
