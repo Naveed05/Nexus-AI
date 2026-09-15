@@ -25,6 +25,7 @@ class RecoveryController:
         if decision.action == "retry":
             step.status = StepStatus.PENDING
             step.error = None
+            step.attempts = decision.next_attempt
             state.status = "ready"
             state.history.append(f"retry:{step_id}:attempt:{decision.next_attempt}")
             self._audit.record(
