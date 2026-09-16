@@ -23,6 +23,7 @@ class FrontierWorkflowRequest:
     require_tools: bool = False
     maximum_cost_score: int | None = None
     maximum_latency_score: int | None = None
+    maximum_fallbacks: int = 2
 
     def __post_init__(self) -> None:
         if self.reasoning_level not in {"low", "medium", "high", "xhigh", "max"}:
@@ -33,6 +34,8 @@ class FrontierWorkflowRequest:
             raise ValueError("maximum_cost_score cannot be negative")
         if self.maximum_latency_score is not None and self.maximum_latency_score < 0:
             raise ValueError("maximum_latency_score cannot be negative")
+        if self.maximum_fallbacks < 0:
+            raise ValueError("maximum_fallbacks cannot be negative")
 
 
 @dataclass(frozen=True)
@@ -82,7 +85,7 @@ class FrontierWorkflowPlanner:
         ordered = sorted(candidates, key=lambda spec: (-spec.context_window, -spec.cost_score, spec.latency_score, spec.key))
         return FrontierWorkflowPlan(
             primary=ordered[0],
-            fallbacks=tuple(ordered[1:]),
+            fallbacks=tuple(ordered[1 : request.maximum_fallbacks + 1]),
             required_capabilities=request.required_capabilities,
             reasoning_level=request.reasoning_level,
         )
