@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+import hashlib
 import re
 from uuid import UUID
 
@@ -59,6 +60,28 @@ class DeveloperPatchPlan:
 
 
 @dataclass(frozen=True)
+class DeveloperPatchAudit:
+    """Stable, non-secret audit metadata for a proposed patch artifact."""
+
+    fingerprint: str
+    file_count: int
+    changed_lines: int
+    risk: str
+    allowed: bool
+    requires_approval: bool
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "fingerprint": self.fingerprint,
+            "file_count": self.file_count,
+            "changed_lines": self.changed_lines,
+            "risk": self.risk,
+            "allowed": self.allowed,
+            "requires_approval": self.requires_approval,
+        }
+
+
+@dataclass(frozen=True)
 class DeveloperPatchArtifact:
     """A concrete, policy-checked unified diff generated without mutating files."""
 
@@ -67,6 +90,7 @@ class DeveloperPatchArtifact:
     additions: int
     deletions: int
     policy: DeveloperPolicyDecision | None = None
+    audit: DeveloperPatchAudit | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -75,6 +99,7 @@ class DeveloperPatchArtifact:
             "additions": self.additions,
             "deletions": self.deletions,
             "policy": self.policy.as_dict() if self.policy else None,
+            "audit": self.audit.as_dict() if self.audit else None,
         }
 
 
@@ -288,12 +313,23 @@ class DeveloperAgent:
             reason = policy.reasons[0] if policy.reasons else "developer patch rejected by policy"
             raise ValueError(f"developer patch rejected: {reason}")
 
+        files = tuple(sorted(changes))
+        audit_payload = f"{'|'.join(files)}\n{additions}\n{deletions}\n{policy.risk.value}"
+        audit = DeveloperPatchAudit(
+            fingerprint=hashlib.sha256(audit_payload.encode("utf-8")).hexdigest(),
+            file_count=len(files),
+            changed_lines=additions + deletions,
+            risk=policy.risk.value,
+            allowed=policy.allowed,
+            requires_approval=policy.requires_approval,
+        )
         return DeveloperPatchArtifact(
-            files=tuple(sorted(changes)),
+            files=files,
             diff="\n".join(chunks),
             additions=additions,
             deletions=deletions,
             policy=policy,
+            audit=audit,
         )
 
     def build_verification_plan(self, patch: DeveloperPatchPlan) -> DeveloperVerificationPlan:
