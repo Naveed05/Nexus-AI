@@ -23,12 +23,10 @@ class DeveloperAction(str, Enum):
 @dataclass(frozen=True)
 class DeveloperDiagnostic:
     """Evidence-backed diagnosis candidate derived from an observed failure."""
-
     symptom: str
     likely_files: tuple[str, ...]
     evidence: tuple[str, ...]
     confidence: float
-
     def as_dict(self) -> dict[str, object]:
         return {"symptom": self.symptom, "likely_files": list(self.likely_files), "evidence": list(self.evidence), "confidence": self.confidence}
 
@@ -36,14 +34,12 @@ class DeveloperDiagnostic:
 @dataclass(frozen=True)
 class DeveloperPatchPlan:
     """A reviewable patch plan; it never writes to the workspace by itself."""
-
     objective: str
     target_files: tuple[str, ...]
     dependency_files: tuple[str, ...]
     steps: tuple[str, ...]
     validation: tuple[str, ...]
     confidence: float
-
     def as_dict(self) -> dict[str, object]:
         return {"objective": self.objective, "target_files": list(self.target_files), "dependency_files": list(self.dependency_files), "steps": list(self.steps), "validation": list(self.validation), "confidence": self.confidence}
 
@@ -51,14 +47,12 @@ class DeveloperPatchPlan:
 @dataclass(frozen=True)
 class DeveloperPatchAudit:
     """Stable, non-secret audit metadata for a proposed patch artifact."""
-
     fingerprint: str
     file_count: int
     changed_lines: int
     risk: str
     allowed: bool
     requires_approval: bool
-
     def as_dict(self) -> dict[str, object]:
         return {"fingerprint": self.fingerprint, "file_count": self.file_count, "changed_lines": self.changed_lines, "risk": self.risk, "allowed": self.allowed, "requires_approval": self.requires_approval}
 
@@ -66,14 +60,12 @@ class DeveloperPatchAudit:
 @dataclass(frozen=True)
 class DeveloperPatchArtifact:
     """A concrete, policy-checked unified diff generated without mutating files."""
-
     files: tuple[str, ...]
     diff: str
     additions: int
     deletions: int
     policy: DeveloperPolicyDecision | None = None
     audit: DeveloperPatchAudit | None = None
-
     def as_dict(self) -> dict[str, object]:
         return {"files": list(self.files), "diff": self.diff, "additions": self.additions, "deletions": self.deletions, "policy": self.policy.as_dict() if self.policy else None, "audit": self.audit.as_dict() if self.audit else None}
 
@@ -81,11 +73,9 @@ class DeveloperPatchArtifact:
 @dataclass(frozen=True)
 class DeveloperVerificationPlan:
     """Safe validation commands derived from a developer patch plan."""
-
     focused_command: str
     full_command: str
     rationale: tuple[str, ...]
-
     def as_dict(self) -> dict[str, object]:
         return {"focused_command": self.focused_command, "full_command": self.full_command, "rationale": list(self.rationale)}
 
@@ -93,12 +83,10 @@ class DeveloperVerificationPlan:
 @dataclass(frozen=True)
 class DeveloperImpactReport:
     """Deterministic change-impact evidence derived from the dependency graph."""
-
     changed_files: tuple[str, ...]
     affected_files: tuple[str, ...]
     affected_count: int
     evidence: tuple[str, ...]
-
     def as_dict(self) -> dict[str, object]:
         return {"changed_files": list(self.changed_files), "affected_files": list(self.affected_files), "affected_count": self.affected_count, "evidence": list(self.evidence)}
 
@@ -106,13 +94,11 @@ class DeveloperImpactReport:
 @dataclass(frozen=True)
 class DeveloperVerificationResult:
     """Structured verification evidence; execution is intentionally external."""
-
     command: str
     status: str
     exit_code: int | None
     output: str
     evidence: tuple[str, ...]
-
     def as_dict(self) -> dict[str, object]:
         return {"command": self.command, "status": self.status, "exit_code": self.exit_code, "output": self.output, "evidence": list(self.evidence)}
 
@@ -120,13 +106,11 @@ class DeveloperVerificationResult:
 @dataclass(frozen=True)
 class DeveloperContext:
     """Evidence-backed code context prepared for a developer workflow."""
-
     action: DeveloperAction
     objective: str
     workspace_id: UUID | None
     repository_summary: dict[str, object]
     matches: tuple[CodeSearchResult, ...]
-
     def as_prompt_context(self, *, max_chars: int = 12_000) -> str:
         lines = ["DEVELOPER CODE CONTEXT:", f"Action: {self.action.value}", f"Objective: {self.objective}", f"Repository: {self.repository_summary}"]
         for match in self.matches:
@@ -136,7 +120,6 @@ class DeveloperContext:
 
 class DeveloperAgent:
     """Evidence-first code understanding, diagnosis, and future code execution."""
-
     _ACTION_HINTS = {DeveloperAction.PATCH: ("fix", "change", "modify", "implement", "patch", "refactor"), DeveloperAction.TEST: ("test", "tests", "pytest", "verify", "coverage"), DeveloperAction.DIAGNOSE: ("bug", "error", "failure", "broken", "debug", "diagnose")}
     _ERROR_RE = re.compile(r"(?:error|exception|failure|failed|traceback|assertionerror|typeerror|valueerror|keyerror)\b[^\n]{0,180}", re.IGNORECASE)
     _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_.\-/]+$")
@@ -149,13 +132,11 @@ class DeveloperAgent:
     def infer_action(cls, objective: str) -> DeveloperAction:
         lowered = objective.lower()
         for action in (DeveloperAction.PATCH, DeveloperAction.TEST, DeveloperAction.DIAGNOSE):
-            if any(hint in lowered for hint in cls._ACTION_HINTS[action]):
-                return action
+            if any(hint in lowered for hint in cls._ACTION_HINTS[action]): return action
         return DeveloperAction.INSPECT
 
     def prepare(self, task: Task, *, query: str | None = None, top_k: int = 8) -> DeveloperContext:
-        if task.workspace_id is not None and self.indexer.workspace_id not in (None, task.workspace_id):
-            raise ValueError("code index belongs to a different workspace")
+        if task.workspace_id is not None and self.indexer.workspace_id not in (None, task.workspace_id): raise ValueError("code index belongs to a different workspace")
         if not self.indexer.files(): self.indexer.build()
         matches = self.indexer.search(query or task.objective, top_k=top_k)
         return DeveloperContext(self.infer_action(task.objective), task.objective, task.workspace_id, self.indexer.summary(), matches)
@@ -195,17 +176,16 @@ class DeveloperAgent:
         policy = self.policy.evaluate(tuple(sorted(changes)), additions=additions, deletions=deletions, approved=approved)
         if not policy.allowed: raise ValueError(f"developer patch rejected: {policy.reasons[0] if policy.reasons else 'developer patch rejected by policy'}")
         files = tuple(sorted(changes))
-        audit_payload = f"{'|'.join(files)}\n{additions}\n{deletions}\n{policy.risk.value}"
+        patch_diff = "\n".join(chunks)
+        audit_payload = f"NEXUS-PATCH-AUDIT-V2\n{'|'.join(files)}\n{additions}\n{deletions}\n{policy.risk.value}\n{patch_diff}"
         audit = DeveloperPatchAudit(hashlib.sha256(audit_payload.encode("utf-8")).hexdigest(), len(files), additions + deletions, policy.risk.value, policy.allowed, policy.requires_approval)
-        return DeveloperPatchArtifact(files, "\n".join(chunks), additions, deletions, policy, audit)
+        return DeveloperPatchArtifact(files, patch_diff, additions, deletions, policy, audit)
 
     @staticmethod
     def authorize_patch_execution(artifact: DeveloperPatchArtifact, *, approval: DeveloperApproval | None = None) -> bool:
         """Enforce the final execution boundary against the exact audited patch."""
-        if artifact.policy is None or artifact.audit is None or not artifact.policy.allowed or not artifact.audit.allowed:
-            return False
-        if artifact.policy.risk is not PatchRisk.HIGH:
-            return True
+        if artifact.policy is None or artifact.audit is None or not artifact.policy.allowed or not artifact.audit.allowed: return False
+        if artifact.policy.risk is not PatchRisk.HIGH: return True
         return approval is not None and approval.is_approved and approval.matches(artifact.audit.fingerprint)
 
     def build_verification_plan(self, patch: DeveloperPatchPlan) -> DeveloperVerificationPlan:
