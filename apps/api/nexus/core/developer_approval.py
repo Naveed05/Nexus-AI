@@ -62,6 +62,18 @@ class DeveloperApproval:
             raise ValueError("now must include a timezone offset")
         return timestamp <= current.astimezone(timezone.utc) + timedelta(seconds=max_future_seconds)
 
+    def is_fresh(self, *, now: datetime | None = None, max_age_seconds: int = 3600) -> bool:
+        """Require a decided approval to remain within a bounded execution window."""
+        if max_age_seconds < 0:
+            raise ValueError("max_age_seconds must be non-negative")
+        timestamp = datetime.fromisoformat(self.decided_at.replace("Z", "+00:00"))
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise ValueError("now must include a timezone offset")
+        current_utc = current.astimezone(timezone.utc)
+        timestamp_utc = timestamp.astimezone(timezone.utc)
+        return timestamp_utc <= current_utc and current_utc - timestamp_utc <= timedelta(seconds=max_age_seconds)
+
     def as_dict(self) -> dict[str, str | bool]:
         return {
             "patch_fingerprint": self.patch_fingerprint,
