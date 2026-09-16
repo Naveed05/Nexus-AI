@@ -8,7 +8,7 @@ import re
 from uuid import UUID
 
 from .code_index import CodeSearchResult, CodebaseIndexer
-from .developer_policy import DeveloperPolicy, DeveloperPolicyDecision
+from .developer_policy import DeveloperPolicy, DeveloperPolicyDecision, PatchRisk
 from .task import Task
 
 
@@ -321,7 +321,7 @@ class DeveloperAgent:
             changed_lines=additions + deletions,
             risk=policy.risk.value,
             allowed=policy.allowed,
-            requires_approval=policy.requires_approval,
+            requires_approval=policy.risk is PatchRisk.HIGH,
         )
         return DeveloperPatchArtifact(
             files=files,
