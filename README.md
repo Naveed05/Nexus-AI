@@ -179,6 +179,21 @@ The persistent-memory foundation provides workspace-scoped durable records, SQLi
 
 Memory is treated as prior context rather than a source of truth, so current evidence can override stale remembered context.
 
+### 🖼️ Multimodal intelligence
+
+The multimodal foundation provides a safe contract for text, image, audio, and video inputs:
+
+- immutable content-addressed asset descriptors
+- SHA-256 identity for exact input provenance
+- bounded media ingestion
+- workspace isolation checks
+- deterministic modality-to-capability routing
+- explicit vision, OCR, speech, temporal, and grounding capabilities
+- evidence envelopes bound to the exact source asset
+- validated metadata and timezone-aware provenance
+
+This foundation is designed so model-backed multimodal analysis can be added without weakening NEXUS's verification and provenance guarantees.
+
 ## ✅ Verification-first design
 
 NEXUS does not treat model output as automatically trustworthy.
@@ -240,8 +255,9 @@ NEXUS has progressed beyond the original kernel prototype into a multi-layer AI 
 - deterministic evaluation foundations
 - developer intelligence and safe patch execution
 - persistent workspace-scoped memory foundations
+- multimodal asset, routing, and evidence foundations
 
-The next major engineering focus is **Multimodal Intelligence**, followed by advanced agentic execution, stronger evaluation/security, and a real product frontend/deployment stack.
+The next major engineering focus is **Advanced Agentic Execution**, followed by advanced frontier-model workflows, stronger evaluation/security, and a real product frontend/deployment stack.
 
 ## Roadmap
 
@@ -259,8 +275,8 @@ The next major engineering focus is **Multimodal Intelligence**, followed by adv
 [✓] Evaluation Foundation
 [✓] Developer Intelligence
 [✓] Persistent Memory Foundation
-[→] Multimodal Intelligence
-[ ] Advanced Agentic Execution
+[✓] Multimodal Intelligence Foundation
+[→] Advanced Agentic Execution
 [ ] Advanced Frontier-Model Workflows
 [ ] Evaluation & Benchmark Platform
 [ ] Security & Human Control Hardening
@@ -325,7 +341,8 @@ apps/api/nexus/
 │   ├── retrieval.py
 │   ├── knowledge.py
 │   ├── research.py
-│   └── memory.py
+│   ├── memory.py
+│   └── multimodal.py
 └── tests/        # automated regression coverage
 ```
 
