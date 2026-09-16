@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 import re
 
@@ -40,9 +40,27 @@ class DeveloperApproval:
     def is_approved(self) -> bool:
         return self.status is ApprovalStatus.APPROVED
 
+    @property
+    def is_pending(self) -> bool:
+        return self.status is ApprovalStatus.PENDING
+
+    @property
+    def is_decided(self) -> bool:
+        return self.status is not ApprovalStatus.PENDING
+
     def matches(self, patch_fingerprint: str) -> bool:
         """Return True only when this decision targets the exact patch artifact."""
         return bool(patch_fingerprint) and self.patch_fingerprint == patch_fingerprint
+
+    def is_time_valid(self, *, now: datetime | None = None, max_future_seconds: int = 30) -> bool:
+        """Reject approvals whose timestamp is implausibly in the future."""
+        if max_future_seconds < 0:
+            raise ValueError("max_future_seconds must be non-negative")
+        timestamp = datetime.fromisoformat(self.decided_at.replace("Z", "+00:00"))
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise ValueError("now must include a timezone offset")
+        return timestamp <= current.astimezone(timezone.utc) + timedelta(seconds=max_future_seconds)
 
     def as_dict(self) -> dict[str, str | bool]:
         return {
@@ -52,6 +70,8 @@ class DeveloperApproval:
             "reason": self.reason,
             "decided_at": self.decided_at,
             "is_approved": self.is_approved,
+            "is_pending": self.is_pending,
+            "is_decided": self.is_decided,
         }
 
     @classmethod
