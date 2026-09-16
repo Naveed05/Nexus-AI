@@ -167,7 +167,19 @@ VERIFICATION
 
 High-risk capabilities are designed to require stronger controls rather than silently executing privileged actions.
 
-### ✅ Verification-first design
+### 👨‍💻 Developer intelligence
+
+NEXUS now includes an evidence-first developer workflow with deterministic patch planning, impact analysis, verification planning, patch audit fingerprints, approval provenance, execution boundaries, approval freshness, and high-confidence secret-content blocking.
+
+Developer changes are represented as immutable, reviewable artifacts before execution. High-risk patches require an exact, approved, fresh audit fingerprint.
+
+### 🧠 Persistent memory
+
+The persistent-memory foundation provides workspace-scoped durable records, SQLite persistence, deterministic ranked recall, confidence-aware context rendering, reinforcement, deduplication, and explicit forgetting controls.
+
+Memory is treated as prior context rather than a source of truth, so current evidence can override stale remembered context.
+
+## ✅ Verification-first design
 
 NEXUS does not treat model output as automatically trustworthy.
 
@@ -226,8 +238,10 @@ NEXUS has progressed beyond the original kernel prototype into a multi-layer AI 
 - evidence-first research
 - research-agent orchestration
 - deterministic evaluation foundations
+- developer intelligence and safe patch execution
+- persistent workspace-scoped memory foundations
 
-The next major engineering focus is **Developer Intelligence**, followed by persistent memory, multimodal intelligence, advanced agentic execution, stronger evaluation/security, and a real product frontend/deployment stack.
+The next major engineering focus is **Multimodal Intelligence**, followed by advanced agentic execution, stronger evaluation/security, and a real product frontend/deployment stack.
 
 ## Roadmap
 
@@ -243,9 +257,9 @@ The next major engineering focus is **Developer Intelligence**, followed by pers
 [✓] Knowledge Engine / RAG
 [✓] Research Agent
 [✓] Evaluation Foundation
-[→] Developer Intelligence
-[ ] Persistent Memory
-[ ] Multimodal Intelligence
+[✓] Developer Intelligence
+[✓] Persistent Memory Foundation
+[→] Multimodal Intelligence
 [ ] Advanced Agentic Execution
 [ ] Advanced Frontier-Model Workflows
 [ ] Evaluation & Benchmark Platform
@@ -257,83 +271,3 @@ The next major engineering focus is **Developer Intelligence**, followed by pers
 ```
 
 ## Technology direction
-
-**Backend**
-- Python
-- FastAPI
-- Pydantic
-- pytest
-
-**AI / ML**
-- OpenAI models
-- Hugging Face ecosystem
-- scikit-learn
-- Polars / Pandas
-- PyTorch-oriented integrations
-
-**Data / Retrieval**
-- DuckDB direction
-- PostgreSQL / pgvector direction
-- hybrid retrieval
-- embeddings
-- durable vector indexing
-
-**Infrastructure direction**
-- Docker
-- GitHub Actions
-- Redis
-- object storage
-- OpenTelemetry
-- production cloud deployment
-
-## Repository structure
-
-```text
-apps/api/nexus/
-├── api/          # HTTP API
-├── core/
-│   ├── engine.py
-│   ├── planner.py
-│   ├── router.py
-│   ├── executor.py
-│   ├── tools.py
-│   ├── permissions.py
-│   ├── sandbox.py
-│   ├── verification.py
-│   ├── evaluation.py
-│   ├── data_engine.py
-│   ├── data_pipeline.py
-│   ├── datasets.py
-│   ├── dataset_workspace.py
-│   ├── workspaces.py
-│   ├── files.py
-│   ├── documents.py
-│   ├── retrieval.py
-│   ├── knowledge.py
-│   └── research.py
-└── tests/        # automated regression coverage
-```
-
-## Quality bar
-
-The goal is to make NEXUS more than an impressive demo. Every major subsystem is expected to earn its place through:
-
-- automated tests
-- deterministic behavior where possible
-- explicit contracts
-- failure handling
-- permission boundaries
-- evidence tracking
-- regression evaluation
-- CI validation
-- observable execution
-
-## Long-term vision
-
-NEXUS is intended to become a general AI work platform where a user can state a goal naturally and receive a verified, reproducible result — whether the work involves research, data, code, documents, analysis, or multimodal information.
-
-> **Don't just ask AI for an answer. Give it a goal, let it do the work, and make it prove the result.**
-
-## License
-
-TBD during the productization phase.
