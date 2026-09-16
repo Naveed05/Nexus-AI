@@ -7,6 +7,7 @@ import re
 from uuid import UUID
 
 from .code_index import CodeSearchResult, CodebaseIndexer
+from .developer_policy import DeveloperPolicy, DeveloperPolicyDecision
 from .task import Task
 
 
@@ -59,12 +60,13 @@ class DeveloperPatchPlan:
 
 @dataclass(frozen=True)
 class DeveloperPatchArtifact:
-    """A concrete, reviewable unified diff generated without mutating files."""
+    """A concrete, policy-checked unified diff generated without mutating files."""
 
     files: tuple[str, ...]
     diff: str
     additions: int
     deletions: int
+    policy: DeveloperPolicyDecision | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -72,6 +74,7 @@ class DeveloperPatchArtifact:
             "diff": self.diff,
             "additions": self.additions,
             "deletions": self.deletions,
+            "policy": self.policy.as_dict() if self.policy else None,
         }
 
 
@@ -168,8 +171,9 @@ class DeveloperAgent:
     )
     _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_.\-/]+$")
 
-    def __init__(self, indexer: CodebaseIndexer) -> None:
+    def __init__(self, indexer: CodebaseIndexer, *, policy: DeveloperPolicy | None = None) -> None:
         self.indexer = indexer
+        self.policy = policy or DeveloperPolicy()
 
     @classmethod
     def infer_action(cls, objective: str) -> DeveloperAction:
@@ -248,8 +252,9 @@ class DeveloperAgent:
         changes: dict[str, tuple[str, str]],
         *,
         context_lines: int = 3,
+        approved: bool = False,
     ) -> DeveloperPatchArtifact:
-        """Build a unified diff from explicit before/after text without writing files."""
+        """Build and policy-check a unified diff without writing files."""
         if context_lines < 0 or context_lines > 20:
             raise ValueError("context_lines must be between 0 and 20")
         import difflib
@@ -272,11 +277,23 @@ class DeveloperAgent:
             deletions += sum(1 for line in diff if line.startswith("-") and not line.startswith("---"))
             if diff:
                 chunks.append("".join(diff))
+
+        policy = self.policy.evaluate(
+            tuple(sorted(changes)),
+            additions=additions,
+            deletions=deletions,
+            approved=approved,
+        )
+        if not policy.allowed:
+            reason = policy.reasons[0] if policy.reasons else "developer patch rejected by policy"
+            raise ValueError(f"developer patch rejected: {reason}")
+
         return DeveloperPatchArtifact(
             files=tuple(sorted(changes)),
             diff="\n".join(chunks),
             additions=additions,
             deletions=deletions,
+            policy=policy,
         )
 
     def build_verification_plan(self, patch: DeveloperPatchPlan) -> DeveloperVerificationPlan:
