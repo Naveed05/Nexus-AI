@@ -67,20 +67,22 @@ def test_developer_agent_builds_non_mutating_policy_checked_patch_artifact(tmp_p
     assert artifact.audit is not None
     assert len(artifact.audit.fingerprint) == 64
     assert artifact.audit.file_count == 1 and artifact.audit.changed_lines == 2
-    assert artifact.audit.fingerprint == hashlib.sha256("router.py\n1\n1\nlow".encode("utf-8")).hexdigest()
+    expected_payload = "NEXUS-PATCH-AUDIT-V2\nrouter.py\n1\n1\nlow\n" + artifact.diff
+    assert artifact.audit.fingerprint == hashlib.sha256(expected_payload.encode("utf-8")).hexdigest()
     assert artifact.audit.requires_approval is False
     assert (tmp_path / "router.py").exists() is False
 
 
-def test_patch_audit_fingerprint_is_stable_and_changes_with_metadata(tmp_path: Path):
+def test_patch_audit_fingerprint_is_stable_and_binds_exact_diff_content(tmp_path: Path):
     agent = DeveloperAgent(CodebaseIndexer(tmp_path))
-    changes = {"router.py": ("old\n", "new\n")}
-    first = agent.build_patch_artifact(changes)
-    second = agent.build_patch_artifact(changes)
-    different = agent.build_patch_artifact({"router.py": ("old\n", "new\nchanged\n")})
+    first = agent.build_patch_artifact({"router.py": ("old\n", "new\n")})
+    second = agent.build_patch_artifact({"router.py": ("old\n", "new\n")})
+    different = agent.build_patch_artifact({"router.py": ("before\n", "after\n")})
     assert first.audit is not None and second.audit is not None and different.audit is not None
     assert first.audit.fingerprint == second.audit.fingerprint
     assert first.audit.fingerprint != different.audit.fingerprint
+    assert first.audit.file_count == different.audit.file_count == 1
+    assert first.audit.changed_lines == different.audit.changed_lines == 2
 
 
 def test_developer_agent_blocks_sensitive_patch_artifact(tmp_path: Path):
