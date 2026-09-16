@@ -194,6 +194,20 @@ The multimodal foundation provides a safe contract for text, image, audio, and v
 
 This foundation is designed so model-backed multimodal analysis can be added without weakening NEXUS's verification and provenance guarantees.
 
+### ⚙️ Advanced agentic execution
+
+NEXUS now has bounded adaptive-execution contracts for autonomous workflows:
+
+- hard limits for plan steps, execution attempts, and replans
+- deterministic replan decisions
+- explicit verification-failure recovery
+- execution-failure recovery paths
+- dependency-failure prioritization
+- auditable reasons for every replan decision
+- no replanning after successful verification
+
+These controls provide a safe foundation for multi-step autonomous execution without allowing unbounded agent loops.
+
 ## ✅ Verification-first design
 
 NEXUS does not treat model output as automatically trustworthy.
@@ -256,8 +270,9 @@ NEXUS has progressed beyond the original kernel prototype into a multi-layer AI 
 - developer intelligence and safe patch execution
 - persistent workspace-scoped memory foundations
 - multimodal asset, routing, and evidence foundations
+- bounded adaptive agentic execution foundations
 
-The next major engineering focus is **Advanced Agentic Execution**, followed by advanced frontier-model workflows, stronger evaluation/security, and a real product frontend/deployment stack.
+The next major engineering focus is **Advanced Frontier-Model Workflows**, followed by a stronger evaluation/benchmark platform, deeper security/human-control hardening, and a real product frontend/deployment stack.
 
 ## Roadmap
 
@@ -276,8 +291,8 @@ The next major engineering focus is **Advanced Agentic Execution**, followed by 
 [✓] Developer Intelligence
 [✓] Persistent Memory Foundation
 [✓] Multimodal Intelligence Foundation
-[→] Advanced Agentic Execution
-[ ] Advanced Frontier-Model Workflows
+[✓] Advanced Agentic Execution Foundation
+[→] Advanced Frontier-Model Workflows
 [ ] Evaluation & Benchmark Platform
 [ ] Security & Human Control Hardening
 [ ] Production Frontend
@@ -331,6 +346,7 @@ apps/api/nexus/
 │   ├── sandbox.py
 │   ├── verification.py
 │   ├── evaluation.py
+│   ├── advanced_execution.py
 │   ├── data_engine.py
 │   ├── data_pipeline.py
 │   ├── datasets.py
