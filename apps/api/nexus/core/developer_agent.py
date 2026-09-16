@@ -53,8 +53,9 @@ class DeveloperPatchAudit:
     risk: str
     allowed: bool
     requires_approval: bool
+    schema_version: str = "NEXUS-PATCH-AUDIT-V2"
     def as_dict(self) -> dict[str, object]:
-        return {"fingerprint": self.fingerprint, "file_count": self.file_count, "changed_lines": self.changed_lines, "risk": self.risk, "allowed": self.allowed, "requires_approval": self.requires_approval}
+        return {"fingerprint": self.fingerprint, "file_count": self.file_count, "changed_lines": self.changed_lines, "risk": self.risk, "allowed": self.allowed, "requires_approval": self.requires_approval, "schema_version": self.schema_version}
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,7 @@ class DeveloperContext:
 
 class DeveloperAgent:
     """Evidence-first code understanding, diagnosis, and future code execution."""
+    AUDIT_SCHEMA_VERSION = "NEXUS-PATCH-AUDIT-V2"
     _ACTION_HINTS = {DeveloperAction.PATCH: ("fix", "change", "modify", "implement", "patch", "refactor"), DeveloperAction.TEST: ("test", "tests", "pytest", "verify", "coverage"), DeveloperAction.DIAGNOSE: ("bug", "error", "failure", "broken", "debug", "diagnose")}
     _ERROR_RE = re.compile(r"(?:error|exception|failure|failed|traceback|assertionerror|typeerror|valueerror|keyerror)\b[^\n]{0,180}", re.IGNORECASE)
     _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_.\-/]+$")
@@ -175,7 +177,7 @@ class DeveloperAgent:
         policy = artifact.policy
         files = tuple(sorted(artifact.files))
         expected = cls._patch_fingerprint(files, artifact.additions, artifact.deletions, policy.risk.value, artifact.diff)
-        return (files == artifact.files and audit.file_count == len(files) and audit.changed_lines == artifact.additions + artifact.deletions and audit.risk == policy.risk.value and audit.allowed == policy.allowed and audit.requires_approval == policy.requires_approval and audit.fingerprint == expected)
+        return (files == artifact.files and audit.schema_version == cls.AUDIT_SCHEMA_VERSION and audit.file_count == len(files) and audit.changed_lines == artifact.additions + artifact.deletions and audit.risk == policy.risk.value and audit.allowed == policy.allowed and audit.requires_approval == policy.requires_approval and audit.fingerprint == expected)
 
     def build_patch_artifact(self, changes: dict[str, tuple[str, str]], *, context_lines: int = 3, approved: bool = False) -> DeveloperPatchArtifact:
         if context_lines < 0 or context_lines > 20: raise ValueError("context_lines must be between 0 and 20")
