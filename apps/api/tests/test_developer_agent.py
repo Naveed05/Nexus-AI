@@ -6,6 +6,7 @@ import pytest
 
 from nexus.core.code_index import CodebaseIndexer
 from nexus.core.developer_agent import DeveloperAction, DeveloperAgent
+from nexus.core.developer_approval import DeveloperApproval
 from nexus.core.developer_policy import DeveloperPolicy, PatchRisk
 from nexus.core.task import Task
 
@@ -46,7 +47,7 @@ def test_developer_agent_builds_reviewable_dependency_aware_patch_plan(tmp_path:
     (tmp_path / "router.py").write_text("from service import run\ndef route(task):\n    return run(task)\n", encoding="utf-8")
     (tmp_path / "service.py").write_text("def run(task):\n    return task\n", encoding="utf-8")
     agent = DeveloperAgent(CodebaseIndexer(tmp_path))
-    plan = agent.plan_patch(Task(objective="fix the router implementation"), query="route", depth=1)
+    plan = agent.plan_patch(Task(objective="fix the router implementation"), query="route", depth=1, top_k=5)
     assert plan.target_files
     assert "router.py" in plan.target_files
     assert "service.py" in plan.dependency_files
@@ -99,6 +100,41 @@ def test_developer_agent_requires_approval_for_large_patch(tmp_path: Path):
     assert approved.audit.risk == "high"
     assert approved.audit.file_count == 5
     assert approved.audit.requires_approval is False
+
+
+def test_patch_execution_boundary_requires_matching_human_approval(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path), policy=DeveloperPolicy(max_files=8, max_changed_lines=400))
+    changes = {f"file{i}.py": ("old\n", "new\n") for i in range(5)}
+    artifact = agent.build_patch_artifact(changes, approved=True)
+    assert artifact.audit is not None
+    assert DeveloperAgent.authorize_patch_execution(artifact) is False
+    assert DeveloperAgent.authorize_patch_execution(
+        artifact,
+        approval=DeveloperApproval.decide(
+            artifact.audit.fingerprint,
+            approved=True,
+            actor="human-reviewer",
+            reason="Reviewed the bounded patch.",
+        ),
+    ) is True
+
+
+def test_patch_execution_boundary_rejects_mismatched_or_rejected_approval(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path), policy=DeveloperPolicy(max_files=8, max_changed_lines=400))
+    changes = {f"file{i}.py": ("old\n", "new\n") for i in range(5)}
+    artifact = agent.build_patch_artifact(changes, approved=True)
+    assert artifact.audit is not None
+    mismatched = DeveloperApproval.decide("b" * 64, approved=True, actor="reviewer", reason="Approved another patch.")
+    rejected = DeveloperApproval.decide(artifact.audit.fingerprint, approved=False, actor="reviewer", reason="Scope is too broad.")
+    assert DeveloperAgent.authorize_patch_execution(artifact, approval=mismatched) is False
+    assert DeveloperAgent.authorize_patch_execution(artifact, approval=rejected) is False
+
+
+def test_low_risk_patch_does_not_require_human_approval_at_execution_boundary(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+    artifact = agent.build_patch_artifact({"router.py": ("old\n", "new\n")})
+    assert artifact.policy is not None and artifact.policy.risk is PatchRisk.LOW
+    assert DeveloperAgent.authorize_patch_execution(artifact) is True
 
 
 def test_developer_agent_rejects_unsafe_patch_paths(tmp_path: Path):
