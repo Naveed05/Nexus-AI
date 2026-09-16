@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from .models import ModelRegistry, ModelSpec, model_registry
+
+
+class FallbackReason(str, Enum):
+    TRANSIENT_FAILURE = "transient_failure"
+    TIMEOUT = "timeout"
+    PROVIDER_ERROR = "provider_error"
+    CAPABILITY_MISMATCH = "capability_mismatch"
 
 
 @dataclass(frozen=True)
@@ -35,6 +43,15 @@ class FrontierWorkflowPlan:
         return (self.primary, *self.fallbacks)
 
 
+@dataclass(frozen=True)
+class FallbackDecision:
+    """Auditable decision for moving to the next compatible model."""
+
+    should_fallback: bool
+    next_model: ModelSpec | None
+    reason: FallbackReason
+
+
 class FrontierWorkflowPlanner:
     """Builds a capability-safe model cascade without making execution decisions."""
 
@@ -64,3 +81,21 @@ class FrontierWorkflowPlanner:
 
     def compatible(self, model: ModelSpec, request: FrontierWorkflowRequest) -> bool:
         return self._supports(model, request)
+
+
+class FrontierFallbackController:
+    """Advances only through prevalidated compatible candidates."""
+
+    @staticmethod
+    def decide(
+        plan: FrontierWorkflowPlan,
+        *,
+        current_index: int,
+        reason: FallbackReason,
+    ) -> FallbackDecision:
+        if current_index < 0 or current_index >= len(plan.candidates):
+            raise ValueError("current_index is outside the workflow candidate range")
+        next_index = current_index + 1
+        if next_index >= len(plan.candidates):
+            return FallbackDecision(False, None, reason)
+        return FallbackDecision(True, plan.candidates[next_index], reason)
