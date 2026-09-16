@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 from uuid import uuid4
 
@@ -90,7 +91,27 @@ def test_developer_agent_builds_non_mutating_policy_checked_patch_artifact(tmp_p
     assert artifact.policy is not None
     assert artifact.policy.risk is PatchRisk.LOW
     assert artifact.policy.allowed is True
+    assert artifact.audit is not None
+    assert len(artifact.audit.fingerprint) == 64
+    assert artifact.audit.file_count == 1
+    assert artifact.audit.changed_lines == 2
+    assert artifact.audit.fingerprint == hashlib.sha256(
+        "router.py\n1\n1\nlow".encode("utf-8")
+    ).hexdigest()
     assert (tmp_path / "router.py").exists() is False
+
+
+def test_patch_audit_fingerprint_is_stable_and_changes_with_metadata(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+    changes = {"router.py": ("old\n", "new\n")}
+
+    first = agent.build_patch_artifact(changes)
+    second = agent.build_patch_artifact(changes)
+    different = agent.build_patch_artifact({"router.py": ("old\n", "new\nchanged\n")})
+
+    assert first.audit is not None and second.audit is not None and different.audit is not None
+    assert first.audit.fingerprint == second.audit.fingerprint
+    assert first.audit.fingerprint != different.audit.fingerprint
 
 
 def test_developer_agent_blocks_sensitive_patch_artifact(tmp_path: Path):
@@ -114,6 +135,10 @@ def test_developer_agent_requires_approval_for_large_patch(tmp_path: Path):
     assert approved.policy is not None
     assert approved.policy.risk is PatchRisk.HIGH
     assert approved.policy.allowed is True
+    assert approved.audit is not None
+    assert approved.audit.risk == "high"
+    assert approved.audit.file_count == 5
+    assert approved.audit.requires_approval is True
 
 
 def test_developer_agent_rejects_unsafe_patch_paths(tmp_path: Path):
