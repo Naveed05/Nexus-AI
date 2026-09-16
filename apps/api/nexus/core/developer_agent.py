@@ -8,6 +8,7 @@ import re
 from uuid import UUID
 
 from .code_index import CodeSearchResult, CodebaseIndexer
+from .developer_approval import DeveloperApproval
 from .developer_policy import DeveloperPolicy, DeveloperPolicyDecision, PatchRisk
 from .task import Task
 
@@ -197,6 +198,15 @@ class DeveloperAgent:
         audit_payload = f"{'|'.join(files)}\n{additions}\n{deletions}\n{policy.risk.value}"
         audit = DeveloperPatchAudit(hashlib.sha256(audit_payload.encode("utf-8")).hexdigest(), len(files), additions + deletions, policy.risk.value, policy.allowed, policy.requires_approval)
         return DeveloperPatchArtifact(files, "\n".join(chunks), additions, deletions, policy, audit)
+
+    @staticmethod
+    def authorize_patch_execution(artifact: DeveloperPatchArtifact, *, approval: DeveloperApproval | None = None) -> bool:
+        """Enforce the final execution boundary against the exact audited patch."""
+        if artifact.policy is None or artifact.audit is None or not artifact.policy.allowed or not artifact.audit.allowed:
+            return False
+        if artifact.policy.risk is not PatchRisk.HIGH:
+            return True
+        return approval is not None and approval.is_approved and approval.matches(artifact.audit.fingerprint)
 
     def build_verification_plan(self, patch: DeveloperPatchPlan) -> DeveloperVerificationPlan:
         focused = full = "PYTHONPATH=. pytest -q"
