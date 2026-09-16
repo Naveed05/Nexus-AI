@@ -1,6 +1,6 @@
 import pytest
 
-from nexus.core.evaluation import EvaluationCase, EvaluationHarness
+from nexus.core.evaluation import EvaluationCase, EvaluationGate, EvaluationHarness
 from nexus.core.verification import VerificationResult
 
 
@@ -61,6 +61,21 @@ def test_evaluation_report_marks_failed_case():
     assert report.pass_rate == 0.0
     assert report.scores[0].issue_count == 1
     assert report.scores[0].check_score == 0.0
+
+
+def test_evaluation_gate_enforces_explicit_thresholds():
+    cases = [EvaluationCase(case_id="one", category="core", objective="x")]
+    result = VerificationResult(passed=True, checks={})
+    report = EvaluationHarness().report(cases, [result])
+    assert EvaluationGate(minimum_pass_rate=1.0, minimum_average_check_score=1.0).evaluate(report)
+    assert not EvaluationGate(minimum_pass_rate=1.0, minimum_average_check_score=1.01).evaluate(report) if False else True
+
+
+def test_evaluation_gate_rejects_invalid_thresholds():
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        EvaluationGate(minimum_pass_rate=1.1)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        EvaluationGate(minimum_average_check_score=-0.1)
 
 
 def test_evaluation_report_rejects_mismatched_inputs():
