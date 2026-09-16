@@ -46,7 +46,7 @@ class DeveloperPatchPlan:
 
 @dataclass(frozen=True)
 class DeveloperPatchAudit:
-    """Stable, non-secret audit metadata for a proposed patch artifact."""
+    """Stable, non-secret audit metadata for a proposed patch."""
     fingerprint: str
     file_count: int
     changed_lines: int
@@ -122,6 +122,7 @@ class DeveloperContext:
 class DeveloperAgent:
     """Evidence-first code understanding, diagnosis, and future code execution."""
     AUDIT_SCHEMA_VERSION = "NEXUS-PATCH-AUDIT-V2"
+    APPROVAL_MAX_AGE_SECONDS = 3600
     _ACTION_HINTS = {DeveloperAction.PATCH: ("fix", "change", "modify", "implement", "patch", "refactor"), DeveloperAction.TEST: ("test", "tests", "pytest", "verify", "coverage"), DeveloperAction.DIAGNOSE: ("bug", "error", "failure", "broken", "debug", "diagnose")}
     _ERROR_RE = re.compile(r"(?:error|exception|failure|failed|traceback|assertionerror|typeerror|valueerror|keyerror)\b[^\n]{0,180}", re.IGNORECASE)
     _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_.\-/]+$")
@@ -205,7 +206,7 @@ class DeveloperAgent:
         if not cls.verify_patch_audit(artifact): return False
         if artifact.policy is None or artifact.audit is None or not artifact.policy.allowed or not artifact.audit.allowed: return False
         if artifact.policy.risk is not PatchRisk.HIGH: return True
-        return approval is not None and approval.is_approved and approval.is_time_valid() and approval.matches(artifact.audit.fingerprint)
+        return approval is not None and approval.is_approved and approval.is_time_valid() and approval.is_fresh(max_age_seconds=cls.APPROVAL_MAX_AGE_SECONDS) and approval.matches(artifact.audit.fingerprint)
 
     def build_verification_plan(self, patch: DeveloperPatchPlan) -> DeveloperVerificationPlan:
         focused = full = "PYTHONPATH=. pytest -q"
