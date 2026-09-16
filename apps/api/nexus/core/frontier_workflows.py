@@ -15,18 +15,24 @@ class FallbackReason(str, Enum):
 
 @dataclass(frozen=True)
 class FrontierWorkflowRequest:
-    """Explicit model requirements for a frontier-model workflow."""
+    """Explicit model requirements and operational budgets for a frontier workflow."""
 
     required_capabilities: frozenset[str] = frozenset()
     reasoning_level: str = "medium"
     minimum_context_window: int = 0
     require_tools: bool = False
+    maximum_cost_score: int | None = None
+    maximum_latency_score: int | None = None
 
     def __post_init__(self) -> None:
         if self.reasoning_level not in {"low", "medium", "high", "xhigh", "max"}:
             raise ValueError("unsupported reasoning level")
         if self.minimum_context_window < 0:
             raise ValueError("minimum_context_window cannot be negative")
+        if self.maximum_cost_score is not None and self.maximum_cost_score < 0:
+            raise ValueError("maximum_cost_score cannot be negative")
+        if self.maximum_latency_score is not None and self.maximum_latency_score < 0:
+            raise ValueError("maximum_latency_score cannot be negative")
 
 
 @dataclass(frozen=True)
@@ -53,7 +59,7 @@ class FallbackDecision:
 
 
 class FrontierWorkflowPlanner:
-    """Builds a capability-safe model cascade without making execution decisions."""
+    """Build a capability-safe model cascade without making execution decisions."""
 
     def __init__(self, registry: ModelRegistry | None = None) -> None:
         self._registry = registry or model_registry
@@ -65,6 +71,8 @@ class FrontierWorkflowPlanner:
             and request.reasoning_level in spec.reasoning_levels
             and spec.context_window >= request.minimum_context_window
             and (not request.require_tools or spec.supports_tools)
+            and (request.maximum_cost_score is None or spec.cost_score <= request.maximum_cost_score)
+            and (request.maximum_latency_score is None or spec.latency_score <= request.maximum_latency_score)
         )
 
     def plan(self, request: FrontierWorkflowRequest) -> FrontierWorkflowPlan:
