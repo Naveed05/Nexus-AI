@@ -64,10 +64,17 @@ def test_evaluation_report_marks_failed_case():
 
 
 def test_evaluation_gate_enforces_explicit_thresholds():
-    cases = [EvaluationCase(case_id="one", category="core", objective="x")]
-    report = EvaluationHarness().report(cases, [VerificationResult(passed=True, checks={})])
-    assert EvaluationGate(minimum_pass_rate=1.0, minimum_average_check_score=1.0).evaluate(report)
-    assert not EvaluationGate(minimum_pass_rate=1.0, minimum_average_check_score=1.1).evaluate(report) if False else True
+    passing = EvaluationHarness().report(
+        [EvaluationCase(case_id="one", category="core", objective="x")],
+        [VerificationResult(passed=True, checks={})],
+    )
+    assert EvaluationGate(minimum_pass_rate=1.0, minimum_average_check_score=1.0).evaluate(passing)
+
+    failing = EvaluationHarness().report(
+        [EvaluationCase(case_id="one", category="core", objective="x")],
+        [VerificationResult(passed=False, checks={})],
+    )
+    assert not EvaluationGate(minimum_pass_rate=1.0).evaluate(failing)
 
 
 def test_evaluation_gate_rejects_invalid_thresholds():
