@@ -29,12 +29,7 @@ class DeveloperDiagnostic:
     confidence: float
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "symptom": self.symptom,
-            "likely_files": list(self.likely_files),
-            "evidence": list(self.evidence),
-            "confidence": self.confidence,
-        }
+        return {"symptom": self.symptom, "likely_files": list(self.likely_files), "evidence": list(self.evidence), "confidence": self.confidence}
 
 
 @dataclass(frozen=True)
@@ -49,14 +44,7 @@ class DeveloperPatchPlan:
     confidence: float
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "objective": self.objective,
-            "target_files": list(self.target_files),
-            "dependency_files": list(self.dependency_files),
-            "steps": list(self.steps),
-            "validation": list(self.validation),
-            "confidence": self.confidence,
-        }
+        return {"objective": self.objective, "target_files": list(self.target_files), "dependency_files": list(self.dependency_files), "steps": list(self.steps), "validation": list(self.validation), "confidence": self.confidence}
 
 
 @dataclass(frozen=True)
@@ -71,14 +59,7 @@ class DeveloperPatchAudit:
     requires_approval: bool
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "fingerprint": self.fingerprint,
-            "file_count": self.file_count,
-            "changed_lines": self.changed_lines,
-            "risk": self.risk,
-            "allowed": self.allowed,
-            "requires_approval": self.requires_approval,
-        }
+        return {"fingerprint": self.fingerprint, "file_count": self.file_count, "changed_lines": self.changed_lines, "risk": self.risk, "allowed": self.allowed, "requires_approval": self.requires_approval}
 
 
 @dataclass(frozen=True)
@@ -93,14 +74,7 @@ class DeveloperPatchArtifact:
     audit: DeveloperPatchAudit | None = None
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "files": list(self.files),
-            "diff": self.diff,
-            "additions": self.additions,
-            "deletions": self.deletions,
-            "policy": self.policy.as_dict() if self.policy else None,
-            "audit": self.audit.as_dict() if self.audit else None,
-        }
+        return {"files": list(self.files), "diff": self.diff, "additions": self.additions, "deletions": self.deletions, "policy": self.policy.as_dict() if self.policy else None, "audit": self.audit.as_dict() if self.audit else None}
 
 
 @dataclass(frozen=True)
@@ -112,11 +86,7 @@ class DeveloperVerificationPlan:
     rationale: tuple[str, ...]
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "focused_command": self.focused_command,
-            "full_command": self.full_command,
-            "rationale": list(self.rationale),
-        }
+        return {"focused_command": self.focused_command, "full_command": self.full_command, "rationale": list(self.rationale)}
 
 
 @dataclass(frozen=True)
@@ -129,12 +99,7 @@ class DeveloperImpactReport:
     evidence: tuple[str, ...]
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "changed_files": list(self.changed_files),
-            "affected_files": list(self.affected_files),
-            "affected_count": self.affected_count,
-            "evidence": list(self.evidence),
-        }
+        return {"changed_files": list(self.changed_files), "affected_files": list(self.affected_files), "affected_count": self.affected_count, "evidence": list(self.evidence)}
 
 
 @dataclass(frozen=True)
@@ -148,13 +113,7 @@ class DeveloperVerificationResult:
     evidence: tuple[str, ...]
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "command": self.command,
-            "status": self.status,
-            "exit_code": self.exit_code,
-            "output": self.output,
-            "evidence": list(self.evidence),
-        }
+        return {"command": self.command, "status": self.status, "exit_code": self.exit_code, "output": self.output, "evidence": list(self.evidence)}
 
 
 @dataclass(frozen=True)
@@ -168,32 +127,17 @@ class DeveloperContext:
     matches: tuple[CodeSearchResult, ...]
 
     def as_prompt_context(self, *, max_chars: int = 12_000) -> str:
-        lines = [
-            "DEVELOPER CODE CONTEXT:",
-            f"Action: {self.action.value}",
-            f"Objective: {self.objective}",
-            f"Repository: {self.repository_summary}",
-        ]
+        lines = ["DEVELOPER CODE CONTEXT:", f"Action: {self.action.value}", f"Objective: {self.objective}", f"Repository: {self.repository_summary}"]
         for match in self.matches:
-            lines.append(
-                f"[File: {match.file.path} | language={match.file.language} | score={match.score:.2f}]\n"
-                f"{match.file.text[:2500]}"
-            )
+            lines.append(f"[File: {match.file.path} | language={match.file.language} | score={match.score:.2f}]\n{match.file.text[:2500]}")
         return "\n\n".join(lines)[:max_chars]
 
 
 class DeveloperAgent:
     """Evidence-first code understanding, diagnosis, and future code execution."""
 
-    _ACTION_HINTS = {
-        DeveloperAction.PATCH: ("fix", "change", "modify", "implement", "patch", "refactor"),
-        DeveloperAction.TEST: ("test", "tests", "pytest", "verify", "coverage"),
-        DeveloperAction.DIAGNOSE: ("bug", "error", "failure", "broken", "debug", "diagnose"),
-    }
-    _ERROR_RE = re.compile(
-        r"(?:error|exception|failure|failed|traceback|assertionerror|typeerror|valueerror|keyerror)\b[^\n]{0,180}",
-        re.IGNORECASE,
-    )
+    _ACTION_HINTS = {DeveloperAction.PATCH: ("fix", "change", "modify", "implement", "patch", "refactor"), DeveloperAction.TEST: ("test", "tests", "pytest", "verify", "coverage"), DeveloperAction.DIAGNOSE: ("bug", "error", "failure", "broken", "debug", "diagnose")}
+    _ERROR_RE = re.compile(r"(?:error|exception|failure|failed|traceback|assertionerror|typeerror|valueerror|keyerror)\b[^\n]{0,180}", re.IGNORECASE)
     _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_.\-/]+$")
 
     def __init__(self, indexer: CodebaseIndexer, *, policy: DeveloperPolicy | None = None) -> None:
@@ -211,197 +155,71 @@ class DeveloperAgent:
     def prepare(self, task: Task, *, query: str | None = None, top_k: int = 8) -> DeveloperContext:
         if task.workspace_id is not None and self.indexer.workspace_id not in (None, task.workspace_id):
             raise ValueError("code index belongs to a different workspace")
-        if not self.indexer.files():
-            self.indexer.build()
-        search_query = query or task.objective
-        matches = self.indexer.search(search_query, top_k=top_k)
-        return DeveloperContext(
-            action=self.infer_action(task.objective),
-            objective=task.objective,
-            workspace_id=task.workspace_id,
-            repository_summary=self.indexer.summary(),
-            matches=matches,
-        )
+        if not self.indexer.files(): self.indexer.build()
+        matches = self.indexer.search(query or task.objective, top_k=top_k)
+        return DeveloperContext(self.infer_action(task.objective), task.objective, task.workspace_id, self.indexer.summary(), matches)
 
     def diagnose(self, failure: str, *, top_k: int = 5) -> DeveloperDiagnostic:
-        """Turn a test/runtime failure into a bounded, evidence-backed diagnosis candidate."""
-        if not self.indexer.files():
-            self.indexer.build()
+        if not self.indexer.files(): self.indexer.build()
         symptom_match = self._ERROR_RE.search(failure.strip())
         symptom = symptom_match.group(0).strip() if symptom_match else failure.strip()[:240]
         query_terms = re.findall(r"[A-Za-z_][A-Za-z0-9_.:/-]{2,}", failure)
         query = " ".join(dict.fromkeys(query_terms[-8:]))
         matches = self.indexer.search(query, top_k=top_k) if query else ()
-        evidence = tuple(
-            f"{match.file.path}: matched {', '.join(match.matches)} (score={match.score:.2f})"
-            for match in matches
-        )
+        evidence = tuple(f"{match.file.path}: matched {', '.join(match.matches)} (score={match.score:.2f})" for match in matches)
         confidence = min(1.0, 0.25 + 0.15 * len(matches)) if matches else 0.0
-        return DeveloperDiagnostic(
-            symptom=symptom,
-            likely_files=tuple(match.file.path for match in matches),
-            evidence=evidence,
-            confidence=round(confidence, 2),
-        )
+        return DeveloperDiagnostic(symptom, tuple(match.file.path for match in matches), evidence, round(confidence, 2))
 
     def plan_patch(self, task: Task, *, query: str | None = None, depth: int = 1, top_k: int = 5) -> DeveloperPatchPlan:
-        """Create a bounded, reviewable patch plan without modifying source files."""
         context = self.prepare(task, query=query, top_k=top_k)
         targets = tuple(match.file.path for match in context.matches)
         dependencies: list[str] = []
         for target in targets:
             for neighbor in self.indexer.dependency_neighbors(target, depth=depth):
-                if neighbor not in targets and neighbor not in dependencies:
-                    dependencies.append(neighbor)
-        steps = (
-            "Inspect the highest-ranked source matches and their local dependency neighborhood.",
-            "Identify the smallest source change that satisfies the objective without touching unrelated files.",
-            "Keep the patch reviewable and do not modify secrets or ignored workspace files.",
-        )
-        validation = (
-            "Run the focused regression tests for the changed behavior.",
-            "Run the broader API test suite before merging.",
-        )
-        confidence = round(min(1.0, 0.35 + 0.12 * len(targets) + 0.05 * len(dependencies)), 2)
-        return DeveloperPatchPlan(
-            objective=task.objective,
-            target_files=targets,
-            dependency_files=tuple(sorted(dependencies)),
-            steps=steps,
-            validation=validation,
-            confidence=confidence,
-        )
+                if neighbor not in targets and neighbor not in dependencies: dependencies.append(neighbor)
+        return DeveloperPatchPlan(task.objective, targets, tuple(sorted(dependencies)), ("Inspect the highest-ranked source matches and their local dependency neighborhood.", "Identify the smallest source change that satisfies the objective without touching unrelated files.", "Keep the patch reviewable and do not modify secrets or ignored workspace files."), ("Run the focused regression tests for the changed behavior.", "Run the broader API test suite before merging."), round(min(1.0, 0.35 + 0.12 * len(targets) + 0.05 * len(dependencies)), 2))
 
-    def build_patch_artifact(
-        self,
-        changes: dict[str, tuple[str, str]],
-        *,
-        context_lines: int = 3,
-        approved: bool = False,
-    ) -> DeveloperPatchArtifact:
-        """Build and policy-check a unified diff without writing files."""
-        if context_lines < 0 or context_lines > 20:
-            raise ValueError("context_lines must be between 0 and 20")
+    def build_patch_artifact(self, changes: dict[str, tuple[str, str]], *, context_lines: int = 3, approved: bool = False) -> DeveloperPatchArtifact:
+        if context_lines < 0 or context_lines > 20: raise ValueError("context_lines must be between 0 and 20")
         import difflib
-
         chunks: list[str] = []
-        additions = 0
-        deletions = 0
+        additions = deletions = 0
         for path in sorted(changes):
-            if not path or not self._SAFE_PATH_RE.fullmatch(path) or path.startswith("/") or ".." in Path(path).parts:
-                raise ValueError(f"unsafe patch path: {path}")
+            if not path or not self._SAFE_PATH_RE.fullmatch(path) or path.startswith("/") or ".." in Path(path).parts: raise ValueError(f"unsafe patch path: {path}")
             before, after = changes[path]
-            diff = list(difflib.unified_diff(
-                before.splitlines(keepends=True),
-                after.splitlines(keepends=True),
-                fromfile=f"a/{path}",
-                tofile=f"b/{path}",
-                n=context_lines,
-            ))
+            diff = list(difflib.unified_diff(before.splitlines(keepends=True), after.splitlines(keepends=True), fromfile=f"a/{path}", tofile=f"b/{path}", n=context_lines))
             additions += sum(1 for line in diff if line.startswith("+") and not line.startswith("+++"))
             deletions += sum(1 for line in diff if line.startswith("-") and not line.startswith("---"))
-            if diff:
-                chunks.append("".join(diff))
-
-        policy = self.policy.evaluate(
-            tuple(sorted(changes)),
-            additions=additions,
-            deletions=deletions,
-            approved=approved,
-        )
-        if not policy.allowed:
-            reason = policy.reasons[0] if policy.reasons else "developer patch rejected by policy"
-            raise ValueError(f"developer patch rejected: {reason}")
-
+            if diff: chunks.append("".join(diff))
+        policy = self.policy.evaluate(tuple(sorted(changes)), additions=additions, deletions=deletions, approved=approved)
+        if not policy.allowed: raise ValueError(f"developer patch rejected: {policy.reasons[0] if policy.reasons else 'developer patch rejected by policy'}")
         files = tuple(sorted(changes))
         audit_payload = f"{'|'.join(files)}\n{additions}\n{deletions}\n{policy.risk.value}"
-        audit = DeveloperPatchAudit(
-            fingerprint=hashlib.sha256(audit_payload.encode("utf-8")).hexdigest(),
-            file_count=len(files),
-            changed_lines=additions + deletions,
-            risk=policy.risk.value,
-            allowed=policy.allowed,
-            requires_approval=policy.risk is PatchRisk.HIGH,
-        )
-        return DeveloperPatchArtifact(
-            files=files,
-            diff="\n".join(chunks),
-            additions=additions,
-            deletions=deletions,
-            policy=policy,
-            audit=audit,
-        )
+        audit = DeveloperPatchAudit(hashlib.sha256(audit_payload.encode("utf-8")).hexdigest(), len(files), additions + deletions, policy.risk.value, policy.allowed, policy.requires_approval)
+        return DeveloperPatchArtifact(files, "\n".join(chunks), additions, deletions, policy, audit)
 
     def build_verification_plan(self, patch: DeveloperPatchPlan) -> DeveloperVerificationPlan:
-        """Translate a patch plan into deterministic, non-executing validation commands."""
-        focused = "PYTHONPATH=. pytest -q"
-        full = "PYTHONPATH=. pytest -q"
-        rationale = (
-            f"Focused validation covers the changed behavior in {len(patch.target_files)} target file(s).",
-            "Full validation reuses the repository API suite defined by CI.",
-            "Commands are returned for review; this method does not execute shell commands.",
-        )
-        return DeveloperVerificationPlan(
-            focused_command=focused,
-            full_command=full,
-            rationale=rationale,
-        )
+        focused = full = "PYTHONPATH=. pytest -q"
+        return DeveloperVerificationPlan(focused, full, (f"Focused validation covers the changed behavior in {len(patch.target_files)} target file(s).", "Full validation reuses the repository API suite defined by CI.", "Commands are returned for review; this method does not execute shell commands."))
 
     def analyze_impact(self, changed_files: tuple[str, ...], *, depth: int = 1) -> DeveloperImpactReport:
-        """Report downstream local files affected by a proposed change."""
-        if depth < 1:
-            raise ValueError("depth must be at least 1")
+        if depth < 1: raise ValueError("depth must be at least 1")
         normalized = tuple(sorted(dict.fromkeys(changed_files)))
         reverse: dict[str, set[str]] = {}
-        for edge in self.indexer.dependencies():
-            reverse.setdefault(edge.target, set()).add(edge.source)
-        seen = set(normalized)
-        frontier = set(normalized)
+        for edge in self.indexer.dependencies(): reverse.setdefault(edge.target, set()).add(edge.source)
+        seen = set(normalized); frontier = set(normalized)
         for _ in range(depth):
             next_frontier: set[str] = set()
-            for current in frontier:
-                next_frontier.update(reverse.get(current, set()) - seen)
-            seen.update(next_frontier)
-            frontier = next_frontier
-            if not frontier:
-                break
+            for current in frontier: next_frontier.update(reverse.get(current, set()) - seen)
+            seen.update(next_frontier); frontier = next_frontier
+            if not frontier: break
         affected = tuple(sorted(seen - set(normalized)))
-        evidence = tuple(
-            f"{changed}: downstream local files include {', '.join(sorted(reverse.get(changed, set())))}"
-            for changed in normalized
-            if reverse.get(changed)
-        )
-        return DeveloperImpactReport(
-            changed_files=normalized,
-            affected_files=affected,
-            affected_count=len(affected),
-            evidence=evidence,
-        )
+        evidence = tuple(f"{changed}: downstream local files include {', '.join(sorted(reverse.get(changed, set())))}" for changed in normalized if reverse.get(changed))
+        return DeveloperImpactReport(normalized, affected, len(affected), evidence)
 
     @staticmethod
-    def verification_result(
-        command: str,
-        *,
-        exit_code: int | None,
-        output: str,
-    ) -> DeveloperVerificationResult:
-        """Normalize externally collected command output into verification evidence."""
-        if not command.strip():
-            raise ValueError("command must not be empty")
-        if exit_code is None:
-            status = "not_run"
-        elif exit_code == 0:
-            status = "passed"
-        else:
-            status = "failed"
-        evidence = (
-            "Verification status is derived solely from the supplied exit code.",
-            "Command output is preserved as evidence; no command is executed here.",
-        )
-        return DeveloperVerificationResult(
-            command=command.strip(),
-            status=status,
-            exit_code=exit_code,
-            output=output,
-            evidence=evidence,
-        )
+    def verification_result(command: str, *, exit_code: int | None, output: str) -> DeveloperVerificationResult:
+        if not command.strip(): raise ValueError("command must not be empty")
+        status = "not_run" if exit_code is None else "passed" if exit_code == 0 else "failed"
+        evidence = ("Verification status is derived solely from the supplied exit code.", "Command output is preserved as evidence; no command is executed here.")
+        return DeveloperVerificationResult(command.strip(), status, exit_code, output, evidence)
