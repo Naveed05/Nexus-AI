@@ -5,6 +5,7 @@ import pytest
 
 from nexus.core.code_index import CodebaseIndexer
 from nexus.core.developer_agent import DeveloperAction, DeveloperAgent
+from nexus.core.developer_policy import DeveloperPolicy, PatchRisk
 from nexus.core.task import Task
 
 
@@ -72,7 +73,7 @@ def test_developer_agent_builds_reviewable_dependency_aware_patch_plan(tmp_path:
     assert plan.as_dict()["steps"]
 
 
-def test_developer_agent_builds_non_mutating_patch_artifact(tmp_path: Path):
+def test_developer_agent_builds_non_mutating_policy_checked_patch_artifact(tmp_path: Path):
     agent = DeveloperAgent(CodebaseIndexer(tmp_path))
     before = "def route(task):\n    return task\n"
     after = "def route(task):\n    return task.id\n"
@@ -86,7 +87,33 @@ def test_developer_agent_builds_non_mutating_patch_artifact(tmp_path: Path):
     assert "+    return task.id" in artifact.diff
     assert artifact.additions == 1
     assert artifact.deletions == 1
+    assert artifact.policy is not None
+    assert artifact.policy.risk is PatchRisk.LOW
+    assert artifact.policy.allowed is True
     assert (tmp_path / "router.py").exists() is False
+
+
+def test_developer_agent_blocks_sensitive_patch_artifact(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+
+    with pytest.raises(ValueError, match="sensitive path"):
+        agent.build_patch_artifact({"config/.env": ("x\n", "y\n")})
+
+
+def test_developer_agent_requires_approval_for_large_patch(tmp_path: Path):
+    agent = DeveloperAgent(
+        CodebaseIndexer(tmp_path),
+        policy=DeveloperPolicy(max_files=8, max_changed_lines=400),
+    )
+    changes = {f"file{i}.py": ("old\n", "new\n") for i in range(5)}
+
+    with pytest.raises(ValueError, match="requires explicit human approval"):
+        agent.build_patch_artifact(changes)
+
+    approved = agent.build_patch_artifact(changes, approved=True)
+    assert approved.policy is not None
+    assert approved.policy.risk is PatchRisk.HIGH
+    assert approved.policy.allowed is True
 
 
 def test_developer_agent_rejects_unsafe_patch_paths(tmp_path: Path):
