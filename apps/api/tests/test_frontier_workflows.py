@@ -39,6 +39,37 @@ def test_frontier_request_validates_reasoning_and_context() -> None:
         FrontierWorkflowRequest(minimum_context_window=-1)
 
 
+def test_frontier_request_validates_operational_budgets() -> None:
+    with pytest.raises(ValueError, match="cost"):
+        FrontierWorkflowRequest(maximum_cost_score=-1)
+    with pytest.raises(ValueError, match="latency"):
+        FrontierWorkflowRequest(maximum_latency_score=-1)
+    with pytest.raises(ValueError, match="fallbacks"):
+        FrontierWorkflowRequest(maximum_fallbacks=-1)
+
+
+def test_frontier_planner_honors_cost_and_latency_budgets() -> None:
+    planner = FrontierWorkflowPlanner()
+    request = FrontierWorkflowRequest(
+        required_capabilities=frozenset({"reasoning"}),
+        reasoning_level="medium",
+        maximum_cost_score=2,
+        maximum_latency_score=4,
+    )
+    plan = planner.plan(request)
+    assert all(model.cost_score <= 2 for model in plan.candidates)
+    assert all(model.latency_score <= 4 for model in plan.candidates)
+
+
+def test_frontier_planner_bounds_fallback_count() -> None:
+    planner = FrontierWorkflowPlanner()
+    plan = planner.plan(
+        FrontierWorkflowRequest(required_capabilities=frozenset({"reasoning"}), reasoning_level="medium", maximum_fallbacks=1)
+    )
+    assert len(plan.fallbacks) <= 1
+    assert len(plan.candidates) <= 2
+
+
 def test_frontier_fallback_controller_advances_in_order() -> None:
     plan = FrontierWorkflowPlanner().plan(
         FrontierWorkflowRequest(required_capabilities=frozenset({"reasoning"}), reasoning_level="medium")
