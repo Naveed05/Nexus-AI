@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePosixPath
+import re
 
 
 class PatchRisk(str, Enum):
@@ -44,6 +45,13 @@ class DeveloperPolicy:
         ".key",
         "settings.py",
     )
+    _SECRET_PATTERNS = (
+        re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
+        re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+        re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
+        re.compile(r"\b(?:xoxb|xoxp)-[A-Za-z0-9-]{20,}\b"),
+        re.compile(r"\b(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)\s*[:=]\s*['\"][^'\"]{20,}['\"]", re.IGNORECASE),
+    )
 
     def __init__(
         self,
@@ -67,6 +75,7 @@ class DeveloperPolicy:
         additions: int = 0,
         deletions: int = 0,
         approved: bool = False,
+        added_content: str = "",
     ) -> DeveloperPolicyDecision:
         normalized = tuple(dict.fromkeys(paths))
         changed_lines = additions + deletions
@@ -79,6 +88,15 @@ class DeveloperPolicy:
                 allowed=False,
                 requires_approval=False,
                 reasons=(f"unsafe or sensitive path: {unsafe[0]}",),
+            )
+
+        secret_match = self._secret_like_content(added_content)
+        if secret_match:
+            return DeveloperPolicyDecision(
+                risk=PatchRisk.BLOCKED,
+                allowed=False,
+                requires_approval=False,
+                reasons=(f"high-confidence secret material detected in added content: {secret_match}",),
             )
 
         if len(normalized) > self.max_files:
@@ -114,6 +132,14 @@ class DeveloperPolicy:
         if approved:
             reasons.append("explicit approval supplied")
         return DeveloperPolicyDecision(risk, True, risk is PatchRisk.HIGH and not approved, tuple(reasons))
+
+    def _secret_like_content(self, added_content: str) -> str | None:
+        for line in added_content.splitlines():
+            candidate = line[1:] if line.startswith("+") else line
+            for pattern in self._SECRET_PATTERNS:
+                if pattern.search(candidate):
+                    return pattern.pattern
+        return None
 
     def _unsafe_path(self, path: str) -> bool:
         if not path or path.startswith("/") or "\\" in path:
