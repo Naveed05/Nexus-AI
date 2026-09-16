@@ -49,7 +49,19 @@ def test_memory_recall_exposes_deterministic_confidence() -> None:
     assert len(matches) == 1
     assert matches[0].record == record
     assert matches[0].relevance == 1.0
-    assert matches[0].confidence == 0.9
+    assert matches[0].confidence == 0.5
+
+
+def test_memory_confidence_is_bounded_by_importance() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    low_importance = store.remember("Exact Python testing match", workspace_id=workspace, importance=0.1)
+
+    matches = store.recall_ranked("Python testing", workspace_id=workspace)
+
+    assert matches[0].record == low_importance
+    assert matches[0].relevance == 1.0
+    assert matches[0].confidence == 0.1
 
 
 def test_memory_deduplicates_and_reinforces_existing_record() -> None:
