@@ -175,15 +175,7 @@ class DeveloperAgent:
         policy = artifact.policy
         files = tuple(sorted(artifact.files))
         expected = cls._patch_fingerprint(files, artifact.additions, artifact.deletions, policy.risk.value, artifact.diff)
-        return (
-            files == artifact.files
-            and audit.file_count == len(files)
-            and audit.changed_lines == artifact.additions + artifact.deletions
-            and audit.risk == policy.risk.value
-            and audit.allowed == policy.allowed
-            and audit.requires_approval == policy.requires_approval
-            and audit.fingerprint == expected
-        )
+        return (files == artifact.files and audit.file_count == len(files) and audit.changed_lines == artifact.additions + artifact.deletions and audit.risk == policy.risk.value and audit.allowed == policy.allowed and audit.requires_approval == policy.requires_approval and audit.fingerprint == expected)
 
     def build_patch_artifact(self, changes: dict[str, tuple[str, str]], *, context_lines: int = 3, approved: bool = False) -> DeveloperPatchArtifact:
         if context_lines < 0 or context_lines > 20: raise ValueError("context_lines must be between 0 and 20")
@@ -208,12 +200,10 @@ class DeveloperAgent:
     @classmethod
     def authorize_patch_execution(cls, artifact: DeveloperPatchArtifact, *, approval: DeveloperApproval | None = None) -> bool:
         """Enforce the final execution boundary against the exact audited patch."""
-        if not cls.verify_patch_audit(artifact):
-            return False
+        if not cls.verify_patch_audit(artifact): return False
         if artifact.policy is None or artifact.audit is None or not artifact.policy.allowed or not artifact.audit.allowed: return False
-        if artifact.policy.risk is not PatchRisk.HIGH:
-            return True
-        return approval is not None and approval.is_approved and approval.matches(artifact.audit.fingerprint)
+        if artifact.policy.risk is not PatchRisk.HIGH: return True
+        return approval is not None and approval.is_approved and approval.is_time_valid() and approval.matches(artifact.audit.fingerprint)
 
     def build_verification_plan(self, patch: DeveloperPatchPlan) -> DeveloperVerificationPlan:
         focused = full = "PYTHONPATH=. pytest -q"
