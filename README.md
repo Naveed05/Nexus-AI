@@ -175,7 +175,7 @@ Developer changes are represented as immutable, reviewable artifacts before exec
 
 ### 🧠 Persistent memory
 
-The persistent-memory foundation provides workspace-scoped durable records, SQLite persistence, deterministic ranked recall, confidence-aware context rendering, reinforcement, deduplication, and explicit forgetting controls.
+The persistent-memory foundation provides workspace-scoped durable records, SQLite persistence, deterministic ranked recall, confidence-aware context rendering, reinforcement, deduplication, explicit forgetting controls, bounded record sizes, timezone-aware timestamps, and minimum-confidence recall filtering.
 
 Memory is treated as prior context rather than a source of truth, so current evidence can override stale remembered context.
 
@@ -271,3 +271,84 @@ The next major engineering focus is **Multimodal Intelligence**, followed by adv
 ```
 
 ## Technology direction
+
+**Backend**
+- Python
+- FastAPI
+- Pydantic
+- pytest
+
+**AI / ML**
+- OpenAI models
+- Hugging Face ecosystem
+- scikit-learn
+- Polars / Pandas
+- PyTorch-oriented integrations
+
+**Data / Retrieval**
+- DuckDB direction
+- PostgreSQL / pgvector direction
+- hybrid retrieval
+- embeddings
+- durable vector indexing
+
+**Infrastructure direction**
+- Docker
+- GitHub Actions
+- Redis
+- object storage
+- OpenTelemetry
+- production cloud deployment
+
+## Repository structure
+
+```text
+apps/api/nexus/
+├── api/          # HTTP API
+├── core/
+│   ├── engine.py
+│   ├── planner.py
+│   ├── router.py
+│   ├── executor.py
+│   ├── tools.py
+│   ├── permissions.py
+│   ├── sandbox.py
+│   ├── verification.py
+│   ├── evaluation.py
+│   ├── data_engine.py
+│   ├── data_pipeline.py
+│   ├── datasets.py
+│   ├── dataset_workspace.py
+│   ├── workspaces.py
+│   ├── files.py
+│   ├── documents.py
+│   ├── retrieval.py
+│   ├── knowledge.py
+│   ├── research.py
+│   └── memory.py
+└── tests/        # automated regression coverage
+```
+
+## Quality bar
+
+The goal is to make NEXUS more than an impressive demo. Every major subsystem is expected to earn its place through:
+
+- automated tests
+- deterministic behavior where possible
+- explicit contracts
+- failure handling
+- permission boundaries
+- evidence tracking
+- regression evaluation
+- CI validation
+- observable execution
+
+## Long-term vision
+
+NEXUS is intended to become a general AI work platform where a user can state a goal naturally and receive a verified, reproducible result — whether the work involves research, data, code, documents, analysis, or multimodal information.
+
+> **Don't just ask AI for an answer. Give it a goal, let it do the work, and make it prove the result.**
+
+## License
+
+TBD during the productization phase.
