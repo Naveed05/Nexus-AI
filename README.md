@@ -196,7 +196,7 @@ This foundation is designed so model-backed multimodal analysis can be added wit
 
 ### ⚙️ Advanced agentic execution
 
-NEXUS now has bounded adaptive-execution contracts for autonomous workflows:
+NEXUS has bounded adaptive-execution contracts for autonomous workflows:
 
 - hard limits for plan steps, execution attempts, and replans
 - deterministic replan decisions
@@ -207,6 +207,33 @@ NEXUS now has bounded adaptive-execution contracts for autonomous workflows:
 - no replanning after successful verification
 
 These controls provide a safe foundation for multi-step autonomous execution without allowing unbounded agent loops.
+
+### 🌐 Advanced frontier-model workflows
+
+NEXUS now has a frontier workflow foundation with:
+
+- explicit capability requirements
+- reasoning-level requirements
+- minimum context-window requirements
+- tool-capability requirements
+- cost and latency budgets
+- deterministic primary/fallback model planning
+- bounded fallback cascades
+- capability-safe fallback decisions
+- auditable provider, timeout, and transient-failure reasons
+
+### 📏 Evaluation & benchmark platform foundation
+
+The evaluation layer now supports:
+
+- deterministic observable-behavior scoring
+- explicit CI quality gates
+- category-level benchmark aggregation
+- baseline/current regression comparison
+- pass-rate, check-score, and grounding-score deltas
+- machine-readable evaluation reports
+
+The platform is designed to expand into model-routing benchmarks, larger regression suites, quality gates, and production evaluation dashboards.
 
 ## ✅ Verification-first design
 
@@ -222,20 +249,6 @@ The verifier checks observable properties such as:
 - evidence/claim overlap
 
 Research outputs must be backed by retrieved evidence before they can pass the grounding checks.
-
-## Evaluation harness
-
-NEXUS now includes a deterministic evaluation foundation for comparing observable agent behavior without exposing or depending on hidden chain-of-thought.
-
-The evaluation layer tracks:
-
-- case pass rate
-- check-level score
-- grounding score
-- issue count
-- category/case metadata
-
-This creates a foundation for future model-routing benchmarks, regression suites, quality gates, and production evaluation dashboards.
 
 ## Engineering principles
 
@@ -271,8 +284,10 @@ NEXUS has progressed beyond the original kernel prototype into a multi-layer AI 
 - persistent workspace-scoped memory foundations
 - multimodal asset, routing, and evidence foundations
 - bounded adaptive agentic execution foundations
+- frontier-model capability and fallback planning foundations
+- evaluation quality gates, category aggregation, and regression detection foundations
 
-The next major engineering focus is **Advanced Frontier-Model Workflows**, followed by a stronger evaluation/benchmark platform, deeper security/human-control hardening, and a real product frontend/deployment stack.
+The next major engineering focus is **Security & Human Control Hardening**, followed by a real product frontend/deployment stack.
 
 ## Roadmap
 
@@ -292,8 +307,8 @@ The next major engineering focus is **Advanced Frontier-Model Workflows**, follo
 [✓] Persistent Memory Foundation
 [✓] Multimodal Intelligence Foundation
 [✓] Advanced Agentic Execution Foundation
-[→] Advanced Frontier-Model Workflows
-[ ] Evaluation & Benchmark Platform
+[✓] Advanced Frontier-Model Workflow Foundation
+[→] Evaluation & Benchmark Platform
 [ ] Security & Human Control Hardening
 [ ] Production Frontend
 [ ] Productization
@@ -347,6 +362,7 @@ apps/api/nexus/
 │   ├── verification.py
 │   ├── evaluation.py
 │   ├── advanced_execution.py
+│   ├── frontier_workflows.py
 │   ├── data_engine.py
 │   ├── data_pipeline.py
 │   ├── datasets.py
