@@ -197,14 +197,15 @@ class MemoryStore:
                 haystack = f"{record.content} {' '.join(record.tags)}".lower()
                 overlap = sum(1 for term in terms if term in haystack)
                 relevance = overlap / len(terms) if terms else 0.0
-                confidence = min(1.0, relevance * 0.8 + record.importance * 0.2)
+                confidence = relevance * record.importance
                 return relevance, confidence
 
-            ranked = sorted(candidates, key=lambda record: (*signals(record), record.importance, str(record.memory_id)), reverse=True)
+            scored = [(record, *signals(record)) for record in candidates]
+            ranked = sorted(scored, key=lambda item: (item[2], item[1], item[0].importance, str(item[0].memory_id)), reverse=True)
             return tuple(
-                MemoryMatch(record=record, relevance=signals(record)[0], confidence=signals(record)[1])
-                for record in ranked[:top_k]
-                if signals(record)[0] > 0 and signals(record)[1] >= min_confidence
+                MemoryMatch(record=record, relevance=relevance, confidence=confidence)
+                for record, relevance, confidence in ranked[:top_k]
+                if relevance > 0 and confidence >= min_confidence
             )
 
     def recall(
