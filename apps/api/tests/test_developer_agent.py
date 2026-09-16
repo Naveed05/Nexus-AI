@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from nexus.core.code_index import CodebaseIndexer
-from nexus.core.developer_agent import DeveloperAction, DeveloperAgent, DeveloperPatchAudit
+from nexus.core.developer_agent import DeveloperAction, DeveloperAgent
 from nexus.core.developer_approval import DeveloperApproval
 from nexus.core.developer_policy import DeveloperPolicy, PatchRisk
 from nexus.core.task import Task
@@ -91,7 +91,6 @@ def test_patch_audit_integrity_rejects_forged_fingerprint_or_metadata(tmp_path: 
     artifact = agent.build_patch_artifact({"router.py": ("old\n", "new\n")})
     assert artifact.audit is not None
     assert DeveloperAgent.verify_patch_audit(artifact) is True
-
     forged_fingerprint = replace(artifact, audit=replace(artifact.audit, fingerprint="f" * 64))
     forged_lines = replace(artifact, audit=replace(artifact.audit, changed_lines=999))
     forged_policy_state = replace(artifact, audit=replace(artifact.audit, allowed=False))
@@ -137,15 +136,7 @@ def test_patch_execution_boundary_requires_matching_human_approval(tmp_path: Pat
     artifact = agent.build_patch_artifact(changes, approved=True)
     assert artifact.audit is not None
     assert DeveloperAgent.authorize_patch_execution(artifact) is False
-    assert DeveloperAgent.authorize_patch_execution(
-        artifact,
-        approval=DeveloperApproval.decide(
-            artifact.audit.fingerprint,
-            approved=True,
-            actor="human-reviewer",
-            reason="Reviewed the bounded patch.",
-        ),
-    ) is True
+    assert DeveloperAgent.authorize_patch_execution(artifact, approval=DeveloperApproval.decide(artifact.audit.fingerprint, approved=True, actor="human-reviewer", reason="Reviewed the bounded patch.")) is True
 
 
 def test_patch_execution_boundary_rejects_mismatched_or_rejected_approval(tmp_path: Path):
