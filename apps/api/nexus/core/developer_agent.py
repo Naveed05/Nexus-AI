@@ -161,6 +161,30 @@ class DeveloperAgent:
                 if neighbor not in targets and neighbor not in dependencies: dependencies.append(neighbor)
         return DeveloperPatchPlan(task.objective, targets, tuple(sorted(dependencies)), ("Inspect the highest-ranked source matches and their local dependency neighborhood.", "Identify the smallest source change that satisfies the objective without touching unrelated files.", "Keep the patch reviewable and do not modify secrets or ignored workspace files."), ("Run the focused regression tests for the changed behavior.", "Run the broader API test suite before merging."), round(min(1.0, 0.35 + 0.12 * len(targets) + 0.05 * len(dependencies)), 2))
 
+    @staticmethod
+    def _patch_fingerprint(files: tuple[str, ...], additions: int, deletions: int, risk: str, diff: str) -> str:
+        payload = f"NEXUS-PATCH-AUDIT-V2\n{'|'.join(files)}\n{additions}\n{deletions}\n{risk}\n{diff}"
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def verify_patch_audit(cls, artifact: DeveloperPatchArtifact) -> bool:
+        """Verify that audit metadata still describes the exact immutable patch artifact."""
+        if artifact.policy is None or artifact.audit is None:
+            return False
+        audit = artifact.audit
+        policy = artifact.policy
+        files = tuple(sorted(artifact.files))
+        expected = cls._patch_fingerprint(files, artifact.additions, artifact.deletions, policy.risk.value, artifact.diff)
+        return (
+            files == artifact.files
+            and audit.file_count == len(files)
+            and audit.changed_lines == artifact.additions + artifact.deletions
+            and audit.risk == policy.risk.value
+            and audit.allowed == policy.allowed
+            and audit.requires_approval == policy.requires_approval
+            and audit.fingerprint == expected
+        )
+
     def build_patch_artifact(self, changes: dict[str, tuple[str, str]], *, context_lines: int = 3, approved: bool = False) -> DeveloperPatchArtifact:
         if context_lines < 0 or context_lines > 20: raise ValueError("context_lines must be between 0 and 20")
         import difflib
@@ -177,15 +201,18 @@ class DeveloperAgent:
         if not policy.allowed: raise ValueError(f"developer patch rejected: {policy.reasons[0] if policy.reasons else 'developer patch rejected by policy'}")
         files = tuple(sorted(changes))
         patch_diff = "\n".join(chunks)
-        audit_payload = f"NEXUS-PATCH-AUDIT-V2\n{'|'.join(files)}\n{additions}\n{deletions}\n{policy.risk.value}\n{patch_diff}"
-        audit = DeveloperPatchAudit(hashlib.sha256(audit_payload.encode("utf-8")).hexdigest(), len(files), additions + deletions, policy.risk.value, policy.allowed, policy.requires_approval)
+        fingerprint = self._patch_fingerprint(files, additions, deletions, policy.risk.value, patch_diff)
+        audit = DeveloperPatchAudit(fingerprint, len(files), additions + deletions, policy.risk.value, policy.allowed, policy.requires_approval)
         return DeveloperPatchArtifact(files, patch_diff, additions, deletions, policy, audit)
 
-    @staticmethod
-    def authorize_patch_execution(artifact: DeveloperPatchArtifact, *, approval: DeveloperApproval | None = None) -> bool:
+    @classmethod
+    def authorize_patch_execution(cls, artifact: DeveloperPatchArtifact, *, approval: DeveloperApproval | None = None) -> bool:
         """Enforce the final execution boundary against the exact audited patch."""
+        if not cls.verify_patch_audit(artifact):
+            return False
         if artifact.policy is None or artifact.audit is None or not artifact.policy.allowed or not artifact.audit.allowed: return False
-        if artifact.policy.risk is not PatchRisk.HIGH: return True
+        if artifact.policy.risk is not PatchRisk.HIGH:
+            return True
         return approval is not None and approval.is_approved and approval.matches(artifact.audit.fingerprint)
 
     def build_verification_plan(self, patch: DeveloperPatchPlan) -> DeveloperVerificationPlan:
