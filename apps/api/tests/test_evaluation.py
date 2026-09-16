@@ -128,7 +128,12 @@ def test_evaluation_regression_allows_configured_tolerance():
         [EvaluationCase(case_id="a", category="core", objective="a")],
         [VerificationResult(passed=False, checks={})],
     )
-    regression = harness.compare(baseline, current, maximum_pass_rate_drop=1.0)
+    regression = harness.compare(
+        baseline,
+        current,
+        maximum_pass_rate_drop=1.0,
+        maximum_check_score_drop=1.0,
+    )
     assert not regression.regressed
 
 
