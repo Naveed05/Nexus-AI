@@ -28,6 +28,28 @@ class EvaluationScore:
 
 
 @dataclass(frozen=True)
+class CategoryEvaluation:
+    """Aggregate observable quality for one benchmark category."""
+
+    category: str
+    total_cases: int
+    passed_cases: int
+    pass_rate: float
+    average_check_score: float
+    average_grounding_score: float
+
+
+@dataclass(frozen=True)
+class EvaluationRegression:
+    """Deterministic comparison between a baseline and current report."""
+
+    pass_rate_delta: float
+    check_score_delta: float
+    grounding_score_delta: float
+    regressed: bool
+
+
+@dataclass(frozen=True)
 class EvaluationReport:
     """Aggregate benchmark report suitable for CI and future dashboards."""
 
@@ -42,6 +64,25 @@ class EvaluationReport:
     def passed(self) -> bool:
         return self.total_cases > 0 and self.passed_cases == self.total_cases
 
+    def by_category(self) -> tuple[CategoryEvaluation, ...]:
+        categories = sorted({score.category for score in self.scores})
+        results: list[CategoryEvaluation] = []
+        for category in categories:
+            scores = tuple(score for score in self.scores if score.category == category)
+            total = len(scores)
+            passed = sum(score.passed for score in scores)
+            results.append(
+                CategoryEvaluation(
+                    category=category,
+                    total_cases=total,
+                    passed_cases=passed,
+                    pass_rate=round(passed / total, 3),
+                    average_check_score=round(sum(score.check_score for score in scores) / total, 3),
+                    average_grounding_score=round(sum(score.grounding_score for score in scores) / total, 3),
+                )
+            )
+        return tuple(results)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "total_cases": self.total_cases,
@@ -50,6 +91,17 @@ class EvaluationReport:
             "average_check_score": self.average_check_score,
             "average_grounding_score": self.average_grounding_score,
             "passed": self.passed,
+            "categories": [
+                {
+                    "category": category.category,
+                    "total_cases": category.total_cases,
+                    "passed_cases": category.passed_cases,
+                    "pass_rate": category.pass_rate,
+                    "average_check_score": category.average_check_score,
+                    "average_grounding_score": category.average_grounding_score,
+                }
+                for category in self.by_category()
+            ],
             "scores": [
                 {
                     "case_id": score.case_id,
@@ -147,3 +199,29 @@ class EvaluationHarness:
             ),
             scores=scores,
         )
+
+    @staticmethod
+    def compare(
+        baseline: EvaluationReport,
+        current: EvaluationReport,
+        *,
+        maximum_pass_rate_drop: float = 0.0,
+        maximum_check_score_drop: float = 0.0,
+        maximum_grounding_score_drop: float = 1.0,
+    ) -> EvaluationRegression:
+        for name, value in (
+            ("maximum_pass_rate_drop", maximum_pass_rate_drop),
+            ("maximum_check_score_drop", maximum_check_score_drop),
+            ("maximum_grounding_score_drop", maximum_grounding_score_drop),
+        ):
+            if value < 0:
+                raise ValueError(f"{name} cannot be negative")
+        pass_delta = round(current.pass_rate - baseline.pass_rate, 3)
+        check_delta = round(current.average_check_score - baseline.average_check_score, 3)
+        grounding_delta = round(current.average_grounding_score - baseline.average_grounding_score, 3)
+        regressed = (
+            pass_delta < -maximum_pass_rate_drop
+            or check_delta < -maximum_check_score_drop
+            or grounding_delta < -maximum_grounding_score_drop
+        )
+        return EvaluationRegression(pass_delta, check_delta, grounding_delta, regressed)
