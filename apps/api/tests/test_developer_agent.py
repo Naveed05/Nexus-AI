@@ -1,11 +1,12 @@
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from nexus.core.code_index import CodebaseIndexer
-from nexus.core.developer_agent import DeveloperAction, DeveloperAgent
+from nexus.core.developer_agent import DeveloperAction, DeveloperAgent, DeveloperPatchAudit
 from nexus.core.developer_approval import DeveloperApproval
 from nexus.core.developer_policy import DeveloperPolicy, PatchRisk
 from nexus.core.task import Task
@@ -83,6 +84,32 @@ def test_patch_audit_fingerprint_is_stable_and_binds_exact_diff_content(tmp_path
     assert first.audit.fingerprint != different.audit.fingerprint
     assert first.audit.file_count == different.audit.file_count == 1
     assert first.audit.changed_lines == different.audit.changed_lines == 2
+
+
+def test_patch_audit_integrity_rejects_forged_fingerprint_or_metadata(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path))
+    artifact = agent.build_patch_artifact({"router.py": ("old\n", "new\n")})
+    assert artifact.audit is not None
+    assert DeveloperAgent.verify_patch_audit(artifact) is True
+
+    forged_fingerprint = replace(artifact, audit=replace(artifact.audit, fingerprint="f" * 64))
+    forged_lines = replace(artifact, audit=replace(artifact.audit, changed_lines=999))
+    forged_policy_state = replace(artifact, audit=replace(artifact.audit, allowed=False))
+    assert DeveloperAgent.verify_patch_audit(forged_fingerprint) is False
+    assert DeveloperAgent.verify_patch_audit(forged_lines) is False
+    assert DeveloperAgent.verify_patch_audit(forged_policy_state) is False
+    assert DeveloperAgent.authorize_patch_execution(forged_fingerprint) is False
+    assert DeveloperAgent.authorize_patch_execution(forged_lines) is False
+
+
+def test_high_risk_execution_denies_tampered_audit_even_with_matching_approval(tmp_path: Path):
+    agent = DeveloperAgent(CodebaseIndexer(tmp_path), policy=DeveloperPolicy(max_files=8, max_changed_lines=400))
+    changes = {f"file{i}.py": ("old\n", "new\n") for i in range(5)}
+    artifact = agent.build_patch_artifact(changes, approved=True)
+    assert artifact.audit is not None
+    approval = DeveloperApproval.decide(artifact.audit.fingerprint, approved=True, actor="reviewer", reason="Reviewed the exact patch.")
+    tampered = replace(artifact, audit=replace(artifact.audit, changed_lines=0))
+    assert DeveloperAgent.authorize_patch_execution(tampered, approval=approval) is False
 
 
 def test_developer_agent_blocks_sensitive_patch_artifact(tmp_path: Path):
