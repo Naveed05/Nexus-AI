@@ -22,12 +22,31 @@ class MemoryRecord:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
+    MAX_CONTENT_CHARS = 8_000
+    MAX_TAGS = 16
+    MAX_TAG_CHARS = 64
+
     def __post_init__(self) -> None:
-        if not self.content.strip():
+        content = self.content.strip()
+        if not content:
             raise ValueError("memory content cannot be empty")
+        if len(content) > self.MAX_CONTENT_CHARS:
+            raise ValueError(f"memory content cannot exceed {self.MAX_CONTENT_CHARS} characters")
+        if any(ord(char) < 32 and char not in "\n\t" for char in content):
+            raise ValueError("memory content cannot contain control characters")
         if not 0.0 <= self.importance <= 1.0:
             raise ValueError("importance must be between 0 and 1")
         normalized_tags = tuple(sorted({tag.strip().lower() for tag in self.tags if tag.strip()}))
+        if len(normalized_tags) > self.MAX_TAGS:
+            raise ValueError(f"memory cannot contain more than {self.MAX_TAGS} tags")
+        if any(len(tag) > self.MAX_TAG_CHARS for tag in normalized_tags):
+            raise ValueError(f"memory tags cannot exceed {self.MAX_TAG_CHARS} characters")
+        for timestamp_name, timestamp in (("created_at", self.created_at), ("updated_at", self.updated_at)):
+            if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+                raise ValueError(f"{timestamp_name} must include a timezone offset")
+        if self.updated_at < self.created_at:
+            raise ValueError("updated_at cannot be earlier than created_at")
+        object.__setattr__(self, "content", content)
         object.__setattr__(self, "tags", normalized_tags)
 
 
@@ -152,17 +171,24 @@ class MemoryStore:
         content = f"Task: {clean_objective}\nVerified outcome: {clean_output[:2000]}"
         return self.remember(content, workspace_id=workspace_id, tags=("task-outcome", "verified"), importance=0.7)
 
+    @staticmethod
+    def _validate_min_confidence(min_confidence: float) -> None:
+        if not 0.0 <= min_confidence <= 1.0:
+            raise ValueError("min_confidence must be between 0 and 1")
+
     def recall_ranked(
         self,
         query: str,
         *,
         workspace_id: UUID | None = None,
         top_k: int = 5,
+        min_confidence: float = 0.0,
     ) -> tuple[MemoryMatch, ...]:
         if not query.strip():
             raise ValueError("query cannot be empty")
         if top_k < 1:
             raise ValueError("top_k must be at least 1")
+        self._validate_min_confidence(min_confidence)
         terms = {term.lower() for term in query.split() if term.strip()}
         with self._lock:
             candidates = [record for record in self._records.values() if record.workspace_id == workspace_id]
@@ -178,17 +204,45 @@ class MemoryStore:
             return tuple(
                 MemoryMatch(record=record, relevance=signals(record)[0], confidence=signals(record)[1])
                 for record in ranked[:top_k]
-                if signals(record)[0] > 0
+                if signals(record)[0] > 0 and signals(record)[1] >= min_confidence
             )
 
-    def recall(self, query: str, *, workspace_id: UUID | None = None, top_k: int = 5) -> tuple[MemoryRecord, ...]:
-        return tuple(match.record for match in self.recall_ranked(query, workspace_id=workspace_id, top_k=top_k))
+    def recall(
+        self,
+        query: str,
+        *,
+        workspace_id: UUID | None = None,
+        top_k: int = 5,
+        min_confidence: float = 0.0,
+    ) -> tuple[MemoryRecord, ...]:
+        return tuple(
+            match.record
+            for match in self.recall_ranked(
+                query,
+                workspace_id=workspace_id,
+                top_k=top_k,
+                min_confidence=min_confidence,
+            )
+        )
 
-    def recall_context(self, query: str, *, workspace_id: UUID | None = None, top_k: int = 5, max_chars: int = 6_000) -> str:
+    def recall_context(
+        self,
+        query: str,
+        *,
+        workspace_id: UUID | None = None,
+        top_k: int = 5,
+        max_chars: int = 6_000,
+        min_confidence: float = 0.0,
+    ) -> str:
         """Render bounded, confidence-aware memory guidance for agent reasoning."""
         if max_chars < 1:
             raise ValueError("max_chars must be at least 1")
-        matches = self.recall_ranked(query, workspace_id=workspace_id, top_k=top_k)
+        matches = self.recall_ranked(
+            query,
+            workspace_id=workspace_id,
+            top_k=top_k,
+            min_confidence=min_confidence,
+        )
         if not matches:
             return ""
         lines = [
