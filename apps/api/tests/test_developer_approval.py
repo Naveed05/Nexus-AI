@@ -63,6 +63,12 @@ def test_decision_rejects_invalid_identity_and_timestamp() -> None:
     with pytest.raises(ValueError, match="patch_fingerprint"):
         DeveloperApproval("", ApprovalStatus.PENDING, "system", "", TIMESTAMP)
 
+    with pytest.raises(ValueError, match="patch_fingerprint"):
+        DeveloperApproval("A" * 64, ApprovalStatus.PENDING, "system", "", TIMESTAMP)
+
+    with pytest.raises(ValueError, match="patch_fingerprint"):
+        DeveloperApproval("short", ApprovalStatus.PENDING, "system", "", TIMESTAMP)
+
     with pytest.raises(ValueError, match="actor"):
         DeveloperApproval(FINGERPRINT, ApprovalStatus.PENDING, "", "", TIMESTAMP)
 
@@ -71,3 +77,6 @@ def test_decision_rejects_invalid_identity_and_timestamp() -> None:
 
     with pytest.raises(ValueError, match="ISO-8601"):
         DeveloperApproval(FINGERPRINT, ApprovalStatus.PENDING, "system", "", "not-a-date")
+
+    with pytest.raises(ValueError, match="timezone"):
+        DeveloperApproval(FINGERPRINT, ApprovalStatus.PENDING, "system", "", "2026-09-16T18:00:00")
