@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+import re
 
 
 class ApprovalStatus(str, Enum):
@@ -22,16 +23,18 @@ class DeveloperApproval:
     decided_at: str
 
     def __post_init__(self) -> None:
-        if not self.patch_fingerprint.strip():
-            raise ValueError("patch_fingerprint must not be empty")
+        if not re.fullmatch(r"[0-9a-f]{64}", self.patch_fingerprint):
+            raise ValueError("patch_fingerprint must be a 64-character lowercase SHA-256 hex digest")
         if not self.actor.strip():
             raise ValueError("actor must not be empty")
         if self.status is not ApprovalStatus.PENDING and not self.reason.strip():
             raise ValueError("reason is required for a decided approval")
         try:
-            datetime.fromisoformat(self.decided_at.replace("Z", "+00:00"))
+            timestamp = datetime.fromisoformat(self.decided_at.replace("Z", "+00:00"))
         except ValueError as exc:
             raise ValueError("decided_at must be an ISO-8601 timestamp") from exc
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("decided_at must include a timezone offset")
 
     @property
     def is_approved(self) -> bool:
