@@ -64,6 +64,31 @@ class EvaluationReport:
         }
 
 
+@dataclass(frozen=True)
+class EvaluationGate:
+    """Explicit quality thresholds for deciding whether a report passes CI."""
+
+    minimum_pass_rate: float = 1.0
+    minimum_average_check_score: float = 1.0
+    minimum_average_grounding_score: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("minimum_pass_rate", self.minimum_pass_rate),
+            ("minimum_average_check_score", self.minimum_average_check_score),
+            ("minimum_average_grounding_score", self.minimum_average_grounding_score),
+        ):
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be between 0 and 1")
+
+    def evaluate(self, report: EvaluationReport) -> bool:
+        return (
+            report.pass_rate >= self.minimum_pass_rate
+            and report.average_check_score >= self.minimum_average_check_score
+            and report.average_grounding_score >= self.minimum_average_grounding_score
+        )
+
+
 class EvaluationHarness:
     """Runs deterministic evaluations against NEXUS verification results.
 
