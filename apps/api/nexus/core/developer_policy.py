@@ -51,6 +51,7 @@ class DeveloperPolicy:
         re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
         re.compile(r"\b(?:xoxb|xoxp)-[A-Za-z0-9-]{20,}\b"),
         re.compile(r"\b(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)\s*[:=]\s*['\"][^'\"]{20,}['\"]", re.IGNORECASE),
+        re.compile(r"\btoken\s*[:=]\s*['\"][^'\"]{20,}['\"]", re.IGNORECASE),
     )
 
     def __init__(
@@ -136,8 +137,9 @@ class DeveloperPolicy:
     def _secret_like_content(self, added_content: str) -> str | None:
         for line in added_content.splitlines():
             candidate = line[1:] if line.startswith("+") else line
+            normalized = candidate.replace('\\"', '"').replace("\\'", "'")
             for pattern in self._SECRET_PATTERNS:
-                if pattern.search(candidate):
+                if pattern.search(normalized):
                     return pattern.pattern
         return None
 
