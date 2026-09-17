@@ -100,5 +100,5 @@ def test_compare_benchmarks_rejects_case_identity_mismatch():
         )
     )
 
-    with pytest.raises(ValueError, match="baseline benchmark suite"):
+    with pytest.raises(ValueError, match="case identities do not match baseline"):
         compare_benchmarks(suite, baseline, mismatched)
