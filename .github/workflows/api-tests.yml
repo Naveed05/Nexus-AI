@@ -27,3 +27,6 @@ jobs:
 
       - name: Run tests
         run: PYTHONPATH=. pytest -q
+
+      - name: Verify benchmark gate integration
+        run: PYTHONPATH=. pytest -q tests/test_benchmarks.py tests/test_benchmark_store.py tests/test_benchmark_gate.py
