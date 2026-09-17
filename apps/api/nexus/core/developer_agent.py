@@ -8,6 +8,7 @@ import re
 from uuid import UUID
 
 from .code_index import CodeSearchResult, CodebaseIndexer
+from .control_ledger import ControlLedger
 from .developer_approval import DeveloperApproval
 from .developer_policy import DeveloperPolicy, DeveloperPolicyDecision, PatchRisk
 from .human_control import ControlDecision, HumanControlPolicy
@@ -182,11 +183,14 @@ class DeveloperAgent:
         expected = cls._patch_fingerprint(files, artifact.additions, artifact.deletions, policy.risk.value, artifact.diff)
         return (files == artifact.files and audit.schema_version == cls.AUDIT_SCHEMA_VERSION and audit.file_count == len(files) and audit.changed_lines == artifact.additions + artifact.deletions and audit.risk == policy.risk.value and audit.allowed == policy.allowed and audit.requires_approval == policy.requires_approval and audit.fingerprint == expected)
 
-    def authorize_controlled_action(self, action: str, *, approved: bool = False) -> ControlDecision:
-        """Evaluate every side-effecting action at the human-control execution boundary."""
+    def authorize_controlled_action(self, action: str, *, approved: bool = False, actor: str = "system", ledger: ControlLedger | None = None) -> ControlDecision:
+        """Evaluate and audit every side-effecting action before it reaches execution."""
         decision = self.human_control.evaluate(action, approved=approved)
-        if not decision.allowed:
-            return decision
+        if ledger is not None:
+            try:
+                ledger.append(decision.action, actor, "allowed" if decision.allowed else "denied", decision.reasons[0])
+            except (OSError, TypeError, ValueError) as exc:
+                raise RuntimeError("human control ledger persistence failed; execution denied") from exc
         return decision
 
     def build_patch_artifact(self, changes: dict[str, tuple[str, str]], *, context_lines: int = 3, approved: bool = False) -> DeveloperPatchArtifact:
