@@ -82,15 +82,24 @@ class BenchmarkRunner:
         return EvaluationHarness().report(cases, results)
 
 
+
+def _stable_fingerprint(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
+    return hashlib.sha256(encoded).hexdigest()
+
+
 @dataclass(frozen=True)
 class BenchmarkBaseline:
-    """Immutable baseline bound to an exact benchmark suite identity."""
+    """Immutable baseline bound to an exact benchmark suite and report identity."""
 
     suite_name: str
     suite_version: str
     case_ids: tuple[str, ...]
     report: EvaluationReport
     suite_fingerprint: str = ""
+    report_fingerprint: str = ""
 
     @classmethod
     def from_suite(cls, suite: BenchmarkSuite, report: EvaluationReport) -> "BenchmarkBaseline":
@@ -98,13 +107,22 @@ class BenchmarkBaseline:
         actual_ids = tuple(score.case_id for score in report.scores)
         if actual_ids != expected_ids:
             raise ValueError("baseline report does not match benchmark suite")
-        return cls(suite.name, suite.version, expected_ids, report, suite.fingerprint)
+        return cls(
+            suite.name,
+            suite.version,
+            expected_ids,
+            report,
+            suite.fingerprint,
+            _stable_fingerprint(report.as_dict()),
+        )
 
     def validate_for(self, suite: BenchmarkSuite, report: EvaluationReport) -> None:
         if self.suite_name != suite.name or self.suite_version != suite.version:
             raise ValueError("baseline benchmark identity does not match suite")
         if self.suite_fingerprint and self.suite_fingerprint != suite.fingerprint:
             raise ValueError("baseline benchmark fingerprint does not match suite")
+        if self.report_fingerprint and self.report_fingerprint != _stable_fingerprint(self.report.as_dict()):
+            raise ValueError("baseline report fingerprint does not match stored report")
         expected_ids = tuple(case.case_id for case in suite.ordered_cases())
         actual_ids = tuple(score.case_id for score in report.scores)
         if self.case_ids != expected_ids or actual_ids != expected_ids:
@@ -115,6 +133,7 @@ class BenchmarkBaseline:
             "suite_name": self.suite_name,
             "suite_version": self.suite_version,
             "suite_fingerprint": self.suite_fingerprint,
+            "report_fingerprint": self.report_fingerprint,
             "case_ids": list(self.case_ids),
             "report": self.report.as_dict(),
         }
@@ -122,11 +141,13 @@ class BenchmarkBaseline:
 
 @dataclass(frozen=True)
 class BenchmarkComparison:
-    """A named comparison between two benchmark reports."""
+    """A named comparison between two benchmark reports with actionable diagnostics."""
 
     suite_name: str
     suite_version: str
     regression: EvaluationRegression
+    failed_case_ids: tuple[str, ...] = ()
+    recovered_case_ids: tuple[str, ...] = ()
 
     @property
     def regressed(self) -> bool:
@@ -141,6 +162,10 @@ class BenchmarkComparison:
                 "check_score_delta": self.regression.check_score_delta,
                 "grounding_score_delta": self.regression.grounding_score_delta,
                 "regressed": self.regression.regressed,
+            },
+            "diagnostics": {
+                "failed_case_ids": list(self.failed_case_ids),
+                "recovered_case_ids": list(self.recovered_case_ids),
             },
         }
 
@@ -212,7 +237,7 @@ def compare_benchmarks(
     maximum_check_score_drop: float = 0.0,
     maximum_grounding_score_drop: float = 1.0,
 ) -> BenchmarkComparison:
-    """Compare reports and retain the benchmark identity in the result."""
+    """Compare reports and retain benchmark identity plus case-level diagnostics."""
     benchmark_baseline = BenchmarkBaseline.from_suite(suite, baseline)
     benchmark_baseline.validate_for(suite, current)
 
@@ -225,4 +250,22 @@ def compare_benchmarks(
         maximum_check_score_drop=maximum_check_score_drop,
         maximum_grounding_score_drop=maximum_grounding_score_drop,
     )
-    return BenchmarkComparison(suite.name, suite.version, regression)
+    baseline_by_id = {score.case_id: score for score in baseline.scores}
+    current_by_id = {score.case_id: score for score in current.scores}
+    failed_case_ids = tuple(
+        case_id
+        for case_id in sorted(baseline_by_id)
+        if baseline_by_id[case_id].passed and not current_by_id[case_id].passed
+    )
+    recovered_case_ids = tuple(
+        case_id
+        for case_id in sorted(baseline_by_id)
+        if not baseline_by_id[case_id].passed and current_by_id[case_id].passed
+    )
+    return BenchmarkComparison(
+        suite.name,
+        suite.version,
+        regression,
+        failed_case_ids,
+        recovered_case_ids,
+    )
