@@ -79,7 +79,7 @@ class ControlLedger:
         events = self.load()
         previous = events[-1].event_hash if events else ""
         event = ControlEvent.create(len(events) + 1, action, actor, decision, reason, previous_hash=previous)
-        self._write(events + [event])
+        self._write((*events, event))
         return event
 
     def load(self) -> tuple[ControlEvent, ...]:
@@ -110,7 +110,7 @@ class ControlLedger:
         self.load()
         return True
 
-    def _write(self, events: list[ControlEvent]) -> None:
+    def _write(self, events: tuple[ControlEvent, ...]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"schema": _SCHEMA, "events": [event.as_dict() for event in events]}
         temporary = self._path.with_suffix(self._path.suffix + ".tmp")
