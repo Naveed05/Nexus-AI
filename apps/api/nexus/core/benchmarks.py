@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Callable, Sequence
+from typing import Any, Callable
 
 from nexus.core.evaluation import EvaluationCase, EvaluationReport, EvaluationRegression
 from nexus.core.verification import VerificationResult
@@ -73,6 +73,40 @@ class BenchmarkRunner:
 
 
 @dataclass(frozen=True)
+class BenchmarkBaseline:
+    """Immutable baseline bound to an exact benchmark suite identity."""
+
+    suite_name: str
+    suite_version: str
+    case_ids: tuple[str, ...]
+    report: EvaluationReport
+
+    @classmethod
+    def from_suite(cls, suite: BenchmarkSuite, report: EvaluationReport) -> "BenchmarkBaseline":
+        expected_ids = tuple(case.case_id for case in suite.ordered_cases())
+        actual_ids = tuple(score.case_id for score in report.scores)
+        if actual_ids != expected_ids:
+            raise ValueError("baseline report does not match benchmark suite")
+        return cls(suite.name, suite.version, expected_ids, report)
+
+    def validate_for(self, suite: BenchmarkSuite, report: EvaluationReport) -> None:
+        if self.suite_name != suite.name or self.suite_version != suite.version:
+            raise ValueError("baseline benchmark identity does not match suite")
+        expected_ids = tuple(case.case_id for case in suite.ordered_cases())
+        actual_ids = tuple(score.case_id for score in report.scores)
+        if self.case_ids != expected_ids or actual_ids != expected_ids:
+            raise ValueError("benchmark case identities do not match baseline")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "suite_name": self.suite_name,
+            "suite_version": self.suite_version,
+            "case_ids": list(self.case_ids),
+            "report": self.report.as_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class BenchmarkComparison:
     """A named comparison between two benchmark reports."""
 
@@ -107,6 +141,9 @@ def compare_benchmarks(
     maximum_grounding_score_drop: float = 1.0,
 ) -> BenchmarkComparison:
     """Compare reports and retain the benchmark identity in the result."""
+    benchmark_baseline = BenchmarkBaseline.from_suite(suite, baseline)
+    benchmark_baseline.validate_for(suite, current)
+
     from nexus.core.evaluation import EvaluationHarness
 
     regression = EvaluationHarness.compare(
