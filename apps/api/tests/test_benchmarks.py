@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from nexus.core.benchmarks import (
@@ -106,6 +108,40 @@ def test_benchmark_baseline_rejects_tampered_stored_report():
         tampered.validate_for(suite, report)
 
 
+def test_benchmark_baseline_round_trips_through_json():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    report = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    baseline = BenchmarkBaseline.from_suite(suite, report)
+
+    restored = BenchmarkBaseline.from_json(baseline.to_json())
+
+    assert restored == baseline
+    assert json.loads(restored.to_json()) == baseline.as_dict()
+
+
+def test_benchmark_baseline_rejects_tampered_json():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    report = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    payload = BenchmarkBaseline.from_suite(suite, report).as_dict()
+    payload["report"]["passed_cases"] = 0
+
+    with pytest.raises(ValueError, match="inconsistent|fingerprint"):
+        BenchmarkBaseline.from_dict(payload)
+
+
+def test_benchmark_baseline_rejects_invalid_json():
+    with pytest.raises(ValueError, match="invalid benchmark baseline JSON"):
+        BenchmarkBaseline.from_json("not-json")
+
+
 def test_compare_benchmarks_preserves_suite_identity():
     suite = BenchmarkSuite(
         name="core",
@@ -198,6 +234,7 @@ def test_benchmark_gate_requires_absolute_quality_and_no_regression():
     assert result.passed
     assert result.quality_passed
     assert result.as_dict()["regression_passed"]
+    assert result.failure_reasons == ()
 
 
 def test_benchmark_gate_reports_absolute_quality_failure():
@@ -210,12 +247,19 @@ def test_benchmark_gate_reports_absolute_quality_failure():
     current = BenchmarkRunner(lambda _: VerificationResult(passed=False, checks={})).run(suite)
 
     result = BenchmarkGate(
-        quality_gate=EvaluationGate(minimum_pass_rate=0.0, minimum_average_check_score=0.0)
+        quality_gate=EvaluationGate(minimum_pass_rate=1.0, minimum_average_check_score=1.0)
     ).evaluate(suite, baseline, current)
 
     assert not result.passed
-    assert result.quality_passed
+    assert not result.quality_passed
     assert result.comparison.regressed
+    assert result.failure_reasons == (
+        "quality.pass_rate_below_threshold",
+        "quality.average_check_score_below_threshold",
+        "regression.pass_rate_drop_exceeded",
+        "regression.check_score_drop_exceeded",
+    )
+    assert result.as_dict()["failure_reasons"] == list(result.failure_reasons)
 
 
 def test_benchmark_gate_allows_configured_regression_tolerance():
@@ -235,6 +279,7 @@ def test_benchmark_gate_allows_configured_regression_tolerance():
 
     assert result.passed
     assert not result.comparison.regressed
+    assert result.failure_reasons == ()
 
 
 def test_compare_benchmarks_rejects_case_identity_mismatch():
