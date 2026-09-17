@@ -10,6 +10,7 @@ from uuid import UUID
 from .code_index import CodeSearchResult, CodebaseIndexer
 from .developer_approval import DeveloperApproval
 from .developer_policy import DeveloperPolicy, DeveloperPolicyDecision, PatchRisk
+from .human_control import ControlDecision, HumanControlPolicy
 from .task import Task
 
 
@@ -127,9 +128,10 @@ class DeveloperAgent:
     _ERROR_RE = re.compile(r"(?:error|exception|failure|failed|traceback|assertionerror|typeerror|valueerror|keyerror)\b[^\n]{0,180}", re.IGNORECASE)
     _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_.\-/]+$")
 
-    def __init__(self, indexer: CodebaseIndexer, *, policy: DeveloperPolicy | None = None) -> None:
+    def __init__(self, indexer: CodebaseIndexer, *, policy: DeveloperPolicy | None = None, human_control: HumanControlPolicy | None = None) -> None:
         self.indexer = indexer
         self.policy = policy or DeveloperPolicy()
+        self.human_control = human_control or HumanControlPolicy()
 
     @classmethod
     def infer_action(cls, objective: str) -> DeveloperAction:
@@ -179,6 +181,13 @@ class DeveloperAgent:
         files = tuple(sorted(artifact.files))
         expected = cls._patch_fingerprint(files, artifact.additions, artifact.deletions, policy.risk.value, artifact.diff)
         return (files == artifact.files and audit.schema_version == cls.AUDIT_SCHEMA_VERSION and audit.file_count == len(files) and audit.changed_lines == artifact.additions + artifact.deletions and audit.risk == policy.risk.value and audit.allowed == policy.allowed and audit.requires_approval == policy.requires_approval and audit.fingerprint == expected)
+
+    def authorize_controlled_action(self, action: str, *, approved: bool = False) -> ControlDecision:
+        """Evaluate every side-effecting action at the human-control execution boundary."""
+        decision = self.human_control.evaluate(action, approved=approved)
+        if not decision.allowed:
+            return decision
+        return decision
 
     def build_patch_artifact(self, changes: dict[str, tuple[str, str]], *, context_lines: int = 3, approved: bool = False) -> DeveloperPatchArtifact:
         if context_lines < 0 or context_lines > 20: raise ValueError("context_lines must be between 0 and 20")
