@@ -49,6 +49,34 @@ def test_benchmark_runner_uses_suite_order():
     assert [score.case_id for score in report.scores] == ["a", "z"]
 
 
+def test_benchmark_fingerprint_is_deterministic_and_definition_bound():
+    cases = (
+        EvaluationCase(case_id="b", category="research", objective="b"),
+        EvaluationCase(case_id="a", category="core", objective="a"),
+    )
+    first = BenchmarkSuite(name="core", version="1", cases=cases)
+    reordered = BenchmarkSuite(name="core", version="1", cases=tuple(reversed(cases)))
+    changed = BenchmarkSuite(
+        name="core", version="1", cases=(cases[0], EvaluationCase(case_id="a", category="core", objective="changed"))
+    )
+
+    assert first.fingerprint == reordered.fingerprint
+    assert first.fingerprint != changed.fingerprint
+
+
+def test_benchmark_baseline_carries_suite_fingerprint():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    report = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    baseline = BenchmarkBaseline.from_suite(suite, report)
+
+    assert baseline.suite_fingerprint == suite.fingerprint
+    assert baseline.as_dict()["suite_fingerprint"] == suite.fingerprint
+
+
 def test_compare_benchmarks_preserves_suite_identity():
     suite = BenchmarkSuite(
         name="core",
@@ -83,6 +111,25 @@ def test_benchmark_baseline_rejects_report_from_different_suite():
 
     with pytest.raises(ValueError, match="identity does not match"):
         baseline.validate_for(other_suite, other_report)
+
+
+def test_benchmark_baseline_rejects_definition_fingerprint_mismatch():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    changed_suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="changed"),),
+    )
+    report = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    changed_report = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(changed_suite)
+    baseline = BenchmarkBaseline.from_suite(suite, report)
+
+    with pytest.raises(ValueError, match="fingerprint does not match"):
+        baseline.validate_for(changed_suite, changed_report)
 
 
 def test_compare_benchmarks_rejects_case_identity_mismatch():
