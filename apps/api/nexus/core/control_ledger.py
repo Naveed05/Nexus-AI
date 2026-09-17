@@ -5,7 +5,11 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .developer_approval import DeveloperApproval
+    from .human_control import ControlDecision
 
 
 _SCHEMA = "nexus-human-control-ledger-v1"
@@ -18,7 +22,6 @@ def _canonical(payload: dict[str, Any]) -> str:
 @dataclass(frozen=True)
 class ControlEvent:
     """One immutable human-control decision in an append-only hash chain."""
-
     sequence: int
     action: str
     actor: str
@@ -29,15 +32,7 @@ class ControlEvent:
     event_hash: str
 
     def payload(self) -> dict[str, Any]:
-        return {
-            "sequence": self.sequence,
-            "action": self.action,
-            "actor": self.actor,
-            "decision": self.decision,
-            "reason": self.reason,
-            "created_at": self.created_at,
-            "previous_hash": self.previous_hash,
-        }
+        return {"sequence": self.sequence, "action": self.action, "actor": self.actor, "decision": self.decision, "reason": self.reason, "created_at": self.created_at, "previous_hash": self.previous_hash}
 
     @classmethod
     def create(cls, sequence: int, action: str, actor: str, decision: str, reason: str, *, previous_hash: str = "", created_at: str | None = None) -> "ControlEvent":
@@ -49,15 +44,7 @@ class ControlEvent:
         parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise ValueError("created_at must include a timezone offset")
-        payload = {
-            "sequence": sequence,
-            "action": action.strip().lower(),
-            "actor": actor.strip(),
-            "decision": decision.strip().lower(),
-            "reason": reason.strip(),
-            "created_at": timestamp,
-            "previous_hash": previous_hash,
-        }
+        payload = {"sequence": sequence, "action": action.strip().lower(), "actor": actor.strip(), "decision": decision.strip().lower(), "reason": reason.strip(), "created_at": timestamp, "previous_hash": previous_hash}
         digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
         return cls(**payload, event_hash=digest)
 
@@ -71,7 +58,6 @@ class ControlEvent:
 
 class ControlLedger:
     """Append-only JSON ledger with schema checks and a tamper-evident hash chain."""
-
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path)
 
@@ -81,6 +67,20 @@ class ControlLedger:
         event = ControlEvent.create(len(events) + 1, action, actor, decision, reason, previous_hash=previous)
         self._write((*events, event))
         return event
+
+    def append_decision(self, decision: "ControlDecision", *, actor: str) -> ControlEvent:
+        """Persist a typed human-control decision without duplicating fields at call sites."""
+        if not actor.strip():
+            raise ValueError("actor must not be empty")
+        reason = decision.reasons[0] if decision.reasons else "human-control decision"
+        return self.append(decision.action, actor, "allowed" if decision.allowed else "denied", reason)
+
+    def append_approval(self, approval: "DeveloperApproval", *, action: str = "patch_execution") -> ControlEvent:
+        """Persist approval provenance while binding the event to the exact patch fingerprint."""
+        if not action.strip():
+            raise ValueError("action must not be empty")
+        reason = f"patch_fingerprint={approval.patch_fingerprint}; {approval.reason or 'pending decision'}"
+        return self.append(action, approval.actor, approval.status.value, reason)
 
     def load(self) -> tuple[ControlEvent, ...]:
         if not self._path.exists():
