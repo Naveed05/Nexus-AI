@@ -1,6 +1,6 @@
 import pytest
 
-from nexus.core.benchmarks import BenchmarkRunner, BenchmarkSuite, compare_benchmarks
+from nexus.core.benchmarks import BenchmarkBaseline, BenchmarkRunner, BenchmarkSuite, compare_benchmarks
 from nexus.core.evaluation import EvaluationCase
 from nexus.core.verification import VerificationResult
 
@@ -64,3 +64,41 @@ def test_compare_benchmarks_preserves_suite_identity():
     assert comparison.suite_version == "2026.1"
     assert comparison.regressed
     assert comparison.as_dict()["regression"]["pass_rate_delta"] == -1.0
+
+
+def test_benchmark_baseline_rejects_report_from_different_suite():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    other_suite = BenchmarkSuite(
+        name="core",
+        version="2",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    report = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    other_report = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(other_suite)
+    baseline = BenchmarkBaseline.from_suite(suite, report)
+
+    with pytest.raises(ValueError, match="identity does not match"):
+        baseline.validate_for(other_suite, other_report)
+
+
+def test_compare_benchmarks_rejects_case_identity_mismatch():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    baseline = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    mismatched = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(
+        BenchmarkSuite(
+            name="core",
+            version="1",
+            cases=(EvaluationCase(case_id="b", category="core", objective="b"),),
+        )
+    )
+
+    with pytest.raises(ValueError, match="baseline benchmark suite"):
+        compare_benchmarks(suite, baseline, mismatched)
