@@ -159,15 +159,22 @@ class BenchmarkBaseline:
             raise ValueError("benchmark baseline must be an object")
         try:
             case_ids = tuple(payload["case_ids"])
+            report_payload = payload["report"]
+            report = _report_from_dict(report_payload)
             baseline = cls(
                 suite_name=payload["suite_name"],
                 suite_version=payload["suite_version"],
                 case_ids=case_ids,
-                report=_report_from_dict(payload["report"]),
+                report=report,
                 suite_fingerprint=payload["suite_fingerprint"],
                 report_fingerprint=payload["report_fingerprint"],
             )
         except (KeyError, TypeError, ValueError) as exc:
+            if isinstance(exc, ValueError) and str(exc) in {
+                "benchmark report payload is inconsistent",
+                "baseline report fingerprint does not match stored report",
+            }:
+                raise
             raise ValueError("invalid benchmark baseline payload") from exc
         if baseline.report_fingerprint != _stable_fingerprint(baseline.report.as_dict()):
             raise ValueError("baseline report fingerprint does not match stored report")
