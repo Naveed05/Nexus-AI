@@ -70,7 +70,7 @@ def test_benchmark_fingerprint_is_deterministic_and_definition_bound():
     assert first.fingerprint != changed.fingerprint
 
 
-def test_benchmark_baseline_carries_suite_fingerprint():
+def test_benchmark_baseline_carries_suite_and_report_fingerprints():
     suite = BenchmarkSuite(
         name="core",
         version="1",
@@ -80,7 +80,30 @@ def test_benchmark_baseline_carries_suite_fingerprint():
     baseline = BenchmarkBaseline.from_suite(suite, report)
 
     assert baseline.suite_fingerprint == suite.fingerprint
+    assert baseline.report_fingerprint
     assert baseline.as_dict()["suite_fingerprint"] == suite.fingerprint
+    assert baseline.as_dict()["report_fingerprint"] == baseline.report_fingerprint
+
+
+def test_benchmark_baseline_rejects_tampered_stored_report():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    report = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    baseline = BenchmarkBaseline.from_suite(suite, report)
+    tampered = BenchmarkBaseline(
+        baseline.suite_name,
+        baseline.suite_version,
+        baseline.case_ids,
+        BenchmarkRunner(lambda _: VerificationResult(passed=False, checks={})).run(suite),
+        baseline.suite_fingerprint,
+        baseline.report_fingerprint,
+    )
+
+    with pytest.raises(ValueError, match="report fingerprint does not match"):
+        tampered.validate_for(suite, report)
 
 
 def test_compare_benchmarks_preserves_suite_identity():
@@ -98,6 +121,29 @@ def test_compare_benchmarks_preserves_suite_identity():
     assert comparison.suite_version == "2026.1"
     assert comparison.regressed
     assert comparison.as_dict()["regression"]["pass_rate_delta"] == -1.0
+    assert comparison.failed_case_ids == ("a",)
+    assert comparison.recovered_case_ids == ()
+    assert comparison.as_dict()["diagnostics"]["failed_case_ids"] == ["a"]
+
+
+def test_compare_benchmarks_reports_recovered_cases():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(
+            EvaluationCase(case_id="a", category="core", objective="a"),
+            EvaluationCase(case_id="b", category="core", objective="b"),
+        ),
+    )
+    baseline = BenchmarkRunner(
+        lambda case: VerificationResult(passed=case.case_id == "a", checks={})
+    ).run(suite)
+    current = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+
+    comparison = compare_benchmarks(suite, baseline, current)
+
+    assert comparison.failed_case_ids == ()
+    assert comparison.recovered_case_ids == ("b",)
 
 
 def test_benchmark_baseline_rejects_report_from_different_suite():
