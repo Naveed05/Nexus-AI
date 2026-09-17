@@ -90,6 +90,42 @@ def _stable_fingerprint(payload: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _report_from_dict(payload: dict[str, Any]) -> EvaluationReport:
+    """Rehydrate a report from its safe JSON-compatible representation."""
+    if not isinstance(payload, dict):
+        raise ValueError("benchmark report must be an object")
+    scores_payload = payload.get("scores")
+    if not isinstance(scores_payload, list) or not scores_payload:
+        raise ValueError("benchmark report must contain scores")
+
+    try:
+        scores = tuple(
+            __import__("nexus.core.evaluation", fromlist=["EvaluationScore"]).EvaluationScore(
+                case_id=item["case_id"],
+                category=item["category"],
+                passed=item["passed"],
+                check_score=item["check_score"],
+                grounding_score=item["grounding_score"],
+                issue_count=item["issue_count"],
+            )
+            for item in scores_payload
+        )
+        report = EvaluationReport(
+            total_cases=payload["total_cases"],
+            passed_cases=payload["passed_cases"],
+            pass_rate=payload["pass_rate"],
+            average_check_score=payload["average_check_score"],
+            average_grounding_score=payload["average_grounding_score"],
+            scores=scores,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("invalid benchmark report payload") from exc
+
+    if report.as_dict() != payload:
+        raise ValueError("benchmark report payload is inconsistent")
+    return report
+
+
 @dataclass(frozen=True)
 class BenchmarkBaseline:
     """Immutable baseline bound to an exact benchmark suite and report identity."""
@@ -116,6 +152,37 @@ class BenchmarkBaseline:
             _stable_fingerprint(report.as_dict()),
         )
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BenchmarkBaseline":
+        """Safely restore a persisted baseline without arbitrary object deserialization."""
+        if not isinstance(payload, dict):
+            raise ValueError("benchmark baseline must be an object")
+        try:
+            case_ids = tuple(payload["case_ids"])
+            baseline = cls(
+                suite_name=payload["suite_name"],
+                suite_version=payload["suite_version"],
+                case_ids=case_ids,
+                report=_report_from_dict(payload["report"]),
+                suite_fingerprint=payload["suite_fingerprint"],
+                report_fingerprint=payload["report_fingerprint"],
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("invalid benchmark baseline payload") from exc
+        if baseline.report_fingerprint != _stable_fingerprint(baseline.report.as_dict()):
+            raise ValueError("baseline report fingerprint does not match stored report")
+        if tuple(score.case_id for score in baseline.report.scores) != baseline.case_ids:
+            raise ValueError("baseline case identities do not match stored report")
+        return baseline
+
+    @classmethod
+    def from_json(cls, payload: str) -> "BenchmarkBaseline":
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise ValueError("invalid benchmark baseline JSON") from exc
+        return cls.from_dict(decoded)
+
     def validate_for(self, suite: BenchmarkSuite, report: EvaluationReport) -> None:
         if self.suite_name != suite.name or self.suite_version != suite.version:
             raise ValueError("baseline benchmark identity does not match suite")
@@ -137,6 +204,9 @@ class BenchmarkBaseline:
             "case_ids": list(self.case_ids),
             "report": self.report.as_dict(),
         }
+
+    def to_json(self) -> str:
+        return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 @dataclass(frozen=True)
@@ -176,6 +246,7 @@ class BenchmarkGateResult:
 
     comparison: BenchmarkComparison
     quality_passed: bool
+    failure_reasons: tuple[str, ...] = ()
 
     @property
     def passed(self) -> bool:
@@ -188,6 +259,7 @@ class BenchmarkGateResult:
             "quality_passed": self.quality_passed,
             "regression_passed": not self.comparison.regressed,
             "passed": self.passed,
+            "failure_reasons": list(self.failure_reasons),
             "comparison": self.comparison.as_dict(),
         }
 
@@ -222,10 +294,21 @@ class BenchmarkGate:
             maximum_check_score_drop=self._maximum_check_score_drop,
             maximum_grounding_score_drop=self._maximum_grounding_score_drop,
         )
-        return BenchmarkGateResult(
-            comparison=comparison,
-            quality_passed=self._quality_gate.evaluate(current),
-        )
+        quality_passed = self._quality_gate.evaluate(current)
+        reasons: list[str] = []
+        if current.pass_rate < self._quality_gate.minimum_pass_rate:
+            reasons.append("quality.pass_rate_below_threshold")
+        if current.average_check_score < self._quality_gate.minimum_average_check_score:
+            reasons.append("quality.average_check_score_below_threshold")
+        if current.average_grounding_score < self._quality_gate.minimum_average_grounding_score:
+            reasons.append("quality.average_grounding_score_below_threshold")
+        if comparison.regression.pass_rate_delta < -self._maximum_pass_rate_drop:
+            reasons.append("regression.pass_rate_drop_exceeded")
+        if comparison.regression.check_score_delta < -self._maximum_check_score_drop:
+            reasons.append("regression.check_score_drop_exceeded")
+        if comparison.regression.grounding_score_delta < -self._maximum_grounding_score_drop:
+            reasons.append("regression.grounding_score_drop_exceeded")
+        return BenchmarkGateResult(comparison, quality_passed, tuple(reasons))
 
 
 def compare_benchmarks(
