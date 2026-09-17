@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+_SCHEMA = "nexus-human-control-ledger-v1"
+
+
+def _canonical(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+@dataclass(frozen=True)
+class ControlEvent:
+    """One immutable human-control decision in an append-only hash chain."""
+
+    sequence: int
+    action: str
+    actor: str
+    decision: str
+    reason: str
+    created_at: str
+    previous_hash: str
+    event_hash: str
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "sequence": self.sequence,
+            "action": self.action,
+            "actor": self.actor,
+            "decision": self.decision,
+            "reason": self.reason,
+            "created_at": self.created_at,
+            "previous_hash": self.previous_hash,
+        }
+
+    @classmethod
+    def create(cls, sequence: int, action: str, actor: str, decision: str, reason: str, *, previous_hash: str = "", created_at: str | None = None) -> "ControlEvent":
+        if sequence < 1:
+            raise ValueError("sequence must be at least 1")
+        if not action.strip() or not actor.strip() or not decision.strip() or not reason.strip():
+            raise ValueError("action, actor, decision, and reason must not be empty")
+        timestamp = created_at or datetime.now(timezone.utc).isoformat()
+        parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("created_at must include a timezone offset")
+        payload = {
+            "sequence": sequence,
+            "action": action.strip().lower(),
+            "actor": actor.strip(),
+            "decision": decision.strip().lower(),
+            "reason": reason.strip(),
+            "created_at": timestamp,
+            "previous_hash": previous_hash,
+        }
+        digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
+        return cls(**payload, event_hash=digest)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {**self.payload(), "event_hash": self.event_hash}
+
+    def verify(self) -> bool:
+        expected = hashlib.sha256(_canonical(self.payload()).encode("utf-8")).hexdigest()
+        return self.event_hash == expected
+
+
+class ControlLedger:
+    """Append-only JSON ledger with schema checks and a tamper-evident hash chain."""
+
+    def __init__(self, path: str | Path) -> None:
+        self._path = Path(path)
+
+    def append(self, action: str, actor: str, decision: str, reason: str) -> ControlEvent:
+        events = self.load()
+        previous = events[-1].event_hash if events else ""
+        event = ControlEvent.create(len(events) + 1, action, actor, decision, reason, previous_hash=previous)
+        self._write(events + [event])
+        return event
+
+    def load(self) -> tuple[ControlEvent, ...]:
+        if not self._path.exists():
+            return ()
+        try:
+            decoded = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError("invalid human control ledger JSON") from exc
+        if not isinstance(decoded, dict) or decoded.get("schema") != _SCHEMA or not isinstance(decoded.get("events"), list):
+            raise ValueError("unsupported human control ledger schema")
+        events: list[ControlEvent] = []
+        previous = ""
+        for index, payload in enumerate(decoded["events"], 1):
+            if not isinstance(payload, dict):
+                raise ValueError("invalid human control ledger event")
+            try:
+                event = ControlEvent(**payload)
+            except TypeError as exc:
+                raise ValueError("invalid human control ledger event") from exc
+            if event.sequence != index or event.previous_hash != previous or not event.verify():
+                raise ValueError("human control ledger integrity check failed")
+            events.append(event)
+            previous = event.event_hash
+        return tuple(events)
+
+    def verify(self) -> bool:
+        self.load()
+        return True
+
+    def _write(self, events: list[ControlEvent]) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"schema": _SCHEMA, "events": [event.as_dict() for event in events]}
+        temporary = self._path.with_suffix(self._path.suffix + ".tmp")
+        temporary.write_text(_canonical(payload) + "\n", encoding="utf-8")
+        temporary.replace(self._path)
