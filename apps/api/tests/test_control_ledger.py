@@ -61,10 +61,29 @@ def test_approval_provenance_preserves_rejection_and_pending_state(tmp_path):
     rejected = DeveloperApproval.decide(fingerprint, approved=False, actor="reviewer", reason="unsafe")
     ledger = ControlLedger(path)
     first = ledger.append_approval(pending)
-    second = ledger.append_approval(rejected)
+    second = ledger.append_approval(rejected, expected_head_hash=first.event_hash)
     assert first.decision == "pending"
     assert second.decision == "rejected"
     assert second.previous_hash == first.event_hash
+
+
+def test_ledger_rejects_stale_expected_head(tmp_path):
+    path = tmp_path / "controls.json"
+    first = ControlLedger(path)
+    event = first.append("file_write", "alice", "approved", "reviewed")
+    second = ControlLedger(path)
+    second.append("database_write", "bob", "approved", "reviewed")
+    with pytest.raises(RuntimeError, match="head changed"):
+        first.append("production_deploy", "alice", "approved", "reviewed", expected_head_hash=event.event_hash)
+
+
+def test_ledger_accepts_matching_expected_head(tmp_path):
+    path = tmp_path / "controls.json"
+    ledger = ControlLedger(path)
+    first = ledger.append("file_write", "alice", "approved", "reviewed")
+    second = ledger.append("database_write", "alice", "approved", "reviewed", expected_head_hash=first.event_hash)
+    assert second.previous_hash == first.event_hash
+    assert ledger.verify() is True
 
 
 def test_ledger_detects_event_tampering(tmp_path):
