@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from nexus.core.evaluation import EvaluationCase, EvaluationReport, EvaluationRegression
+from nexus.core.evaluation import EvaluationCase, EvaluationGate, EvaluationReport, EvaluationRegression
 from nexus.core.verification import VerificationResult
 
 
@@ -143,6 +143,64 @@ class BenchmarkComparison:
                 "regressed": self.regression.regressed,
             },
         }
+
+
+@dataclass(frozen=True)
+class BenchmarkGateResult:
+    """Machine-readable result of absolute quality and regression gates."""
+
+    comparison: BenchmarkComparison
+    quality_passed: bool
+
+    @property
+    def passed(self) -> bool:
+        return self.quality_passed and not self.comparison.regressed
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "suite_name": self.comparison.suite_name,
+            "suite_version": self.comparison.suite_version,
+            "quality_passed": self.quality_passed,
+            "regression_passed": not self.comparison.regressed,
+            "passed": self.passed,
+            "comparison": self.comparison.as_dict(),
+        }
+
+
+class BenchmarkGate:
+    """Combines absolute quality thresholds with baseline regression protection."""
+
+    def __init__(
+        self,
+        quality_gate: EvaluationGate | None = None,
+        *,
+        maximum_pass_rate_drop: float = 0.0,
+        maximum_check_score_drop: float = 0.0,
+        maximum_grounding_score_drop: float = 1.0,
+    ) -> None:
+        self._quality_gate = quality_gate or EvaluationGate()
+        self._maximum_pass_rate_drop = maximum_pass_rate_drop
+        self._maximum_check_score_drop = maximum_check_score_drop
+        self._maximum_grounding_score_drop = maximum_grounding_score_drop
+
+    def evaluate(
+        self,
+        suite: BenchmarkSuite,
+        baseline: EvaluationReport,
+        current: EvaluationReport,
+    ) -> BenchmarkGateResult:
+        comparison = compare_benchmarks(
+            suite,
+            baseline,
+            current,
+            maximum_pass_rate_drop=self._maximum_pass_rate_drop,
+            maximum_check_score_drop=self._maximum_check_score_drop,
+            maximum_grounding_score_drop=self._maximum_grounding_score_drop,
+        )
+        return BenchmarkGateResult(
+            comparison=comparison,
+            quality_passed=self._quality_gate.evaluate(current),
+        )
 
 
 def compare_benchmarks(
