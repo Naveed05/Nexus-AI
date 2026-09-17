@@ -40,11 +40,7 @@ def record_approved_patch_execution(
     actor: str,
     expected_head_hash: str | None = None,
 ) -> PatchExecutionProvenance:
-    """Atomically sequence approval and execution provenance through the ledger API.
-
-    The approval must target the exact patch. Execution is then permitted only from
-    that approval event while it remains the current ledger head.
-    """
+    """Sequence approval and execution provenance through the existing ledger API."""
     if not approval.is_approved:
         raise ValueError("execution requires an approved decision")
     if not approval.matches(patch_fingerprint):
@@ -52,13 +48,17 @@ def record_approved_patch_execution(
     approval_event = ledger.append_approval(
         approval,
         expected_head_hash=expected_head_hash,
-        expected_patch_fingerprint=patch_fingerprint,
     )
-    execution_event = ledger.append_execution(
-        approval,
-        patch_fingerprint=patch_fingerprint,
-        actor=actor,
-        approval_event_hash=approval_event.event_hash,
+    execution_reason = (
+        f"executed_patch_fingerprint={patch_fingerprint}; "
+        f"approval_event={approval_event.event_hash}"
+    )
+    execution_event = ledger.append(
+        "patch_execution",
+        actor,
+        "executed",
+        execution_reason,
+        expected_head_hash=approval_event.event_hash,
     )
     provenance = PatchExecutionProvenance(
         patch_fingerprint=patch_fingerprint,
