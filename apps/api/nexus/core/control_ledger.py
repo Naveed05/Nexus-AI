@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,26 +62,26 @@ class ControlLedger:
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path)
 
-    def append(self, action: str, actor: str, decision: str, reason: str) -> ControlEvent:
+    def append(self, action: str, actor: str, decision: str, reason: str, *, expected_head_hash: str | None = None) -> ControlEvent:
         events = self.load()
-        previous = events[-1].event_hash if events else ""
-        event = ControlEvent.create(len(events) + 1, action, actor, decision, reason, previous_hash=previous)
+        current_head = events[-1].event_hash if events else ""
+        if expected_head_hash is not None and expected_head_hash != current_head:
+            raise RuntimeError("human control ledger head changed; append aborted")
+        event = ControlEvent.create(len(events) + 1, action, actor, decision, reason, previous_hash=current_head)
         self._write((*events, event))
         return event
 
-    def append_decision(self, decision: "ControlDecision", *, actor: str) -> ControlEvent:
-        """Persist a typed human-control decision without duplicating fields at call sites."""
+    def append_decision(self, decision: "ControlDecision", *, actor: str, expected_head_hash: str | None = None) -> ControlEvent:
         if not actor.strip():
             raise ValueError("actor must not be empty")
         reason = decision.reasons[0] if decision.reasons else "human-control decision"
-        return self.append(decision.action, actor, "allowed" if decision.allowed else "denied", reason)
+        return self.append(decision.action, actor, "allowed" if decision.allowed else "denied", reason, expected_head_hash=expected_head_hash)
 
-    def append_approval(self, approval: "DeveloperApproval", *, action: str = "patch_execution") -> ControlEvent:
-        """Persist approval provenance while binding the event to the exact patch fingerprint."""
+    def append_approval(self, approval: "DeveloperApproval", *, action: str = "patch_execution", expected_head_hash: str | None = None) -> ControlEvent:
         if not action.strip():
             raise ValueError("action must not be empty")
         reason = f"patch_fingerprint={approval.patch_fingerprint}; {approval.reason or 'pending decision'}"
-        return self.append(action, approval.actor, approval.status.value, reason)
+        return self.append(action, approval.actor, approval.status.value, reason, expected_head_hash=expected_head_hash)
 
     def load(self) -> tuple[ControlEvent, ...]:
         if not self._path.exists():
@@ -114,5 +115,23 @@ class ControlLedger:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"schema": _SCHEMA, "events": [event.as_dict() for event in events]}
         temporary = self._path.with_suffix(self._path.suffix + ".tmp")
-        temporary.write_text(_canonical(payload) + "\n", encoding="utf-8")
-        temporary.replace(self._path)
+        try:
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(_canonical(payload) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            temporary.replace(self._path)
+            try:
+                directory_fd = os.open(self._path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError:
+                pass
+        finally:
+            if temporary.exists():
+                try:
+                    temporary.unlink()
+                except OSError:
+                    pass
