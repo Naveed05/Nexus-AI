@@ -1,3 +1,5 @@
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -57,6 +59,14 @@ class BenchmarkSuite:
             ],
         }
 
+    @property
+    def fingerprint(self) -> str:
+        """Return a stable SHA-256 identity for the exact benchmark definition."""
+        payload = json.dumps(
+            self.as_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
 
 class BenchmarkRunner:
     """Executes a benchmark suite while preserving suite ordering and identity."""
@@ -80,6 +90,7 @@ class BenchmarkBaseline:
     suite_version: str
     case_ids: tuple[str, ...]
     report: EvaluationReport
+    suite_fingerprint: str = ""
 
     @classmethod
     def from_suite(cls, suite: BenchmarkSuite, report: EvaluationReport) -> "BenchmarkBaseline":
@@ -87,11 +98,13 @@ class BenchmarkBaseline:
         actual_ids = tuple(score.case_id for score in report.scores)
         if actual_ids != expected_ids:
             raise ValueError("baseline report does not match benchmark suite")
-        return cls(suite.name, suite.version, expected_ids, report)
+        return cls(suite.name, suite.version, expected_ids, report, suite.fingerprint)
 
     def validate_for(self, suite: BenchmarkSuite, report: EvaluationReport) -> None:
         if self.suite_name != suite.name or self.suite_version != suite.version:
             raise ValueError("baseline benchmark identity does not match suite")
+        if self.suite_fingerprint and self.suite_fingerprint != suite.fingerprint:
+            raise ValueError("baseline benchmark fingerprint does not match suite")
         expected_ids = tuple(case.case_id for case in suite.ordered_cases())
         actual_ids = tuple(score.case_id for score in report.scores)
         if self.case_ids != expected_ids or actual_ids != expected_ids:
@@ -101,6 +114,7 @@ class BenchmarkBaseline:
         return {
             "suite_name": self.suite_name,
             "suite_version": self.suite_version,
+            "suite_fingerprint": self.suite_fingerprint,
             "case_ids": list(self.case_ids),
             "report": self.report.as_dict(),
         }
