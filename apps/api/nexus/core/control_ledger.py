@@ -83,6 +83,33 @@ class ControlLedger:
         reason = f"patch_fingerprint={approval.patch_fingerprint}; {approval.reason or 'pending decision'}"
         return self.append(action, approval.actor, approval.status.value, reason, expected_head_hash=expected_head_hash)
 
+    def audit(self, *, action: str | None = None, actor: str | None = None, decision: str | None = None, limit: int | None = None) -> tuple[ControlEvent, ...]:
+        """Return validated audit events newest-first with normalized filters."""
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be at least 1")
+        normalized_action = action.strip().lower() if action is not None else None
+        normalized_actor = actor.strip() if actor is not None else None
+        normalized_decision = decision.strip().lower() if decision is not None else None
+        if action is not None and not normalized_action:
+            raise ValueError("action must not be empty")
+        if actor is not None and not normalized_actor:
+            raise ValueError("actor must not be empty")
+        if decision is not None and not normalized_decision:
+            raise ValueError("decision must not be empty")
+        events = self.load()
+        matches = tuple(
+            event for event in reversed(events)
+            if (normalized_action is None or event.action == normalized_action)
+            and (normalized_actor is None or event.actor == normalized_actor)
+            and (normalized_decision is None or event.decision == normalized_decision)
+        )
+        return matches[:limit] if limit is not None else matches
+
+    def head(self) -> ControlEvent | None:
+        """Return the validated ledger head, or None for an empty ledger."""
+        events = self.load()
+        return events[-1] if events else None
+
     def load(self) -> tuple[ControlEvent, ...]:
         if not self._path.exists():
             return ()
