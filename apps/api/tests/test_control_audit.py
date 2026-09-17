@@ -7,13 +7,13 @@ from nexus.core.control_ledger import ControlLedger
 def test_snapshot_reports_verified_head(tmp_path):
     ledger = ControlLedger(tmp_path / "controls.json")
     first = ledger.append("file_write", "alice", "allowed", "reviewed")
-    ledger.append("production_deploy", "bob", "denied", "approval required")
+    second = ledger.append("production_deploy", "bob", "denied", "approval required")
     result = snapshot(ledger)
     assert result.event_count == 2
     assert result.head_sequence == 2
-    assert result.head_hash == ledger.head().event_hash
+    assert result.head_hash == second.event_hash
+    assert result.head_hash != first.event_hash
     assert result.verified is True
-    assert result.as_dict()["head_hash"] == first.event_hash or result.head_hash != first.event_hash
 
 
 def test_query_filters_newest_first_and_is_bounded(tmp_path):
