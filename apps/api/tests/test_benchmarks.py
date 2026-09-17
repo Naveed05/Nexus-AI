@@ -1,7 +1,13 @@
 import pytest
 
-from nexus.core.benchmarks import BenchmarkBaseline, BenchmarkRunner, BenchmarkSuite, compare_benchmarks
-from nexus.core.evaluation import EvaluationCase
+from nexus.core.benchmarks import (
+    BenchmarkBaseline,
+    BenchmarkGate,
+    BenchmarkRunner,
+    BenchmarkSuite,
+    compare_benchmarks,
+)
+from nexus.core.evaluation import EvaluationCase, EvaluationGate
 from nexus.core.verification import VerificationResult
 
 
@@ -130,6 +136,59 @@ def test_benchmark_baseline_rejects_definition_fingerprint_mismatch():
 
     with pytest.raises(ValueError, match="fingerprint does not match"):
         baseline.validate_for(changed_suite, changed_report)
+
+
+def test_benchmark_gate_requires_absolute_quality_and_no_regression():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    baseline = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    current = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+
+    result = BenchmarkGate().evaluate(suite, baseline, current)
+
+    assert result.passed
+    assert result.quality_passed
+    assert result.as_dict()["regression_passed"]
+
+
+def test_benchmark_gate_reports_absolute_quality_failure():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    baseline = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    current = BenchmarkRunner(lambda _: VerificationResult(passed=False, checks={})).run(suite)
+
+    result = BenchmarkGate(
+        quality_gate=EvaluationGate(minimum_pass_rate=0.0, minimum_average_check_score=0.0)
+    ).evaluate(suite, baseline, current)
+
+    assert not result.passed
+    assert result.quality_passed
+    assert result.comparison.regressed
+
+
+def test_benchmark_gate_allows_configured_regression_tolerance():
+    suite = BenchmarkSuite(
+        name="core",
+        version="1",
+        cases=(EvaluationCase(case_id="a", category="core", objective="a"),),
+    )
+    baseline = BenchmarkRunner(lambda _: VerificationResult(passed=True, checks={})).run(suite)
+    current = BenchmarkRunner(lambda _: VerificationResult(passed=False, checks={})).run(suite)
+
+    result = BenchmarkGate(
+        quality_gate=EvaluationGate(minimum_pass_rate=0.0, minimum_average_check_score=0.0),
+        maximum_pass_rate_drop=1.0,
+        maximum_check_score_drop=1.0,
+    ).evaluate(suite, baseline, current)
+
+    assert result.passed
+    assert not result.comparison.regressed
 
 
 def test_compare_benchmarks_rejects_case_identity_mismatch():
