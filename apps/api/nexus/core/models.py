@@ -1,4 +1,29 @@
 from dataclasses import dataclass
+from typing import Any, Mapping, Protocol
+
+
+
+@dataclass(frozen=True)
+class ModelResponse:
+    output: str
+    response_id: str
+    provider: str
+    model_id: str
+
+
+
+class ModelProvider(Protocol):
+    name: str
+
+    def generate(
+        self,
+        *,
+        model: "ModelSpec",
+        input_items: list[Any],
+        tools: list[Mapping[str, Any]],
+        tool_choice: str,
+    ) -> ModelResponse:
+        ...
 
 
 @dataclass(frozen=True)
