@@ -9,6 +9,8 @@ from nexus.core.provider import (
     StaticModelProvider,
     provider_registry,
 )
+from nexus.core.provider_failures import ProviderFailure, ProviderFailureKind, classify_provider_failure
+from nexus.core.provider_telemetry import ProviderTelemetry, ProviderTelemetryEvent
 from nexus.core.retry_policy import RetryPolicy
 from nexus.core.runtime_context import RuntimeContext
 from nexus.core.tool_execution import ToolExecutionResult, ToolExecutor
@@ -27,6 +29,11 @@ __all__ = [
     "ModelResponse",
     "ModelSpec",
     "ModelFallbackPolicy",
+    "ProviderFailure",
+    "ProviderFailureKind",
+    "classify_provider_failure",
+    "ProviderTelemetry",
+    "ProviderTelemetryEvent",
     "ModelProviderRegistry",
     "ModelProviderRouter",
     "ProviderRoute",
