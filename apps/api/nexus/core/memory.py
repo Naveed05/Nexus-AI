@@ -176,6 +176,50 @@ class MemoryStore:
         if not 0.0 <= min_confidence <= 1.0:
             raise ValueError("min_confidence must be between 0 and 1")
 
+    def lifecycle_candidates(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        older_than_days: int = 30,
+        min_importance: float = 0.0,
+    ) -> tuple[MemoryRecord, ...]:
+        """Return low-value/aging memories for explicit lifecycle review."""
+        if older_than_days < 0:
+            raise ValueError("older_than_days must be non-negative")
+        if not 0.0 <= min_importance <= 1.0:
+            raise ValueError("min_importance must be between 0 and 1")
+        cutoff = datetime.now(timezone.utc).timestamp() - (older_than_days * 86400)
+        with self._lock:
+            return tuple(
+                sorted(
+                    (
+                        record for record in self._records.values()
+                        if record.workspace_id == workspace_id
+                        and record.importance <= min_importance
+                        and record.updated_at.timestamp() <= cutoff
+                    ),
+                    key=lambda record: (record.updated_at, str(record.memory_id)),
+                )
+            )
+
+    def prune_lifecycle_candidates(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        older_than_days: int = 30,
+        max_importance: float = 0.0,
+    ) -> tuple[MemoryRecord, ...]:
+        """Explicitly remove stale, low-importance memories; never cross workspaces."""
+        candidates = self.lifecycle_candidates(
+            workspace_id=workspace_id,
+            older_than_days=older_than_days,
+            min_importance=max_importance,
+        )
+        removed = []
+        for record in candidates:
+            removed.append(self.forget(record.memory_id, workspace_id=workspace_id))
+        return tuple(removed)
+
     def recall_ranked(
         self,
         query: str,
