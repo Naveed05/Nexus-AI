@@ -137,3 +137,23 @@ def test_memory_lifecycle_pruning_requires_explicit_workspace_and_threshold() ->
     removed = store.prune_lifecycle_candidates(workspace_id=workspace, older_than_days=30, max_importance=0.1)
     assert removed == (store._records.get(record.memory_id, removed[0]),) if False else removed
     assert store.list(workspace_id=workspace) == ()
+
+
+def test_memory_retrieval_supports_required_tags() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    tagged = store.remember("Python deployment workflow", workspace_id=workspace, tags=("deployment",), importance=0.8)
+    store.remember("Python deployment note", workspace_id=workspace, tags=("other",), importance=1.0)
+    assert store.recall("Python deployment", workspace_id=workspace, required_tags=("deployment",)) == (tagged,)
+
+
+def test_memory_ranking_remains_bounded_and_prefers_importance() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    high = store.remember("Python API testing", workspace_id=workspace, importance=0.9)
+    low = store.remember("Python API testing", workspace_id=workspace, importance=0.2)
+    matches = store.recall_ranked("Python API testing", workspace_id=workspace)
+    assert matches[0].record == high
+    assert 0.0 <= matches[0].confidence <= 1.0
+    assert 0.0 <= matches[1].confidence <= 1.0
+    assert matches[0].confidence > matches[1].confidence
