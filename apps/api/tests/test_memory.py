@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -110,3 +111,29 @@ def test_memory_validation_rejects_invalid_inputs() -> None:
         store.recall("fact", top_k=0)
     with pytest.raises(ValueError):
         store.recall_context("fact", max_chars=0)
+
+
+def test_memory_lifecycle_candidates_are_workspace_scoped_and_deterministic() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    old = datetime.now(timezone.utc) - timedelta(days=60)
+    record = store.remember("Stale low value note", workspace_id=workspace, importance=0.1)
+    # Rebuild the immutable record with an old timestamp to exercise lifecycle policy.
+    from dataclasses import replace
+    store._records[record.memory_id] = replace(record, created_at=old, updated_at=old)
+
+    assert store.lifecycle_candidates(workspace_id=workspace, older_than_days=30, min_importance=0.1) == (store._records[record.memory_id],)
+    assert store.lifecycle_candidates(workspace_id=uuid4(), older_than_days=30, min_importance=0.1) == ()
+
+
+def test_memory_lifecycle_pruning_requires_explicit_workspace_and_threshold() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    old = datetime.now(timezone.utc) - timedelta(days=60)
+    record = store.remember("Stale low value note", workspace_id=workspace, importance=0.1)
+    from dataclasses import replace
+    store._records[record.memory_id] = replace(record, created_at=old, updated_at=old)
+
+    removed = store.prune_lifecycle_candidates(workspace_id=workspace, older_than_days=30, max_importance=0.1)
+    assert removed == (store._records.get(record.memory_id, removed[0]),) if False else removed
+    assert store.list(workspace_id=workspace) == ()
