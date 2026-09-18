@@ -1,8 +1,11 @@
 from dataclasses import dataclass
+import json
+import time
 from typing import Any, Mapping
 
 from nexus.core.permissions import PermissionDecision, PermissionPolicy
 from nexus.core.task import Task
+from nexus.core.tool_security import ToolSecurityPolicy
 from nexus.core.tools import ToolRegistry, ToolSpec, tool_registry
 
 
@@ -13,14 +16,18 @@ class ToolExecutionResult:
     output: Any | None = None
     error: str | None = None
     permission: PermissionDecision = PermissionDecision.ALLOW
+    duration_ms: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:
+        output_size = 0 if self.output is None else len(json.dumps(self.output, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8"))
         return {
             "tool_name": self.tool_name,
             "success": self.success,
             "output": self.output,
             "error": self.error,
             "permission": self.permission.value,
+            "duration_ms": self.duration_ms,
+            "output_size_bytes": output_size,
         }
 
 
@@ -31,9 +38,11 @@ class ToolExecutor:
         self,
         registry: ToolRegistry | None = None,
         permission_policy: PermissionPolicy | None = None,
+        security_policy: ToolSecurityPolicy | None = None,
     ) -> None:
         self._registry = registry or tool_registry
         self._permission_policy = permission_policy or PermissionPolicy()
+        self._security_policy = security_policy or ToolSecurityPolicy()
 
     @staticmethod
     def _validate_arguments(tool: ToolSpec, arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -59,6 +68,7 @@ class ToolExecutor:
         *,
         approved: bool = False,
     ) -> ToolExecutionResult:
+        started = time.perf_counter()
         try:
             tool = self._registry.get(tool_name)
         except ValueError as exc:
@@ -72,10 +82,11 @@ class ToolExecutor:
 
         try:
             kwargs = self._validate_arguments(tool, arguments)
+            kwargs = self._security_policy.validate(kwargs)
             output = tool.handler(**kwargs)
-            return ToolExecutionResult(tool.name, True, output=output, permission=decision)
+            return ToolExecutionResult(tool.name, True, output=output, permission=decision, duration_ms=(time.perf_counter() - started) * 1000)
         except Exception as exc:
-            return ToolExecutionResult(tool.name, False, error=str(exc), permission=decision)
+            return ToolExecutionResult(tool.name, False, error=str(exc), permission=decision, duration_ms=(time.perf_counter() - started) * 1000)
 
 
 tool_executor = ToolExecutor()
