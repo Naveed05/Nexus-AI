@@ -220,6 +220,10 @@ class MemoryStore:
             removed.append(self.forget(record.memory_id, workspace_id=workspace_id))
         return tuple(removed)
 
+    @staticmethod
+    def _tokenize(text: str) -> tuple[str, ...]:
+        return tuple(term.lower() for term in text.split() if term.strip())
+
     def recall_ranked(
         self,
         query: str,
@@ -227,21 +231,29 @@ class MemoryStore:
         workspace_id: UUID | None = None,
         top_k: int = 5,
         min_confidence: float = 0.0,
+        required_tags: tuple[str, ...] = (),
     ) -> tuple[MemoryMatch, ...]:
         if not query.strip():
             raise ValueError("query cannot be empty")
         if top_k < 1:
             raise ValueError("top_k must be at least 1")
         self._validate_min_confidence(min_confidence)
-        terms = {term.lower() for term in query.split() if term.strip()}
+        terms = set(self._tokenize(query))
+        normalized_required_tags = {tag.strip().lower() for tag in required_tags if tag.strip()}
         with self._lock:
-            candidates = [record for record in self._records.values() if record.workspace_id == workspace_id]
+            candidates = [
+                record for record in self._records.values()
+                if record.workspace_id == workspace_id
+                and normalized_required_tags.issubset(record.tags)
+            ]
 
             def signals(record: MemoryRecord) -> tuple[float, float]:
                 haystack = f"{record.content} {' '.join(record.tags)}".lower()
                 overlap = sum(1 for term in terms if term in haystack)
                 relevance = overlap / len(terms) if terms else 0.0
-                confidence = relevance * record.importance
+                recency_days = max(0.0, (datetime.now(timezone.utc) - record.updated_at).total_seconds() / 86400)
+                recency = 1.0 / (1.0 + recency_days / 30.0)
+                confidence = relevance * record.importance * (0.75 + 0.25 * recency)
                 return relevance, confidence
 
             scored = [(record, *signals(record)) for record in candidates]
