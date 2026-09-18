@@ -61,3 +61,38 @@ def test_tool_executor_failures_are_structured() -> None:
     result = ToolExecutor(registry=registry).execute(Task(objective="boom"), "boom", {})
     assert result.success is False
     assert result.error == "boom"
+
+
+def test_tool_executor_applies_security_policy() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        "echo", "Echo text", {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+            "additionalProperties": False,
+        }, "low", lambda text: {"text": text},
+    ))
+    result = ToolExecutor(registry=registry).execute(
+        Task(objective="echo"), "echo", {"text": "ok", "password": "secret"}
+    )
+    assert result.success is False
+    assert "restricted fields" in result.error
+
+
+def test_tool_execution_result_is_structured() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        "echo", "Echo text", {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+            "additionalProperties": False,
+        }, "low", lambda text: {"text": text},
+    ))
+    result = ToolExecutor(registry=registry).execute(Task(objective="echo"), "echo", {"text": "hello"})
+    payload = result.as_dict()
+    assert result.success is True
+    assert payload["tool_name"] == "echo"
+    assert payload["output_size_bytes"] > 0
+    assert payload["duration_ms"] >= 0
