@@ -47,7 +47,12 @@ class UnifiedAgentRuntime:
             self._call("plan", context.for_stage("plan"), agent_state)
             machine.transition(ExecutionState.PLANNED, reason="execution plan established")
             assignments = self._orchestrator.assign_plan(task, tuple(agent_state.steps))
-            context = RuntimeContext(str(task.task_id), task.objective, assignments=(), metadata={}) if False else context
+            context = RuntimeContext(
+                task_id=str(task.task_id),
+                objective=task.objective,
+                assignments=tuple(assignments),
+                metadata={"assignment_count": len(assignments)},
+            )
             self._call("route", context.for_stage("route"), agent_state)
             machine.transition(ExecutionState.APPROVED, reason="runtime route established")
             for step in agent_state.steps:
@@ -85,7 +90,7 @@ class UnifiedAgentRuntime:
         return self._result(task, machine, output, None, executed_steps, attempts)
 
     @staticmethod
-    def _call(name, context, state, step=None):
+    def _call(self, name, context, state, step=None):
         callback = self._stages[name]
         if callback is None:
             return None
