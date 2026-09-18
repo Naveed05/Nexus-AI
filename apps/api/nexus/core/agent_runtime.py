@@ -89,7 +89,6 @@ class UnifiedAgentRuntime:
             return self._result(task, machine, output, str(exc), executed_steps, attempts)
         return self._result(task, machine, output, None, executed_steps, attempts)
 
-    @staticmethod
     def _call(self, name, context, state, step=None):
         callback = self._stages[name]
         if callback is None:
