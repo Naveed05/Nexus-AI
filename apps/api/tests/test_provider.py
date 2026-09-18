@@ -52,7 +52,7 @@ def test_fallback_policy_is_ordered_and_skips_primary() -> None:
 
 def test_provider_router_moves_to_next_fallback() -> None:
     registry = ModelProviderRegistry()
-    registry.register(StaticModelProvider())
+    registry.register(StaticModelProvider(name="openai"))
     policy = ModelFallbackPolicy(("terra", "luna"))
     router = ModelProviderRouter(registry, policy)
     first = router.route(__import__("nexus.core.models", fromlist=["model_registry"]).model_registry.get("terra"))
@@ -65,7 +65,7 @@ def test_provider_router_moves_to_next_fallback() -> None:
 
 def test_fallback_returns_none_after_last_candidate() -> None:
     registry = ModelProviderRegistry()
-    registry.register(StaticModelProvider())
+    registry.register(StaticModelProvider(name="openai"))
     router = ModelProviderRouter(registry, ModelFallbackPolicy(("luna",)))
     primary = __import__("nexus.core.models", fromlist=["model_registry"]).model_registry.get("terra")
     assert router.fallback(primary, failed_index=1) is None
