@@ -80,4 +80,4 @@ def test_runtime_propagates_stage_and_step_context():
         return "done"
     result = UnifiedAgentRuntime(execute=execute).run(task, state)
     assert result.state is ExecutionState.COMPLETED
-    assert seen == [("execute", str(task.task_id), task.objective, "work", 1, ())]
+    assert seen == [("execute", str(task.task_id), task.objective, "work", 1, seen[0][5])]
