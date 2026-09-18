@@ -81,8 +81,10 @@ class ToolExecutor:
             return ToolExecutionResult(tool.name, False, error="explicit approval required for tool execution", permission=decision)
 
         try:
-            kwargs = self._validate_arguments(tool, arguments)
-            kwargs = self._security_policy.validate(kwargs)
+            # Apply the security boundary before schema validation so restricted
+            # fields are never treated as ordinary unknown arguments.
+            kwargs = self._security_policy.validate(arguments)
+            kwargs = self._validate_arguments(tool, kwargs)
             output = tool.handler(**kwargs)
             return ToolExecutionResult(tool.name, True, output=output, permission=decision, duration_ms=(time.perf_counter() - started) * 1000)
         except Exception as exc:
