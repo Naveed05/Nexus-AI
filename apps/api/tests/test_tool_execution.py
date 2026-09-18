@@ -1,6 +1,6 @@
 import pytest
 
-from nexus.core.task import Task
+from nexus.core.task import RiskLevel, Task
 from nexus.core.tool_execution import ToolExecutor
 from nexus.core.tools import ToolSpec, ToolRegistry
 
@@ -43,7 +43,7 @@ def test_tool_executor_requires_approval_for_medium_risk() -> None:
         }, "medium", lambda: "ok",
     ))
     executor = ToolExecutor(registry=registry)
-    task = Task(objective="risky")
+    task = Task(objective="risky", risk_level=RiskLevel.MEDIUM)
     blocked = executor.execute(task, "risky", {})
     assert blocked.success is False
     assert blocked.permission.value == "approval_required"
