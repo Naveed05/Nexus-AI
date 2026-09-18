@@ -12,6 +12,7 @@ class RuntimeContext:
     stage: str = "created"
     step_id: str | None = None
     attempt: int = 0
+    assignments: tuple[Any, ...] = ()
     metadata: Mapping[str, Any] = ()
 
     def for_stage(self, stage: str, *, step_id: str | None = None, attempt: int | None = None) -> "RuntimeContext":
@@ -20,4 +21,4 @@ class RuntimeContext:
         next_attempt = self.attempt if attempt is None else attempt
         if next_attempt < 0:
             raise ValueError("attempt cannot be negative")
-        return RuntimeContext(self.task_id, self.objective, self.workspace_id, stage.strip(), step_id, next_attempt, self.metadata)
+        return RuntimeContext(self.task_id, self.objective, self.workspace_id, stage.strip(), step_id, next_attempt, self.assignments, self.metadata)
