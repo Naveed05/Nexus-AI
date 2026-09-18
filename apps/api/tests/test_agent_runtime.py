@@ -1,5 +1,6 @@
 from nexus.core.agent_runtime import UnifiedAgentRuntime
 from nexus.core.execution_state import ExecutionState
+from nexus.core.retry_policy import RetryPolicy
 from nexus.core.state import AgentState, PlanStep, StepStatus
 from nexus.core.task import Task
 
@@ -75,8 +76,8 @@ def test_runtime_propagates_stage_and_step_context():
     state = AgentState(task_id=task.task_id, objective=task.objective, steps=[PlanStep(step_id="work", objective="work")])
     seen = []
     def execute(context, _state):
-        seen.append((context.stage, context.task_id, context.objective, context.step_id, context.attempt))
+        seen.append((context.stage, context.task_id, context.objective, context.step_id, context.attempt, context.assignments))
         return "done"
     result = UnifiedAgentRuntime(execute=execute).run(task, state)
     assert result.state is ExecutionState.COMPLETED
-    assert seen == [("execute", str(task.task_id), task.objective, "work", 1)]
+    assert seen == [("execute", str(task.task_id), task.objective, "work", 1, ())]
