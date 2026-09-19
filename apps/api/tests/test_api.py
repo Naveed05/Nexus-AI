@@ -223,3 +223,16 @@ def test_agent_run_lifecycle_endpoints() -> None:
 def test_agent_run_endpoint_rejects_unknown_run() -> None:
     response = client.get("/api/v1/runs/00000000-0000-0000-0000-000000000000")
     assert response.status_code == 404
+
+
+def test_agent_run_list_endpoint_includes_created_run() -> None:
+    from nexus.api.main import agent_runtime
+
+    task = Task(objective="list runtime runs")
+    run = agent_runtime.create_run(task)
+    response = client.get("/api/v1/runs")
+    assert response.status_code == 200
+    payload = response.json()
+    match = next(item for item in payload if item["run_id"] == str(run.run_id))
+    assert match["task_id"] == str(task.task_id)
+    assert match["status"] == "created"
