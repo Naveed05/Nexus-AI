@@ -24,7 +24,7 @@ def test_tool_executor_runs_registered_tool() -> None:
     registry.register(ToolSpec(
         "echo", "Echo text", {
             "type": "object",
-            "properties": {"text": {"type": "string"}},
+            "properties": {"text": {"type": "string"}}, 
             "required": ["text"],
             "additionalProperties": False,
         }, "low", lambda text: {"text": text},
@@ -81,7 +81,13 @@ def test_tool_executor_rejects_expired_approval() -> None:
     executor = ToolExecutor(registry=registry)
     task = Task(objective="risky", risk_level=RiskLevel.MEDIUM)
     issued = datetime.now(timezone.utc) - timedelta(minutes=10)
-    approval = issue_approval("reviewer", "risky", {"value": "hello"}, ttl_seconds=1, now=issued)
+    approval = issue_approval(
+        approver="reviewer",
+        tool_name="risky",
+        arguments={"value": "hello"},
+        ttl_seconds=1,
+        now=issued,
+    )
 
     result = executor.execute(task, "risky", {"value": "hello"}, approval=approval)
     assert result.success is False
