@@ -58,3 +58,10 @@ def test_python_sandbox_blocks_network_imports_by_default() -> None:
 def test_python_sandbox_allows_network_imports_only_when_explicitly_enabled() -> None:
     result = PythonSandbox(allow_network=True).run("import socket; print(socket.AF_INET)")
     assert result.return_code == 0
+
+def test_python_sandbox_enforces_file_count_limit() -> None:
+    result = PythonSandbox(max_files=1).run(
+        "from pathlib import Path; Path('a').write_text('a'); Path('b').write_text('b')"
+    )
+    assert result.return_code == 1
+    assert "file limit exceeded" in result.stderr

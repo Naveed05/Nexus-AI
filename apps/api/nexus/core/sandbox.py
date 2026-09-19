@@ -32,6 +32,7 @@ class PythonSandbox:
         max_cpu_seconds: int | None = None,
         max_file_bytes: int = 10_485_760,
         allow_network: bool = False,
+        max_files: int = 128,
     ) -> None:
         if timeout_seconds < 1:
             raise ValueError("timeout_seconds must be at least 1")
@@ -41,11 +42,14 @@ class PythonSandbox:
             raise ValueError("max_file_bytes must be at least 1")
         if max_cpu_seconds is not None and max_cpu_seconds < 1:
             raise ValueError("max_cpu_seconds must be at least 1")
+        if max_files < 1:
+            raise ValueError("max_files must be at least 1")
         self.timeout_seconds = timeout_seconds
         self.max_output_bytes = max_output_bytes
         self.max_cpu_seconds = max_cpu_seconds or timeout_seconds
         self.max_file_bytes = max_file_bytes
         self.allow_network = allow_network
+        self.max_files = max_files
 
     def _preexec_limits(self):
         if os.name != "posix":
@@ -124,6 +128,16 @@ class PythonSandbox:
                     stderr=(exc.stderr or "")[: self.max_output_bytes],
                     return_code=-1,
                     timed_out=True,
+                    workspace=workspace,
+                )
+
+            file_count = sum(1 for path in workspace_path.rglob("*") if path.is_file())
+            if file_count > self.max_files:
+                return SandboxResult(
+                    stdout=completed.stdout[: self.max_output_bytes],
+                    stderr=(completed.stderr + f"\nsandbox file limit exceeded: {file_count} > {self.max_files}")[: self.max_output_bytes],
+                    return_code=1,
+                    timed_out=False,
                     workspace=workspace,
                 )
 
