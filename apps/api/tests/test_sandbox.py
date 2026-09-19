@@ -49,3 +49,12 @@ def test_python_sandbox_applies_posix_process_limits() -> None:
 
     assert result.return_code != 0
     assert result.timed_out is False
+
+def test_python_sandbox_blocks_network_imports_by_default() -> None:
+    with pytest.raises(ValueError, match="network access is disabled"):
+        PythonSandbox().run("import socket; socket.socket()")
+
+
+def test_python_sandbox_allows_network_imports_only_when_explicitly_enabled() -> None:
+    result = PythonSandbox(allow_network=True).run("import socket; print(socket.AF_INET)")
+    assert result.return_code == 0
