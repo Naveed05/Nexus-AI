@@ -92,6 +92,12 @@ REMEMBER
 - explicit tool selection
 - observable verification
 
+### 🔑 Multi-provider / BYOK model layer
+
+NEXUS supports a Bring Your Own Key foundation so each user can connect their own model-provider credentials instead of sharing a platform-wide API key. The provider layer currently supports OpenAI, Anthropic Claude, and Groq, with per-user credential isolation, masked credentials, provider validation, and an extensible provider abstraction.
+
+Raw user API keys are never returned by the credential-management interface. Production persistence is expected to use an encrypted secret store rather than plaintext application storage.
+
 ### 🤖 Model intelligence
 
 NEXUS is designed to route work according to task complexity, capability requirements, risk, latency, context size, and cost rather than blindly using one model for every request.
@@ -308,8 +314,9 @@ The next major engineering focus is **Security & Human Control Hardening**, foll
 [✓] Multimodal Intelligence Foundation
 [✓] Advanced Agentic Execution Foundation
 [✓] Advanced Frontier-Model Workflow Foundation
-[→] Evaluation & Benchmark Platform
-[ ] Security & Human Control Hardening
+[✓] Evaluation & Benchmark Platform Foundation
+[✓] Security & Human Control Hardening
+[→] Multi-Provider / BYOK Model Layer
 [ ] Production Frontend
 [ ] Productization
 [ ] Deployment & Observability
