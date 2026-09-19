@@ -192,3 +192,37 @@ def test_tool_execution_result_is_structured() -> None:
     assert payload["tool_name"] == "echo"
     assert payload["output_size_bytes"] > 0
     assert payload["duration_ms"] >= 0
+
+def test_tool_executor_fails_closed_for_sandbox_required_tool_without_runner() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        "sandboxed", "Sandboxed operation", {
+            "type": "object", "properties": {}, "required": [], "additionalProperties": False,
+        }, "low", lambda: "unsafe-direct-path", sandbox_required=True,
+    ))
+    result = ToolExecutor(registry=registry).execute(Task(objective="sandboxed"), "sandboxed", {})
+    assert result.success is False
+    assert result.permission.value == "deny"
+    assert "sandbox runner" in result.error
+
+
+def test_tool_executor_routes_sandbox_required_tool_to_runner() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        "sandboxed", "Sandboxed operation", {
+            "type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"],
+            "additionalProperties": False,
+        }, "low", lambda value: "direct-handler", sandbox_required=True,
+    ))
+    calls = []
+
+    def runner(tool, arguments):
+        calls.append((tool.name, arguments))
+        return {"sandboxed": arguments["value"]}
+
+    result = ToolExecutor(registry=registry, sandbox_runner=runner).execute(
+        Task(objective="sandboxed"), "sandboxed", {"value": "hello"}
+    )
+    assert result.success is True
+    assert result.output == {"sandboxed": "hello"}
+    assert calls == [("sandboxed", {"value": "hello"})]

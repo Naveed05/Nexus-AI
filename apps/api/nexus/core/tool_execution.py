@@ -4,7 +4,7 @@ import os
 import signal
 import threading
 import time
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from nexus.core.approvals import Approval, ApprovalError
 from nexus.core.control_ledger import ControlLedger
@@ -48,6 +48,7 @@ class ToolExecutor:
         security_policy: ToolSecurityPolicy | None = None,
         audit_ledger: ControlLedger | None = None,
         actor: str = "system",
+        sandbox_runner: Callable[[ToolSpec, dict[str, Any]], Any] | None = None,
     ) -> None:
         if not actor.strip():
             raise ValueError("actor must not be empty")
@@ -56,6 +57,7 @@ class ToolExecutor:
         self._security_policy = security_policy or ToolSecurityPolicy()
         self._audit_ledger = audit_ledger
         self._actor = actor.strip()
+        self._sandbox_runner = sandbox_runner
 
     @staticmethod
     def _validate_arguments(tool: ToolSpec, arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -171,7 +173,20 @@ class ToolExecutor:
             )
 
         try:
-            output = self._run_with_timeout(tool, kwargs)
+            if tool.sandbox_required:
+                if self._sandbox_runner is None:
+                    error = "sandbox-required tool cannot execute without a sandbox runner"
+                    self._audit(tool.name, PermissionDecision.DENY, error)
+                    return ToolExecutionResult(
+                        tool.name,
+                        False,
+                        error=error,
+                        permission=PermissionDecision.DENY,
+                        duration_ms=(time.perf_counter() - started) * 1000,
+                    )
+                output = self._sandbox_runner(tool, kwargs)
+            else:
+                output = self._run_with_timeout(tool, kwargs)
             encoded_output = json.dumps(
                 output, sort_keys=True, default=str, separators=(",", ":")
             ).encode("utf-8")
