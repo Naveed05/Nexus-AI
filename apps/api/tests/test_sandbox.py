@@ -1,5 +1,7 @@
 import sys
 
+import pytest
+
 from nexus.core.sandbox import PythonSandbox
 
 
@@ -26,3 +28,24 @@ def test_python_sandbox_times_out() -> None:
 
     assert result.timed_out is True
     assert result.return_code == -1
+
+
+def test_python_sandbox_rejects_invalid_limits() -> None:
+    with pytest.raises(ValueError, match="max_output_bytes"):
+        PythonSandbox(max_output_bytes=0)
+
+    with pytest.raises(ValueError, match="max_file_bytes"):
+        PythonSandbox(max_file_bytes=0)
+
+    with pytest.raises(ValueError, match="max_cpu_seconds"):
+        PythonSandbox(max_cpu_seconds=0)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX resource limits are not available")
+def test_python_sandbox_applies_posix_process_limits() -> None:
+    result = PythonSandbox(timeout_seconds=2, max_cpu_seconds=1, max_file_bytes=1024).run(
+        "from pathlib import Path; Path('x').write_bytes(b'a' * 2048)"
+    )
+
+    assert result.return_code != 0
+    assert result.timed_out is False
