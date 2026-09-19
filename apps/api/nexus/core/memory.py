@@ -254,6 +254,9 @@ class MemoryStore:
                 recency_days = max(0.0, (datetime.now(timezone.utc) - record.updated_at).total_seconds() / 86400)
                 recency = 1.0 / (1.0 + recency_days / 30.0)
                 confidence = relevance * record.importance * (0.75 + 0.25 * recency)
+                # Round the public confidence signal to keep deterministic scores stable
+                # across the tiny timestamp differences introduced during a recall.
+                confidence = round(confidence, 12)
                 return relevance, confidence
 
             scored = [(record, *signals(record)) for record in candidates]
@@ -271,6 +274,7 @@ class MemoryStore:
         workspace_id: UUID | None = None,
         top_k: int = 5,
         min_confidence: float = 0.0,
+        required_tags: tuple[str, ...] = (),
     ) -> tuple[MemoryRecord, ...]:
         return tuple(
             match.record
@@ -279,6 +283,7 @@ class MemoryStore:
                 workspace_id=workspace_id,
                 top_k=top_k,
                 min_confidence=min_confidence,
+                required_tags=required_tags,
             )
         )
 
