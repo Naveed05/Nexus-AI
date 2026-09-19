@@ -65,7 +65,11 @@ class ModelExecutor:
         self._registry = registry or tool_registry
         self._policy = policy or ToolPermissionPolicy()
         self._max_tool_rounds = max_tool_rounds
-        self._execution_boundary = execution_boundary or tool_executor
+        self._execution_boundary = execution_boundary or ToolExecutor(
+            registry=self._registry,
+            permission_policy=self._policy._policy,
+            actor="model-executor",
+        )
 
     def _get_client(self) -> OpenAI:
         if self._client is None:
