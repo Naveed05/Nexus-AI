@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import ast
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class PythonSandbox:
         max_output_bytes: int = 1_048_576,
         max_cpu_seconds: int | None = None,
         max_file_bytes: int = 10_485_760,
+        allow_network: bool = False,
     ) -> None:
         if timeout_seconds < 1:
             raise ValueError("timeout_seconds must be at least 1")
@@ -43,6 +45,7 @@ class PythonSandbox:
         self.max_output_bytes = max_output_bytes
         self.max_cpu_seconds = max_cpu_seconds or timeout_seconds
         self.max_file_bytes = max_file_bytes
+        self.allow_network = allow_network
 
     def _preexec_limits(self):
         if os.name != "posix":
@@ -65,9 +68,32 @@ class PythonSandbox:
 
         return apply_limits
 
+    def _validate_code(self, code: str) -> None:
+        if self.allow_network:
+            return
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            return
+        blocked = {
+            "socket", "ssl", "urllib", "http", "http.client",
+            "ftplib", "telnetlib", "smtplib", "imaplib", "poplib",
+            "requests", "httpx", "aiohttp",
+        }
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            else:
+                continue
+            if any(name == module or name.startswith(module + ".") for name in names for module in blocked):
+                raise ValueError("network access is disabled in the Python sandbox")
+
     def run(self, code: str) -> SandboxResult:
         if not code.strip():
             raise ValueError("Python code cannot be empty")
+        self._validate_code(code)
 
         with tempfile.TemporaryDirectory(prefix="nexus-job-") as workspace:
             workspace_path = Path(workspace)
