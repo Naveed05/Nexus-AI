@@ -150,8 +150,8 @@ def test_memory_retrieval_supports_required_tags() -> None:
 def test_memory_ranking_remains_bounded_and_prefers_importance() -> None:
     store = MemoryStore()
     workspace = uuid4()
-    high = store.remember("Python API testing", workspace_id=workspace, importance=0.9)
-    low = store.remember("Python API testing", workspace_id=workspace, importance=0.2)
+    high = store.remember("Python API testing", workspace_id=workspace, tags=("high",), importance=0.9)
+    low = store.remember("Python API testing", workspace_id=workspace, tags=("low",), importance=0.2)
     matches = store.recall_ranked("Python API testing", workspace_id=workspace)
     assert matches[0].record == high
     assert 0.0 <= matches[0].confidence <= 1.0
