@@ -9,6 +9,7 @@ from nexus.core.planner import TaskPlanner
 from nexus.core.router import RoutingDecision, TaskRouter
 from nexus.core.state import AgentState, PlanStep, StepStatus
 from nexus.core.task import Task
+from nexus.core.runtime import ExecutionControl
 from nexus.core.tool_intelligence import ToolSelector
 from nexus.core.verification import OutputVerifier, VerificationResult
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
@@ -129,6 +130,8 @@ class NexusEngine:
 
         for attempt in self._retry_policy.attempts():
             step.attempts = attempt
+            if control is not None and attempt > 1:
+                control.consume_retry()
             try:
                 execution = self._execute_compatibly(task, model, allowed_tools)
                 if attempt > 1:
@@ -216,7 +219,7 @@ class NexusEngine:
             }
         )
 
-    def run(self, task: Task) -> EngineResult:
+    def run(self, task: Task, control: ExecutionControl | None = None) -> EngineResult:
         task = self._resolve_workspace_context(task)
         route = self.route_task(task)
         state = AgentState(task_id=task.task_id, objective=task.objective)
@@ -265,6 +268,8 @@ class NexusEngine:
         all_grounded_evidence: list[dict] = []
         for index, step in enumerate(state.steps):
             state.current_step_index = index
+            if control is not None:
+                control.consume_step()
             if not state.dependencies_completed(step):
                 step.status = StepStatus.FAILED
                 step.error = "Step dependencies were not completed."
