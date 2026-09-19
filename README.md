@@ -94,7 +94,7 @@ REMEMBER
 
 ### 🔑 Multi-provider / BYOK model layer
 
-NEXUS supports a Bring Your Own Key foundation so each user can connect their own model-provider credentials instead of sharing a platform-wide API key. The provider layer currently supports OpenAI, Anthropic Claude, and Groq, with per-user credential isolation, masked credentials, provider validation, and an extensible provider abstraction.
+NEXUS supports a Bring Your Own Key foundation so each user can connect their own model-provider credentials instead of sharing a platform-wide API key. The provider layer currently supports OpenAI, Anthropic Claude, and Groq, with per-user credential isolation, masked credentials, provider validation, provider-specific request adapters, and an extensible provider abstraction.
 
 Raw user API keys are never returned by the credential-management interface. Production persistence is expected to use an encrypted secret store rather than plaintext application storage.
 

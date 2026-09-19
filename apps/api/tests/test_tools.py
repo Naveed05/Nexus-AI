@@ -1,6 +1,9 @@
 import pytest
 
-from nexus.core.models import BYOKProviderManager, ProviderCredentialError, ProviderNotConfiguredError
+from nexus.core.models import (
+    BYOKProviderManager, ProviderCredentialError, ProviderNotConfiguredError,
+    build_byok_request, model_registry,
+)
 from nexus.core.tools import calculator, tool_registry
 
 
@@ -82,3 +85,54 @@ def test_byok_rejects_unknown_provider_and_empty_key() -> None:
         manager.configure("user-1", "gemini", "key")
     with pytest.raises(ProviderCredentialError):
         manager.configure("user-1", "openai", " ")
+
+
+def test_byok_builds_provider_requests_without_exposing_key_in_payload() -> None:
+    manager = BYOKProviderManager()
+    manager.configure("user-1", "openai", "sk-test-secret")
+    request = build_byok_request(
+        user_id="user-1",
+        model=model_registry.get("terra"),
+        input_items=[{"role": "user", "content": "hello"}],
+        manager=manager,
+    )
+    assert request.provider == "openai"
+    assert request.endpoint.endswith("/v1/responses")
+    assert request.headers["Authorization"] == "Bearer sk-test-secret"
+    assert request.payload["model"] == "gpt-5.6-terra"
+    assert "sk-test-secret" not in str(request.payload)
+
+
+def test_byok_builds_anthropic_and_groq_requests() -> None:
+    manager = BYOKProviderManager()
+    manager.configure("user-1", "anthropic", "ant-secret")
+    manager.configure("user-1", "groq", "groq-secret")
+
+    claude = build_byok_request(
+        user_id="user-1",
+        model=type(model_registry.get("terra"))(
+            key="claude-test", model_id="claude-sonnet", provider="anthropic",
+            tier="professional", description="test", capabilities=frozenset(),
+            reasoning_levels=frozenset(), context_window=200_000,
+            supports_tools=True, cost_score=2, latency_score=3,
+        ),
+        input_items=[{"role": "user", "content": "hello"}],
+        manager=manager,
+    )
+    groq = build_byok_request(
+        user_id="user-1",
+        model=type(model_registry.get("terra"))(
+            key="groq-test", model_id="llama-test", provider="groq",
+            tier="balanced", description="test", capabilities=frozenset(),
+            reasoning_levels=frozenset(), context_window=128_000,
+            supports_tools=True, cost_score=1, latency_score=4,
+        ),
+        input_items=["hello"],
+        manager=manager,
+    )
+    assert claude.headers["x-api-key"] == "ant-secret"
+    assert claude.endpoint.endswith("/v1/messages")
+    assert groq.headers["Authorization"] == "Bearer groq-secret"
+    assert groq.endpoint.endswith("/openai/v1/chat/completions")
+    assert groq.payload["messages"] == ["hello"]
+    assert "input" not in groq.payload

@@ -224,3 +224,125 @@ class BYOKProviderManager:
 
 
 byok_provider_manager = BYOKProviderManager()
+
+
+@dataclass(frozen=True)
+class ProviderRequest:
+    provider: str
+    model_id: str
+    endpoint: str
+    headers: Mapping[str, str]
+    payload: Mapping[str, Any]
+
+
+class BYOKProviderAdapter:
+    """Build provider requests from a user's credential.
+
+    Network transport is injected so the model layer stays deterministic and
+    unit-testable. Production API code can supply a real HTTPS transport.
+    """
+
+    provider: str
+    endpoint: str
+
+    def build_request(
+        self,
+        *,
+        credential: ProviderCredential,
+        model: ModelSpec,
+        input_items: list[Any],
+        tools: list[Mapping[str, Any]],
+        tool_choice: str,
+    ) -> ProviderRequest:
+        raise NotImplementedError
+
+
+class OpenAICompatibleBYOKAdapter(BYOKProviderAdapter):
+    def __init__(self, provider: str, endpoint: str) -> None:
+        self.provider = provider
+        self.endpoint = endpoint
+
+    def build_request(self, *, credential: ProviderCredential, model: ModelSpec,
+                      input_items: list[Any], tools: list[Mapping[str, Any]],
+                      tool_choice: str) -> ProviderRequest:
+        headers = {
+            "Authorization": f"Bearer {credential.key}",
+            "Content-Type": "application/json",
+        }
+        if self.provider == "groq":
+            payload: dict[str, Any] = {
+                "model": model.model_id,
+                "messages": input_items,
+            }
+        else:
+            payload = {
+                "model": model.model_id,
+                "input": input_items,
+            }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = tool_choice
+        return ProviderRequest(self.provider, model.model_id, self.endpoint, headers, payload)
+
+
+class AnthropicBYOKAdapter(BYOKProviderAdapter):
+    provider = "anthropic"
+    endpoint = "https://api.anthropic.com/v1/messages"
+
+    def build_request(self, *, credential: ProviderCredential, model: ModelSpec,
+                      input_items: list[Any], tools: list[Mapping[str, Any]],
+                      tool_choice: str) -> ProviderRequest:
+        headers = {
+            "x-api-key": credential.key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        messages = []
+        for item in input_items:
+            if isinstance(item, Mapping):
+                messages.append(dict(item))
+            else:
+                messages.append({"role": "user", "content": str(item)})
+        payload: dict[str, Any] = {
+            "model": model.model_id,
+            "max_tokens": 4096,
+            "messages": messages,
+        }
+        if tools:
+            payload["tools"] = tools
+        return ProviderRequest(self.provider, model.model_id, self.endpoint, headers, payload)
+
+
+BYOK_PROVIDER_ADAPTERS: dict[str, BYOKProviderAdapter] = {
+    "openai": OpenAICompatibleBYOKAdapter("openai", "https://api.openai.com/v1/responses"),
+    "groq": OpenAICompatibleBYOKAdapter("groq", "https://api.groq.com/openai/v1/chat/completions"),
+    "anthropic": AnthropicBYOKAdapter(),
+}
+
+
+def provider_adapter(provider: str) -> BYOKProviderAdapter:
+    normalized = provider.strip().lower()
+    try:
+        return BYOK_PROVIDER_ADAPTERS[normalized]
+    except KeyError as exc:
+        raise ProviderCredentialError(f"Unsupported provider: {provider}") from exc
+
+
+def build_byok_request(
+    *,
+    user_id: str,
+    model: ModelSpec,
+    input_items: list[Any],
+    tools: list[Mapping[str, Any]] | None = None,
+    tool_choice: str = "auto",
+    manager: BYOKProviderManager | None = None,
+) -> ProviderRequest:
+    owner = manager or byok_provider_manager
+    credential = owner.credential(user_id, model.provider)
+    return provider_adapter(model.provider).build_request(
+        credential=credential,
+        model=model,
+        input_items=input_items,
+        tools=tools or [],
+        tool_choice=tool_choice,
+    )
