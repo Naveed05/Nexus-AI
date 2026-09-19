@@ -58,7 +58,7 @@ def test_tool_executor_requires_provenance_bound_approval_for_medium_risk() -> N
     assert blocked.success is False
     assert blocked.permission.value == "approval_required"
 
-    approval = issue_approval("reviewer", "risky", {"value": "hello"}, ttl_seconds=60)
+    approval = issue_approval(approver="reviewer", tool_name="risky", arguments={"value": "hello"}, ttl_seconds=60)
     allowed = executor.execute(task, "risky", {"value": "hello"}, approval=approval)
     assert allowed.success is True
     assert allowed.output == "hello"
@@ -68,7 +68,7 @@ def test_tool_executor_rejects_mismatched_approval() -> None:
     registry = _risky_registry()
     executor = ToolExecutor(registry=registry)
     task = Task(objective="risky", risk_level=RiskLevel.MEDIUM)
-    approval = issue_approval("reviewer", "risky", {"value": "approved"}, ttl_seconds=60)
+    approval = issue_approval(approver="reviewer", tool_name="risky", arguments={"value": "approved"}, ttl_seconds=60)
 
     result = executor.execute(task, "risky", {"value": "different"}, approval=approval)
     assert result.success is False
@@ -96,7 +96,7 @@ def test_tool_executor_audits_permission_and_execution_events(tmp_path) -> None:
     blocked = executor.execute(task, "risky", {"value": "hello"})
     assert blocked.success is False
 
-    approval = issue_approval("reviewer", "risky", {"value": "hello"}, ttl_seconds=60)
+    approval = issue_approval(approver="reviewer", tool_name="risky", arguments={"value": "hello"}, ttl_seconds=60)
     allowed = executor.execute(task, "risky", {"value": "hello"}, approval=approval)
     assert allowed.success is True
 
