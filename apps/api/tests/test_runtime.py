@@ -101,3 +101,35 @@ def test_runtime_enforces_tool_and_retry_budgets() -> None:
 
     with pytest.raises(RunBudgetExceededError):
         runtime.run(_task(), retry_runner, budget=RunBudget(max_retries=1))
+
+
+def test_run_store_persists_and_restores_state(tmp_path) -> None:
+    from nexus.core.runtime import AgentRuntime
+
+    path = str(tmp_path / "runs.sqlite3")
+    first = AgentRuntime(path)
+    task = Task(objective="durable runtime")
+    run = first.create_run(task)
+    run.status = RunStatus.COMPLETED
+    run.task_status = TaskStatus.COMPLETED
+    run.started_at = datetime.now(timezone.utc)
+    run.finished_at = datetime.now(timezone.utc)
+    run.steps_completed = 3
+    run.metadata["event_count"] = 4
+    first._store.save(run)
+
+    second = AgentRuntime(path)
+    restored = second.get(run.run_id)
+    assert restored.task_id == task.task_id
+    assert restored.status is RunStatus.COMPLETED
+    assert restored.steps_completed == 3
+    assert restored.metadata["event_count"] == 4
+
+
+def test_run_store_lists_runs_deterministically(tmp_path) -> None:
+    from nexus.core.runtime import AgentRuntime
+
+    runtime = AgentRuntime(str(tmp_path / "runs.sqlite3"))
+    first = runtime.create_run(Task(objective="first"))
+    second = runtime.create_run(Task(objective="second"))
+    assert [run.run_id for run in runtime.list_runs()] == [first.run_id, second.run_id]
