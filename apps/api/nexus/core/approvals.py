@@ -69,6 +69,7 @@ def validate_approval(
     tool_name: str,
     arguments: dict[str, object],
     now: datetime | None = None,
+    expected_approver: str | None = None,
 ) -> None:
     """Validate identity, exact action binding, and approval freshness."""
     current = now or _utc_now()
@@ -76,6 +77,8 @@ def validate_approval(
         raise ValueError("now must be timezone-aware")
     if not approval.approver.strip():
         raise ApprovalError("approval has no approver")
+    if expected_approver is not None and approval.approver != expected_approver.strip():
+        raise ApprovalError("approval approver does not match the execution actor")
     if current < approval.issued_at:
         raise ApprovalError("approval is not yet valid")
     if current >= approval.expires_at:
