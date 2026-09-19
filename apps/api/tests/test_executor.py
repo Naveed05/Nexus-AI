@@ -238,3 +238,31 @@ def test_executor_stops_on_approval_required_tool() -> None:
         )
 
     assert len(client.responses.calls) == 1
+
+
+def test_executor_uses_central_tool_execution_boundary() -> None:
+    registry = ToolRegistry()
+    registry.register(calculator_spec())
+
+    class Boundary:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def execute(self, task, tool_name, arguments):
+            from nexus.core.permissions import PermissionDecision
+            self.calls.append((task.task_id, tool_name, arguments))
+            return SimpleNamespace(
+                permission=PermissionDecision.ALLOW,
+                success=True,
+                output={"result": "boundary"},
+                error=None,
+            )
+
+    boundary = Boundary()
+    client = FakeClient()
+    executor = ModelExecutor(client=client, registry=registry, execution_boundary=boundary)
+
+    result = executor.execute(Task(objective="Calculate"), model_registry.get("astra"))
+
+    assert result.tool_calls[0].result == {"result": "boundary"}
+    assert boundary.calls[0][1] == "calculator"
