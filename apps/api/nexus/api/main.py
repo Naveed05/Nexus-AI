@@ -15,7 +15,7 @@ from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
 from nexus.core.memory import memory_store
 from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, byok_provider_manager
 from nexus.core.research import ResearchEngine
-from nexus.core.runtime import RunBudget, agent_runtime
+from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tools import configure_dataset_workspace
@@ -31,6 +31,7 @@ document_workspace = DocumentWorkspace(Path(settings.file_storage_path) / "docum
 knowledge_engine = KnowledgeEngine(document_workspace, settings.knowledge_index_path)
 configure_knowledge_engine(knowledge_engine)
 research_engine = ResearchEngine()
+agent_runtime = AgentRuntime(settings.run_storage_path)
 
 
 def _workspace_payload(workspace) -> dict:
