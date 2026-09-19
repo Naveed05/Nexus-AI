@@ -66,3 +66,38 @@ def test_runtime_cancellation_is_observable() -> None:
 
     with pytest.raises(RunCancelledError):
         runtime.control(run.run_id).check_cancelled()
+
+
+def test_runtime_mirrors_task_outcome() -> None:
+    runtime = AgentRuntime()
+    task = _task()
+
+    class Result:
+        def __init__(self, task):
+            self.task = task
+
+    def runner(current_task, control):
+        current_task.status = TaskStatus.FAILED
+        return Result(current_task)
+
+    run, _ = runtime.run(task, runner)
+    assert run.status == RunStatus.FAILED
+    assert run.task_status == TaskStatus.FAILED
+
+
+def test_runtime_enforces_tool_and_retry_budgets() -> None:
+    runtime = AgentRuntime()
+
+    def runner(task, control):
+        control.consume_tool_call()
+        control.consume_tool_call()
+
+    with pytest.raises(RunBudgetExceededError):
+        runtime.run(_task(), runner, budget=RunBudget(max_tool_calls=1))
+
+    def retry_runner(task, control):
+        control.consume_retry()
+        control.consume_retry()
+
+    with pytest.raises(RunBudgetExceededError):
+        runtime.run(_task(), retry_runner, budget=RunBudget(max_retries=1))
