@@ -127,3 +127,76 @@ def test_memory_api_is_workspace_scoped_and_supports_recall_lifecycle() -> None:
 def test_memory_api_rejects_unknown_workspace() -> None:
     response = client.get(f"/api/v1/workspaces/{UUID(int=0)}/memories")
     assert response.status_code == 404
+
+
+
+def test_byok_credential_lifecycle_is_user_scoped_and_masks_keys() -> None:
+    user_a = "byok-test-user-a"
+    user_b = "byok-test-user-b"
+    configured = client.put(
+        "/api/v1/byok/credentials/openai",
+        headers={"X-Nexus-User-ID": user_a},
+        json={"api_key": "sk-test-secret-1234"},
+    )
+    assert configured.status_code == 200
+    body = configured.json()
+    assert body["configured"] is True
+    assert body["masked_key"] == "sk-t••••••••1234"
+    assert "sk-test-secret-1234" not in configured.text
+
+    status_a = client.get("/api/v1/byok/credentials", headers={"X-Nexus-User-ID": user_a})
+    status_b = client.get("/api/v1/byok/credentials", headers={"X-Nexus-User-ID": user_b})
+    assert status_a.status_code == 200
+    assert status_b.status_code == 200
+    assert next(item for item in status_a.json()["providers"] if item["provider"] == "openai")["configured"] is True
+    assert next(item for item in status_b.json()["providers"] if item["provider"] == "openai")["configured"] is False
+
+    removed = client.delete(
+        "/api/v1/byok/credentials/openai",
+        headers={"X-Nexus-User-ID": user_a},
+    )
+    assert removed.status_code == 204
+
+
+def test_byok_generate_uses_user_credential_without_exposing_it(monkeypatch) -> None:
+    from nexus.api.main import byok_provider_manager
+    from nexus.core.models import ModelResponse
+
+    user_id = "byok-generate-user"
+    byok_provider_manager.configure(user_id, "groq", "groq-secret-1234")
+
+    def fake_generate(**kwargs):
+        assert kwargs["user_id"] == user_id
+        assert kwargs["model"].provider == "groq"
+        assert kwargs["model"].model_id == "llama-3.3-70b-versatile"
+        assert kwargs["input_items"][0]["content"] == "Hello NEXUS"
+        return ModelResponse(
+            output="Hello from Groq",
+            response_id="test-response",
+            provider="groq",
+            model_id="llama-3.3-70b-versatile",
+        )
+
+    monkeypatch.setattr(byok_provider_manager, "generate", fake_generate)
+    response = client.post(
+        "/api/v1/byok/generate",
+        headers={"X-Nexus-User-ID": user_id},
+        json={
+            "provider": "groq",
+            "model": "llama-3.3-70b-versatile",
+            "prompt": "Hello NEXUS",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "groq",
+        "model": "llama-3.3-70b-versatile",
+        "response_id": "test-response",
+        "output": "Hello from Groq",
+    }
+    assert "groq-secret-1234" not in response.text
+
+
+def test_byok_requires_user_identity() -> None:
+    response = client.get("/api/v1/byok/credentials")
+    assert response.status_code == 401
