@@ -144,6 +144,22 @@ class ToolExecutor:
 
         try:
             output = tool.handler(**kwargs)
+            encoded_output = json.dumps(
+                output, sort_keys=True, default=str, separators=(",", ":")
+            ).encode("utf-8")
+            if len(encoded_output) > tool.max_output_bytes:
+                error = (
+                    f"tool output exceeds security limit: {len(encoded_output)} "
+                    f"bytes > {tool.max_output_bytes} bytes"
+                )
+                self._audit(tool.name, decision, error)
+                return ToolExecutionResult(
+                    tool.name,
+                    False,
+                    error=error,
+                    permission=decision,
+                    duration_ms=(time.perf_counter() - started) * 1000,
+                )
             self._audit(tool.name, PermissionDecision.ALLOW, "tool execution completed")
             return ToolExecutionResult(
                 tool.name,

@@ -24,6 +24,7 @@ class ToolSpec:
     timeout_seconds: float = 30.0
     cost_units: float = 0.0
     sandbox_required: bool = False
+    max_output_bytes: int = 1_048_576
 
     def __post_init__(self) -> None:
         if self.risk_level not in RISK_LEVELS:
@@ -34,6 +35,8 @@ class ToolSpec:
             raise ValueError("timeout_seconds must be greater than zero")
         if self.cost_units < 0:
             raise ValueError("cost_units cannot be negative")
+        if self.max_output_bytes < 1:
+            raise ValueError("max_output_bytes must be greater than zero")
 
     def as_openai_tool(self) -> dict[str, Any]:
         return {"type": "function", "name": self.name, "description": self.description, "parameters": self.input_schema, "strict": True}
