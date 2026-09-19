@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from threading import Event, RLock
+import json
+import sqlite3
+from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID, uuid4
 
@@ -122,6 +125,73 @@ class ExecutionControl:
             self._retries += 1
 
 
+class RunStore:
+    """SQLite-backed durable state for agent runs."""
+
+    def __init__(self, path: str = ".nexus/runs.sqlite3") -> None:
+        self.path = path
+        if path != ":memory:":
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self._lock = RLock()
+        with self._connect() as conn:
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS agent_runs (
+                    run_id TEXT PRIMARY KEY, task_id TEXT, status TEXT NOT NULL,
+                    task_status TEXT NOT NULL, started_at TEXT, finished_at TEXT,
+                    steps_completed INTEGER NOT NULL, tool_calls INTEGER NOT NULL,
+                    retries INTEGER NOT NULL, error TEXT, metadata TEXT NOT NULL
+                )"""
+            )
+            conn.commit()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    @staticmethod
+    def _dt(value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+    @staticmethod
+    def _parse_dt(value: str | None) -> datetime | None:
+        return datetime.fromisoformat(value) if value else None
+
+    def save(self, run: AgentRun) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """INSERT OR REPLACE INTO agent_runs
+                (run_id, task_id, status, task_status, started_at, finished_at,
+                 steps_completed, tool_calls, retries, error, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (str(run.run_id), str(run.task_id) if run.task_id else None,
+                 run.status.value, run.task_status.value, self._dt(run.started_at),
+                 self._dt(run.finished_at), run.steps_completed, run.tool_calls,
+                 run.retries, run.error, json.dumps(run.metadata, default=str)),
+            )
+            conn.commit()
+
+    def load_all(self) -> list[AgentRun]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute("SELECT * FROM agent_runs ORDER BY started_at, run_id").fetchall()
+        return [self._from_row(row) for row in rows]
+
+    def get(self, run_id: UUID) -> AgentRun | None:
+        with self._lock, self._connect() as conn:
+            row = conn.execute("SELECT * FROM agent_runs WHERE run_id = ?", (str(run_id),)).fetchone()
+        return self._from_row(row) if row else None
+
+    @staticmethod
+    def _from_row(row: sqlite3.Row) -> AgentRun:
+        return AgentRun(
+            run_id=UUID(row["run_id"]), task_id=UUID(row["task_id"]) if row["task_id"] else None,
+            status=RunStatus(row["status"]), task_status=TaskStatus(row["task_status"]),
+            started_at=RunStore._parse_dt(row["started_at"]), finished_at=RunStore._parse_dt(row["finished_at"]),
+            steps_completed=row["steps_completed"], tool_calls=row["tool_calls"], retries=row["retries"],
+            error=row["error"], metadata=json.loads(row["metadata"] or "{}"),
+        )
+
+
 class AgentRuntime:
     """Own the lifecycle of agent runs while keeping execution implementation-agnostic.
 
@@ -129,8 +199,9 @@ class AgentRuntime:
     and distributed execution can be added later without changing the run contract.
     """
 
-    def __init__(self) -> None:
-        self._runs: dict[UUID, AgentRun] = {}
+    def __init__(self, store_path: str = ".nexus/runs.sqlite3", *, store: RunStore | None = None) -> None:
+        self._store = store or RunStore(store_path)
+        self._runs: dict[UUID, AgentRun] = {run.run_id: run for run in self._store.load_all()}
         self._controls: dict[UUID, ExecutionControl] = {}
         self._lock = RLock()
 
@@ -140,6 +211,7 @@ class AgentRuntime:
         with self._lock:
             self._runs[run.run_id] = run
             self._controls[run.run_id] = control
+        self._store.save(run)
         return run
 
     def get(self, run_id: UUID) -> AgentRun:
@@ -163,6 +235,7 @@ class AgentRuntime:
             run.status = RunStatus.CANCELLED
             run.task_status = TaskStatus.CANCELLED
             run.finished_at = datetime.now(timezone.utc)
+        self._store.save(run)
         return run
 
     def run(
@@ -199,22 +272,26 @@ class AgentRuntime:
                 if run.task_status == TaskStatus.COMPLETED
                 else RunStatus.FAILED
             )
+            self._store.save(run)
             return run, result
         except RunCancelledError as exc:
             run.status = RunStatus.CANCELLED
             run.task_status = TaskStatus.CANCELLED
             run.error = str(exc)
+            self._store.save(run)
             raise
         except Exception as exc:
             run.status = RunStatus.FAILED
             run.task_status = TaskStatus.FAILED
             run.error = str(exc)
+            self._store.save(run)
             raise
         finally:
             run.steps_completed = control.steps
             run.tool_calls = control.tool_calls
             run.retries = control.retries
             run.finished_at = datetime.now(timezone.utc)
+            self._store.save(run)
 
 
     def run_engine(self, task: Task, engine: Any, *, budget: RunBudget | None = None) -> tuple[AgentRun, Any]:
@@ -223,7 +300,7 @@ class AgentRuntime:
 
     def list_runs(self) -> tuple[AgentRun, ...]:
         with self._lock:
-            return tuple(self._runs.values())
+            return tuple(sorted(self._runs.values(), key=lambda run: (run.started_at or datetime.min.replace(tzinfo=timezone.utc), str(run.run_id))))
 
 
 agent_runtime = AgentRuntime()
