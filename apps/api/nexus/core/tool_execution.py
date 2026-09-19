@@ -133,6 +133,7 @@ class ToolExecutor:
                 task.risk_level,
                 arguments=kwargs,
                 approval=approval,
+                expected_approver=self._actor,
             )
         except ApprovalError as exc:
             self._audit(tool.name, PermissionDecision.APPROVAL_REQUIRED, str(exc))
