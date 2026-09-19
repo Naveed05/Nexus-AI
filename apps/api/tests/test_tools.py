@@ -134,3 +134,5 @@ def test_byok_builds_anthropic_and_groq_requests() -> None:
     assert claude.endpoint.endswith("/v1/messages")
     assert groq.headers["Authorization"] == "Bearer groq-secret"
     assert groq.endpoint.endswith("/openai/v1/chat/completions")
+    assert groq.payload["messages"] == ["hello"]
+    assert "input" not in groq.payload
