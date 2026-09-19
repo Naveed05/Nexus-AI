@@ -226,12 +226,13 @@ def test_byok_transport_rejects_invalid_json() -> None:
         def __init__(self):
             self._payload = b"not-json"
 
+    manager = BYOKProviderManager()
+    manager.configure("user-1", "openai", "sk-test-secret")
+    request = build_byok_request(
+        user_id="user-1",
+        model=model_registry.get("terra"),
+        input_items=["hello"],
+        manager=manager,
+    )
     with pytest.raises(BYOKProviderError, match="invalid JSON"):
-        BYOKHTTPTransport(lambda request, timeout: InvalidResponse()).execute(
-            build_byok_request(
-                user_id="user-1",
-                model=model_registry.get("terra"),
-                input_items=["hello"],
-                manager=BYOKProviderManager(),
-            )
-        )
+        BYOKHTTPTransport(lambda request, timeout: InvalidResponse()).execute(request)
