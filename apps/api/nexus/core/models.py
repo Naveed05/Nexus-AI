@@ -287,12 +287,18 @@ class BYOKHTTPTransport:
                         if isinstance(content, Mapping) and content.get("text"):
                             chunks.append(str(content["text"]))
                 output = "".join(chunks)
-        else:
+        elif provider == "anthropic":
             chunks = []
             for item in data.get("content", []) or []:
                 if isinstance(item, Mapping) and item.get("text"):
                     chunks.append(str(item["text"]))
             output = "".join(chunks)
+        else:
+            choices = data.get("choices", []) or []
+            if choices and isinstance(choices[0], Mapping):
+                message = choices[0].get("message", {})
+                if isinstance(message, Mapping) and message.get("content"):
+                    output = str(message["content"])
 
         if not output:
             raise BYOKProviderError(f"{provider} response did not contain text output")
