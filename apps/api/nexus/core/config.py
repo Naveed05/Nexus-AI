@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     dataset_storage_path: str = ".nexus/data"
     file_storage_path: str = ".nexus/files"
     knowledge_index_path: str = ".nexus/knowledge/index.json"
+    run_storage_path: str = ".nexus/runs.sqlite3"
 
     model_config = SettingsConfigDict(
         env_file=".env",

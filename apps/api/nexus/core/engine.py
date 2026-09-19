@@ -8,7 +8,8 @@ from nexus.core.models import ModelSpec
 from nexus.core.planner import TaskPlanner
 from nexus.core.router import RoutingDecision, TaskRouter
 from nexus.core.state import AgentState, PlanStep, StepStatus
-from nexus.core.task import Task
+from nexus.core.task import Task, TaskStatus
+from nexus.core.runtime import ExecutionControl
 from nexus.core.tool_intelligence import ToolSelector
 from nexus.core.verification import OutputVerifier, VerificationResult
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
@@ -124,11 +125,14 @@ class NexusEngine:
         step: PlanStep,
         events: list[ExecutionEvent],
         allowed_tools: tuple[str, ...],
+        control: ExecutionControl | None = None,
     ) -> ExecutionResult:
         last_error: Exception | None = None
 
         for attempt in self._retry_policy.attempts():
             step.attempts = attempt
+            if control is not None and attempt > 1:
+                control.consume_retry()
             try:
                 execution = self._execute_compatibly(task, model, allowed_tools)
                 if attempt > 1:
@@ -216,8 +220,9 @@ class NexusEngine:
             }
         )
 
-    def run(self, task: Task) -> EngineResult:
+    def run(self, task: Task, control: ExecutionControl | None = None) -> EngineResult:
         task = self._resolve_workspace_context(task)
+        task.status = TaskStatus.PLANNING
         route = self.route_task(task)
         state = AgentState(task_id=task.task_id, objective=task.objective)
         events: list[ExecutionEvent] = [
@@ -242,6 +247,7 @@ class NexusEngine:
         ]
 
         state.steps = self._planner.plan(task)
+        task.status = TaskStatus.RUNNING
         state.metadata["plan_type"] = (
             "data" if any(step.step_id in {"inspect_data", "analyze_data"} for step in state.steps)
             else "coding" if any(step.step_id in {"inspect_code", "implement"} for step in state.steps)
@@ -264,7 +270,11 @@ class NexusEngine:
         execution: ExecutionResult | None = None
         all_grounded_evidence: list[dict] = []
         for index, step in enumerate(state.steps):
+            if control is not None:
+                control.check_cancelled()
             state.current_step_index = index
+            if control is not None:
+                control.consume_step()
             if not state.dependencies_completed(step):
                 step.status = StepStatus.FAILED
                 step.error = "Step dependencies were not completed."
@@ -338,6 +348,7 @@ class NexusEngine:
                     step,
                     events,
                     allowed_tools=allowed_tools,
+                    control=control,
                 )
             except Exception as exc:
                 step.status = StepStatus.FAILED
@@ -366,6 +377,8 @@ class NexusEngine:
             step.status = StepStatus.COMPLETED
 
             for call in execution.tool_calls:
+                if control is not None:
+                    control.consume_tool_call()
                 events.append(
                     ExecutionEvent(
                         event_type=EventType.TOOL_CALLED,
@@ -388,6 +401,9 @@ class NexusEngine:
             raise RuntimeError("Execution plan contained no executable step")
 
         verification_step = next(step for step in state.steps if step.step_id == "verify")
+        if control is not None:
+            control.check_cancelled()
+        task.status = TaskStatus.VERIFYING
         events.append(
             ExecutionEvent(
                 event_type=EventType.VERIFICATION_STARTED,
@@ -428,6 +444,7 @@ class NexusEngine:
             )
         )
 
+        task.status = TaskStatus.COMPLETED if verification.passed else TaskStatus.FAILED
         if verification.passed:
             self._memory.remember_task_outcome(
                 task.objective,

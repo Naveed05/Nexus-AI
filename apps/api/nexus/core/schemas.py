@@ -27,6 +27,7 @@ class TaskResponse(BaseModel):
 
 
 class ExecutionResponse(BaseModel):
+    run_id: str
     task_id: str
     model: str
     response_id: str

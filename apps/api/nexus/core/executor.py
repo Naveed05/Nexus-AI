@@ -9,6 +9,7 @@ from nexus.core.knowledge import reset_knowledge_workspace, set_knowledge_worksp
 from nexus.core.models import ModelSpec
 from nexus.core.permissions import PermissionDecision, PermissionPolicy
 from nexus.core.task import Task
+from nexus.core.tool_execution import ToolExecutor, tool_executor
 from nexus.core.tools import ToolRegistry, ToolSpec, tool_registry
 
 
@@ -56,6 +57,7 @@ class ModelExecutor:
         registry: ToolRegistry | None = None,
         policy: ToolPermissionPolicy | None = None,
         max_tool_rounds: int = 8,
+        execution_boundary: ToolExecutor | None = None,
     ) -> None:
         if max_tool_rounds < 1:
             raise ValueError("max_tool_rounds must be at least 1")
@@ -63,6 +65,11 @@ class ModelExecutor:
         self._registry = registry or tool_registry
         self._policy = policy or ToolPermissionPolicy()
         self._max_tool_rounds = max_tool_rounds
+        self._execution_boundary = execution_boundary or ToolExecutor(
+            registry=self._registry,
+            permission_policy=self._policy._policy,
+            actor="model-executor",
+        )
 
     def _get_client(self) -> OpenAI:
         if self._client is None:
@@ -133,12 +140,23 @@ class ModelExecutor:
                     arguments = json.loads(call.arguments)
                     tool = self._registry.get(call.name)
                     self._policy.authorize(task, tool)
-                    try:
-                        result = tool.handler(**arguments)
-                        success = True
-                    except Exception as exc:
-                        result = {"error": str(exc), "tool": call.name}
-                        success = False
+                    execution = self._execution_boundary.execute(
+                        task,
+                        call.name,
+                        arguments,
+                    )
+                    if execution.permission == PermissionDecision.APPROVAL_REQUIRED:
+                        raise PermissionError(
+                            f"Tool '{call.name}' requires explicit user approval before execution."
+                        )
+                    if execution.permission == PermissionDecision.DENY:
+                        raise PermissionError(
+                            execution.error or f"Tool '{call.name}' is blocked by the NEXUS permission policy."
+                        )
+                    result = execution.output
+                    success = execution.success
+                    if not success:
+                        result = {"error": execution.error or "tool execution failed", "tool": call.name}
                     tool_calls.append(
                         ToolCallRecord(
                             tool_name=call.name,

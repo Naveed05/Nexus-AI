@@ -4,6 +4,7 @@ import os
 import signal
 import threading
 import time
+import inspect
 from typing import Any, Callable, Mapping
 
 from nexus.core.approvals import Approval, ApprovalError
@@ -66,14 +67,21 @@ class ToolExecutor:
         schema = tool.input_schema
         properties = schema.get("properties", {})
         required = schema.get("required", [])
-        missing = [name for name in required if name not in arguments]
+        normalized = dict(arguments)
+        signature = inspect.signature(tool.handler)
+        missing = [name for name in required if name not in normalized]
+        for name in list(missing):
+            parameter = signature.parameters.get(name)
+            if parameter is not None and parameter.default is not inspect.Parameter.empty:
+                normalized[name] = parameter.default
+        missing = [name for name in required if name not in normalized]
         if missing:
             raise ValueError(f"missing required tool arguments: {', '.join(sorted(missing))}")
         if schema.get("additionalProperties") is False:
             unknown = sorted(set(arguments) - set(properties))
             if unknown:
                 raise ValueError(f"unknown tool arguments: {', '.join(unknown)}")
-        return dict(arguments)
+        return normalized
 
     def _audit(self, tool_name: str, decision: PermissionDecision, reason: str) -> None:
         if self._audit_ledger is not None:
