@@ -269,10 +269,16 @@ class OpenAICompatibleBYOKAdapter(BYOKProviderAdapter):
             "Authorization": f"Bearer {credential.key}",
             "Content-Type": "application/json",
         }
-        payload: dict[str, Any] = {
-            "model": model.model_id,
-            "input": input_items,
-        }
+        if self.provider == "groq":
+            payload: dict[str, Any] = {
+                "model": model.model_id,
+                "messages": input_items,
+            }
+        else:
+            payload = {
+                "model": model.model_id,
+                "input": input_items,
+            }
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
