@@ -55,7 +55,7 @@ def _build_task(payload: TaskCreate) -> Task:
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]: return {"status": "ok", "service": "nexus-api"}
-\n
+
 @app.get("/api/v1/byok/providers")
 def list_byok_providers() -> dict:
     """List supported BYOK providers without exposing credentials."""
