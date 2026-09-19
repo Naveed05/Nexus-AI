@@ -222,6 +222,7 @@ class NexusEngine:
 
     def run(self, task: Task, control: ExecutionControl | None = None) -> EngineResult:
         task = self._resolve_workspace_context(task)
+        task.status = task.status.PLANNING
         route = self.route_task(task)
         state = AgentState(task_id=task.task_id, objective=task.objective)
         events: list[ExecutionEvent] = [
@@ -246,6 +247,7 @@ class NexusEngine:
         ]
 
         state.steps = self._planner.plan(task)
+        task.status = task.status.RUNNING
         state.metadata["plan_type"] = (
             "data" if any(step.step_id in {"inspect_data", "analyze_data"} for step in state.steps)
             else "coding" if any(step.step_id in {"inspect_code", "implement"} for step in state.steps)
@@ -268,6 +270,8 @@ class NexusEngine:
         execution: ExecutionResult | None = None
         all_grounded_evidence: list[dict] = []
         for index, step in enumerate(state.steps):
+            if control is not None:
+                control.check_cancelled()
             state.current_step_index = index
             if control is not None:
                 control.consume_step()
@@ -373,6 +377,8 @@ class NexusEngine:
             step.status = StepStatus.COMPLETED
 
             for call in execution.tool_calls:
+                if control is not None:
+                    control.consume_tool_call()
                 events.append(
                     ExecutionEvent(
                         event_type=EventType.TOOL_CALLED,
@@ -395,6 +401,9 @@ class NexusEngine:
             raise RuntimeError("Execution plan contained no executable step")
 
         verification_step = next(step for step in state.steps if step.step_id == "verify")
+        if control is not None:
+            control.check_cancelled()
+        task.status = task.status.VERIFYING
         events.append(
             ExecutionEvent(
                 event_type=EventType.VERIFICATION_STARTED,
@@ -435,6 +444,7 @@ class NexusEngine:
             )
         )
 
+        task.status = task.status.COMPLETED if verification.passed else task.status.FAILED
         if verification.passed:
             self._memory.remember_task_outcome(
                 task.objective,
