@@ -240,6 +240,7 @@ def get_agent_run(run_id: UUID) -> dict:
         "tool_calls": run.tool_calls,
         "retries": run.retries,
         "error": run.error,
+        "metadata": run.metadata,
     }
 
 
