@@ -1,8 +1,22 @@
+from datetime import datetime, timezone, timedelta
+
 import pytest
 
+from nexus.core.approvals import issue_approval
+from nexus.core.control_ledger import ControlLedger
 from nexus.core.task import RiskLevel, Task
 from nexus.core.tool_execution import ToolExecutor
 from nexus.core.tools import ToolSpec, ToolRegistry
+
+
+def _risky_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        "risky", "Risky operation", {
+            "type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"], "additionalProperties": False,
+        }, "medium", lambda value: value,
+    ))
+    return registry
 
 
 def test_tool_executor_runs_registered_tool() -> None:
@@ -10,7 +24,7 @@ def test_tool_executor_runs_registered_tool() -> None:
     registry.register(ToolSpec(
         "echo", "Echo text", {
             "type": "object",
-            "properties": {"text": {"type": "string"}},
+            "properties": {"text": {"type": "string"}}, 
             "required": ["text"],
             "additionalProperties": False,
         }, "low", lambda text: {"text": text},
@@ -35,20 +49,68 @@ def test_tool_executor_rejects_invalid_arguments() -> None:
     assert "missing required" in result.error
 
 
-def test_tool_executor_requires_approval_for_medium_risk() -> None:
-    registry = ToolRegistry()
-    registry.register(ToolSpec(
-        "risky", "Risky operation", {
-            "type": "object", "properties": {}, "required": [], "additionalProperties": False,
-        }, "medium", lambda: "ok",
-    ))
+def test_tool_executor_requires_provenance_bound_approval_for_medium_risk() -> None:
+    registry = _risky_registry()
     executor = ToolExecutor(registry=registry)
     task = Task(objective="risky", risk_level=RiskLevel.MEDIUM)
-    blocked = executor.execute(task, "risky", {})
+
+    blocked = executor.execute(task, "risky", {"value": "hello"})
     assert blocked.success is False
     assert blocked.permission.value == "approval_required"
-    allowed = executor.execute(task, "risky", {}, approved=True)
+
+    approval = issue_approval(approver="reviewer", tool_name="risky", arguments={"value": "hello"}, ttl_seconds=60)
+    allowed = executor.execute(task, "risky", {"value": "hello"}, approval=approval)
     assert allowed.success is True
+    assert allowed.output == "hello"
+
+
+def test_tool_executor_rejects_mismatched_approval() -> None:
+    registry = _risky_registry()
+    executor = ToolExecutor(registry=registry)
+    task = Task(objective="risky", risk_level=RiskLevel.MEDIUM)
+    approval = issue_approval(approver="reviewer", tool_name="risky", arguments={"value": "approved"}, ttl_seconds=60)
+
+    result = executor.execute(task, "risky", {"value": "different"}, approval=approval)
+    assert result.success is False
+    assert result.permission.value == "approval_required"
+    assert "fingerprint" in result.error
+
+
+def test_tool_executor_rejects_expired_approval() -> None:
+    registry = _risky_registry()
+    executor = ToolExecutor(registry=registry)
+    task = Task(objective="risky", risk_level=RiskLevel.MEDIUM)
+    issued = datetime.now(timezone.utc) - timedelta(minutes=10)
+    approval = issue_approval(
+        approver="reviewer",
+        tool_name="risky",
+        arguments={"value": "hello"},
+        ttl_seconds=1,
+        now=issued,
+    )
+
+    result = executor.execute(task, "risky", {"value": "hello"}, approval=approval)
+    assert result.success is False
+    assert "expired" in result.error
+
+
+def test_tool_executor_audits_permission_and_execution_events(tmp_path) -> None:
+    ledger = ControlLedger(tmp_path / "controls.json")
+    executor = ToolExecutor(registry=_risky_registry(), audit_ledger=ledger, actor="reviewer")
+    task = Task(objective="risky", risk_level=RiskLevel.MEDIUM)
+
+    blocked = executor.execute(task, "risky", {"value": "hello"})
+    assert blocked.success is False
+
+    approval = issue_approval(approver="reviewer", tool_name="risky", arguments={"value": "hello"}, ttl_seconds=60)
+    allowed = executor.execute(task, "risky", {"value": "hello"}, approval=approval)
+    assert allowed.success is True
+
+    events = ledger.audit(action="tool_execution:risky")
+    assert len(events) == 2
+    assert events[0].decision == "allow"
+    assert events[1].decision == "approval_required"
+    assert all(event.actor == "reviewer" for event in events)
 
 
 def test_tool_executor_failures_are_structured() -> None:
