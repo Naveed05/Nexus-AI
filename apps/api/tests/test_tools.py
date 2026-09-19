@@ -1,8 +1,9 @@
 import pytest
 
 from nexus.core.models import (
-    BYOKProviderManager, ProviderCredentialError, ProviderNotConfiguredError,
-    build_byok_request, model_registry,
+    BYOKHTTPTransport, BYOKProviderError, BYOKProviderManager,
+    ProviderCredentialError, ProviderNotConfiguredError, build_byok_request,
+    model_registry,
 )
 from nexus.core.tools import calculator, tool_registry
 
@@ -136,3 +137,102 @@ def test_byok_builds_anthropic_and_groq_requests() -> None:
     assert groq.endpoint.endswith("/openai/v1/chat/completions")
     assert groq.payload["messages"] == ["hello"]
     assert "input" not in groq.payload
+
+
+
+class _FakeHTTPResponse:
+    def __init__(self, payload: dict) -> None:
+        import json
+        self._payload = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return self._payload
+
+
+def test_byok_transport_executes_and_normalizes_openai_response() -> None:
+    manager = BYOKProviderManager()
+    manager.configure("user-1", "openai", "sk-test-secret")
+    request = build_byok_request(
+        user_id="user-1",
+        model=model_registry.get("terra"),
+        input_items=[{"role": "user", "content": "hello"}],
+        manager=manager,
+    )
+    captured = {}
+
+    def opener(http_request, timeout):
+        captured["authorization"] = http_request.headers["Authorization"]
+        captured["timeout"] = timeout
+        return _FakeHTTPResponse({
+            "id": "resp_123",
+            "output_text": "Hello from OpenAI",
+        })
+
+    response = BYOKHTTPTransport(opener).execute(request, timeout_seconds=7)
+    assert response.output == "Hello from OpenAI"
+    assert response.response_id == "resp_123"
+    assert response.provider == "openai"
+    assert captured == {"authorization": "Bearer sk-test-secret", "timeout": 7}
+
+
+def test_byok_transport_normalizes_anthropic_and_groq_responses() -> None:
+    manager = BYOKProviderManager()
+    manager.configure("user-1", "anthropic", "ant-secret")
+    manager.configure("user-1", "groq", "groq-secret")
+
+    claude_request = build_byok_request(
+        user_id="user-1",
+        model=type(model_registry.get("terra"))(
+            key="claude-test", model_id="claude-sonnet", provider="anthropic",
+            tier="professional", description="test", capabilities=frozenset(),
+            reasoning_levels=frozenset(), context_window=200_000,
+            supports_tools=True, cost_score=2, latency_score=3,
+        ),
+        input_items=[{"role": "user", "content": "hello"}],
+        manager=manager,
+    )
+    groq_request = build_byok_request(
+        user_id="user-1",
+        model=type(model_registry.get("terra"))(
+            key="groq-test", model_id="llama-test", provider="groq",
+            tier="balanced", description="test", capabilities=frozenset(),
+            reasoning_levels=frozenset(), context_window=128_000,
+            supports_tools=True, cost_score=1, latency_score=4,
+        ),
+        input_items=["hello"],
+        manager=manager,
+    )
+
+    claude = BYOKHTTPTransport(
+        lambda request, timeout: _FakeHTTPResponse({"id": "msg_1", "content": [{"type": "text", "text": "Claude reply"}]})
+    ).execute(claude_request)
+    groq = BYOKHTTPTransport(
+        lambda request, timeout: _FakeHTTPResponse({"id": "chat_1", "choices": [{"message": {"content": "Groq reply"}}]})
+    ).execute(groq_request)
+
+    assert claude.output == "Claude reply"
+    assert claude.response_id == "msg_1"
+    assert groq.output == "Groq reply"
+
+
+def test_byok_transport_rejects_invalid_json() -> None:
+    class InvalidResponse(_FakeHTTPResponse):
+        def __init__(self):
+            self._payload = b"not-json"
+
+    manager = BYOKProviderManager()
+    manager.configure("user-1", "openai", "sk-test-secret")
+    request = build_byok_request(
+        user_id="user-1",
+        model=model_registry.get("terra"),
+        input_items=["hello"],
+        manager=manager,
+    )
+    with pytest.raises(BYOKProviderError, match="invalid JSON"):
+        BYOKHTTPTransport(lambda request, timeout: InvalidResponse()).execute(request)
