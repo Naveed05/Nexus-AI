@@ -184,8 +184,17 @@ class AgentRuntime:
             run.steps_completed = control.steps
             run.tool_calls = control.tool_calls
             run.retries = control.retries
-            run.status = RunStatus.COMPLETED
-            run.task_status = TaskStatus.COMPLETED
+            result_task = getattr(result, "task", None)
+            result_status = getattr(result_task, "status", None)
+            if isinstance(result_status, TaskStatus):
+                run.task_status = result_status
+            else:
+                run.task_status = TaskStatus.COMPLETED
+            run.status = (
+                RunStatus.COMPLETED
+                if run.task_status == TaskStatus.COMPLETED
+                else RunStatus.FAILED
+            )
             return run, result
         except RunCancelledError as exc:
             run.status = RunStatus.CANCELLED
