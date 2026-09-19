@@ -8,7 +8,7 @@ from nexus.core.models import ModelSpec
 from nexus.core.planner import TaskPlanner
 from nexus.core.router import RoutingDecision, TaskRouter
 from nexus.core.state import AgentState, PlanStep, StepStatus
-from nexus.core.task import Task
+from nexus.core.task import Task, TaskStatus
 from nexus.core.runtime import ExecutionControl
 from nexus.core.tool_intelligence import ToolSelector
 from nexus.core.verification import OutputVerifier, VerificationResult
@@ -222,7 +222,7 @@ class NexusEngine:
 
     def run(self, task: Task, control: ExecutionControl | None = None) -> EngineResult:
         task = self._resolve_workspace_context(task)
-        task.status = task.status.PLANNING
+        task.status = TaskStatus.PLANNING
         route = self.route_task(task)
         state = AgentState(task_id=task.task_id, objective=task.objective)
         events: list[ExecutionEvent] = [
@@ -247,7 +247,7 @@ class NexusEngine:
         ]
 
         state.steps = self._planner.plan(task)
-        task.status = task.status.RUNNING
+        task.status = TaskStatus.RUNNING
         state.metadata["plan_type"] = (
             "data" if any(step.step_id in {"inspect_data", "analyze_data"} for step in state.steps)
             else "coding" if any(step.step_id in {"inspect_code", "implement"} for step in state.steps)
@@ -403,7 +403,7 @@ class NexusEngine:
         verification_step = next(step for step in state.steps if step.step_id == "verify")
         if control is not None:
             control.check_cancelled()
-        task.status = task.status.VERIFYING
+        task.status = TaskStatus.VERIFYING
         events.append(
             ExecutionEvent(
                 event_type=EventType.VERIFICATION_STARTED,
@@ -444,7 +444,7 @@ class NexusEngine:
             )
         )
 
-        task.status = task.status.COMPLETED if verification.passed else task.status.FAILED
+        task.status = TaskStatus.COMPLETED if verification.passed else TaskStatus.FAILED
         if verification.passed:
             self._memory.remember_task_outcome(
                 task.objective,
