@@ -123,3 +123,104 @@ class ModelRegistry:
 
 
 model_registry = ModelRegistry()
+
+
+class ProviderCredentialError(ValueError):
+    """Raised when a BYOK credential is missing or invalid."""
+
+
+class ProviderNotConfiguredError(RuntimeError):
+    """Raised when a requested provider has no user credential."""
+
+
+@dataclass(frozen=True)
+class ProviderCredential:
+    """A user-owned provider credential.
+
+    The raw API key is intentionally never exposed by repr/serialization helpers.
+    Production persistence should encrypt this value at rest.
+    """
+
+    provider: str
+    key: str
+
+    def __post_init__(self) -> None:
+        if not self.provider.strip():
+            raise ProviderCredentialError("provider cannot be empty")
+        if not self.key.strip():
+            raise ProviderCredentialError("API key cannot be empty")
+
+    def masked(self) -> str:
+        value = self.key.strip()
+        if len(value) <= 8:
+            return "••••••••"
+        return f"{value[:4]}••••••••{value[-4:]}"
+
+
+class InMemoryCredentialStore:
+    """Process-local BYOK store for development and tests.
+
+    This deliberately avoids pretending that plaintext persistence is production
+    safe. A production deployment should provide an encrypted credential store.
+    """
+
+    def __init__(self) -> None:
+        self._credentials: dict[str, ProviderCredential] = {}
+
+    def set(self, user_id: str, provider: str, api_key: str) -> None:
+        if not user_id.strip():
+            raise ProviderCredentialError("user_id cannot be empty")
+        credential = ProviderCredential(provider=provider.strip().lower(), key=api_key.strip())
+        self._credentials[f"{user_id.strip()}:{credential.provider}"] = credential
+
+    def get(self, user_id: str, provider: str) -> ProviderCredential:
+        key = f"{user_id.strip()}:{provider.strip().lower()}"
+        try:
+            return self._credentials[key]
+        except KeyError as exc:
+            raise ProviderNotConfiguredError(
+                f"No API key configured for provider: {provider.strip().lower()}"
+            ) from exc
+
+    def delete(self, user_id: str, provider: str) -> None:
+        self._credentials.pop(f"{user_id.strip()}:{provider.strip().lower()}", None)
+
+    def configured_providers(self, user_id: str) -> tuple[str, ...]:
+        prefix = f"{user_id.strip()}:"
+        return tuple(sorted(key.removeprefix(prefix) for key in self._credentials if key.startswith(prefix)))
+
+
+SUPPORTED_PROVIDERS = frozenset({"openai", "anthropic", "groq"})
+
+
+class BYOKProviderManager:
+    """Resolve user-owned API credentials without coupling agents to a vendor."""
+
+    def __init__(self, credential_store: InMemoryCredentialStore | None = None) -> None:
+        self._store = credential_store or InMemoryCredentialStore()
+
+    @property
+    def credential_store(self) -> InMemoryCredentialStore:
+        return self._store
+
+    def configure(self, user_id: str, provider: str, api_key: str) -> str:
+        normalized = provider.strip().lower()
+        if normalized not in SUPPORTED_PROVIDERS:
+            raise ProviderCredentialError(f"Unsupported provider: {provider}")
+        self._store.set(user_id, normalized, api_key)
+        return self._store.get(user_id, normalized).masked()
+
+    def remove(self, user_id: str, provider: str) -> None:
+        self._store.delete(user_id, provider)
+
+    def configured(self, user_id: str) -> tuple[str, ...]:
+        return self._store.configured_providers(user_id)
+
+    def credential(self, user_id: str, provider: str) -> ProviderCredential:
+        normalized = provider.strip().lower()
+        if normalized not in SUPPORTED_PROVIDERS:
+            raise ProviderCredentialError(f"Unsupported provider: {provider}")
+        return self._store.get(user_id, normalized)
+
+
+byok_provider_manager = BYOKProviderManager()
