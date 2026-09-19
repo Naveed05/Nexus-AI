@@ -185,6 +185,10 @@ class AgentRuntime:
             run.tool_calls = control.tool_calls
             run.retries = control.retries
             result_task = getattr(result, "task", None)
+            events = getattr(result, "events", None)
+            if events is not None:
+                run.metadata["event_count"] = len(events)
+                run.metadata["event_types"] = [getattr(event.event_type, "value", str(event.event_type)) for event in events]
             result_status = getattr(result_task, "status", None)
             if isinstance(result_status, TaskStatus):
                 run.task_status = result_status
