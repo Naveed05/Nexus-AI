@@ -218,7 +218,7 @@ def test_byok_transport_normalizes_anthropic_and_groq_responses() -> None:
 
     assert claude.output == "Claude reply"
     assert claude.response_id == "msg_1"
-    assert groq.output == ""  # chat-completions parsing is added below
+    assert groq.output == "Groq reply"
 
 
 def test_byok_transport_rejects_invalid_json() -> None:
