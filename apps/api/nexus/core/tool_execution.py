@@ -3,6 +3,8 @@ import json
 import time
 from typing import Any, Mapping
 
+from nexus.core.approvals import Approval, ApprovalError
+from nexus.core.control_ledger import ControlLedger
 from nexus.core.permissions import PermissionDecision, PermissionPolicy
 from nexus.core.task import Task
 from nexus.core.tool_security import ToolSecurityPolicy
@@ -19,7 +21,9 @@ class ToolExecutionResult:
     duration_ms: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:
-        output_size = 0 if self.output is None else len(json.dumps(self.output, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8"))
+        output_size = 0 if self.output is None else len(
+            json.dumps(self.output, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+        )
         return {
             "tool_name": self.tool_name,
             "success": self.success,
@@ -32,17 +36,23 @@ class ToolExecutionResult:
 
 
 class ToolExecutor:
-    """Execute explicitly registered tools behind one permission boundary."""
+    """Execute registered tools behind security, permission, approval, and audit boundaries."""
 
     def __init__(
         self,
         registry: ToolRegistry | None = None,
         permission_policy: PermissionPolicy | None = None,
         security_policy: ToolSecurityPolicy | None = None,
+        audit_ledger: ControlLedger | None = None,
+        actor: str = "system",
     ) -> None:
+        if not actor.strip():
+            raise ValueError("actor must not be empty")
         self._registry = registry or tool_registry
         self._permission_policy = permission_policy or PermissionPolicy()
         self._security_policy = security_policy or ToolSecurityPolicy()
+        self._audit_ledger = audit_ledger
+        self._actor = actor.strip()
 
     @staticmethod
     def _validate_arguments(tool: ToolSpec, arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -60,13 +70,22 @@ class ToolExecutor:
                 raise ValueError(f"unknown tool arguments: {', '.join(unknown)}")
         return dict(arguments)
 
+    def _audit(self, tool_name: str, decision: PermissionDecision, reason: str) -> None:
+        if self._audit_ledger is not None:
+            self._audit_ledger.append(
+                f"tool_execution:{tool_name}",
+                self._actor,
+                decision.value,
+                reason,
+            )
+
     def execute(
         self,
         task: Task,
         tool_name: str,
         arguments: Mapping[str, Any],
         *,
-        approved: bool = False,
+        approval: Approval | None = None,
     ) -> ToolExecutionResult:
         started = time.perf_counter()
         try:
@@ -74,21 +93,74 @@ class ToolExecutor:
         except ValueError as exc:
             return ToolExecutionResult(tool_name, False, error=str(exc), permission=PermissionDecision.DENY)
 
-        decision = self._permission_policy.decide(tool, task.risk_level)
-        if decision == PermissionDecision.DENY:
-            return ToolExecutionResult(tool.name, False, error="tool execution denied by permission policy", permission=decision)
-        if decision == PermissionDecision.APPROVAL_REQUIRED and not approved:
-            return ToolExecutionResult(tool.name, False, error="explicit approval required for tool execution", permission=decision)
-
         try:
-            # Apply the security boundary before schema validation so restricted
-            # fields are never treated as ordinary unknown arguments.
+            # Security filtering happens before schema validation and approval
+            # binding, so restricted fields cannot be smuggled into an approval.
             kwargs = self._security_policy.validate(arguments)
             kwargs = self._validate_arguments(tool, kwargs)
+            decision = self._permission_policy.authorize(
+                tool,
+                task.risk_level,
+                arguments=kwargs,
+                approval=approval,
+            )
+        except ApprovalError as exc:
+            self._audit(tool.name, PermissionDecision.APPROVAL_REQUIRED, str(exc))
+            return ToolExecutionResult(
+                tool.name,
+                False,
+                error=str(exc),
+                permission=PermissionDecision.APPROVAL_REQUIRED,
+                duration_ms=(time.perf_counter() - started) * 1000,
+            )
+        except ValueError as exc:
+            self._audit(tool.name, PermissionDecision.DENY, str(exc))
+            return ToolExecutionResult(
+                tool.name,
+                False,
+                error=str(exc),
+                permission=PermissionDecision.DENY,
+                duration_ms=(time.perf_counter() - started) * 1000,
+            )
+
+        if decision == PermissionDecision.DENY:
+            self._audit(tool.name, decision, "tool execution denied by permission policy")
+            return ToolExecutionResult(
+                tool.name,
+                False,
+                error="tool execution denied by permission policy",
+                permission=decision,
+                duration_ms=(time.perf_counter() - started) * 1000,
+            )
+        if decision == PermissionDecision.APPROVAL_REQUIRED:
+            self._audit(tool.name, decision, "explicit approval required for tool execution")
+            return ToolExecutionResult(
+                tool.name,
+                False,
+                error="explicit approval required for tool execution",
+                permission=decision,
+                duration_ms=(time.perf_counter() - started) * 1000,
+            )
+
+        try:
             output = tool.handler(**kwargs)
-            return ToolExecutionResult(tool.name, True, output=output, permission=decision, duration_ms=(time.perf_counter() - started) * 1000)
+            self._audit(tool.name, PermissionDecision.ALLOW, "tool execution completed")
+            return ToolExecutionResult(
+                tool.name,
+                True,
+                output=output,
+                permission=decision,
+                duration_ms=(time.perf_counter() - started) * 1000,
+            )
         except Exception as exc:
-            return ToolExecutionResult(tool.name, False, error=str(exc), permission=decision, duration_ms=(time.perf_counter() - started) * 1000)
+            self._audit(tool.name, decision, f"tool execution failed: {exc}")
+            return ToolExecutionResult(
+                tool.name,
+                False,
+                error=str(exc),
+                permission=decision,
+                duration_ms=(time.perf_counter() - started) * 1000,
+            )
 
 
 tool_executor = ToolExecutor()
