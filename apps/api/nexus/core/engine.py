@@ -125,6 +125,7 @@ class NexusEngine:
         step: PlanStep,
         events: list[ExecutionEvent],
         allowed_tools: tuple[str, ...],
+        control: ExecutionControl | None = None,
     ) -> ExecutionResult:
         last_error: Exception | None = None
 
@@ -343,6 +344,7 @@ class NexusEngine:
                     step,
                     events,
                     allowed_tools=allowed_tools,
+                    control=control,
                 )
             except Exception as exc:
                 step.status = StepStatus.FAILED
