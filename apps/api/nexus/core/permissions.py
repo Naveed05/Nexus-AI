@@ -43,7 +43,6 @@ class PermissionPolicy:
         arguments: dict[str, object],
         approval: Approval | None = None,
         now=None,
-        expected_approver: str | None = None,
     ) -> PermissionDecision:
         """Return the execution decision and validate approval when required."""
         decision = self.decide(tool, task_risk)
@@ -57,7 +56,6 @@ class PermissionPolicy:
                 tool_name=tool.name,
                 arguments=arguments,
                 now=now,
-                expected_approver=expected_approver,
             )
         return PermissionDecision.ALLOW
 
