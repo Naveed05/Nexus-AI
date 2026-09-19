@@ -1,5 +1,6 @@
 from enum import Enum
 
+from nexus.core.approvals import Approval, validate_approval
 from nexus.core.task import RiskLevel
 from nexus.core.tools import ToolSpec
 
@@ -32,6 +33,30 @@ class PermissionPolicy:
             return PermissionDecision.DENY
         if tool.risk_level == "medium":
             return PermissionDecision.APPROVAL_REQUIRED
+        return PermissionDecision.ALLOW
+
+    def authorize(
+        self,
+        tool: ToolSpec,
+        task_risk: RiskLevel,
+        *,
+        arguments: dict[str, object],
+        approval: Approval | None = None,
+        now=None,
+    ) -> PermissionDecision:
+        """Return the execution decision and validate approval when required."""
+        decision = self.decide(tool, task_risk)
+        if decision == PermissionDecision.DENY:
+            return decision
+        if decision == PermissionDecision.APPROVAL_REQUIRED:
+            if approval is None:
+                return PermissionDecision.APPROVAL_REQUIRED
+            validate_approval(
+                approval,
+                tool_name=tool.name,
+                arguments=arguments,
+                now=now,
+            )
         return PermissionDecision.ALLOW
 
 
