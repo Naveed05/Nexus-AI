@@ -113,6 +113,27 @@ def test_tool_executor_audits_permission_and_execution_events(tmp_path) -> None:
     assert all(event.actor == "reviewer" for event in events)
 
 
+def test_tool_executor_rejects_oversized_output() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        "large", "Large output", {
+            "type": "object", "properties": {}, "required": [], "additionalProperties": False,
+        }, "low", lambda: {"payload": "x" * 100}, max_output_bytes=32,
+    ))
+    result = ToolExecutor(registry=registry).execute(Task(objective="large"), "large", {})
+    assert result.success is False
+    assert result.output is None
+    assert "output exceeds security limit" in result.error
+
+
+def test_tool_spec_rejects_invalid_output_limit() -> None:
+    with pytest.raises(ValueError, match="max_output_bytes"):
+        ToolSpec(
+            "invalid", "Invalid", {"type": "object"}, "low", lambda: None,
+            max_output_bytes=0,
+        )
+
+
 def test_tool_executor_failures_are_structured() -> None:
     registry = ToolRegistry()
     registry.register(ToolSpec(
