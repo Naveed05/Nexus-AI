@@ -256,7 +256,7 @@ class MemoryStore:
                 confidence = relevance * record.importance * (0.75 + 0.25 * recency)
                 # Round the public confidence signal to keep deterministic scores stable
                 # across the tiny timestamp differences introduced during a recall.
-                confidence = round(confidence, 12)
+                confidence = round(confidence, 10)
                 return relevance, confidence
 
             scored = [(record, *signals(record)) for record in candidates]
