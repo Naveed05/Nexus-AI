@@ -203,6 +203,11 @@ class AgentRuntime:
             run.retries = control.retries
             run.finished_at = datetime.now(timezone.utc)
 
+
+    def run_engine(self, task: Task, engine: Any, *, budget: RunBudget | None = None) -> tuple[AgentRun, Any]:
+        """Run a NEXUS engine through the runtime control boundary."""
+        return self.run(task, lambda current_task, control: engine.run(current_task, control=control), budget=budget)
+
     def list_runs(self) -> tuple[AgentRun, ...]:
         with self._lock:
             return tuple(self._runs.values())
