@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response
 from fastapi.testclient import TestClient
 
@@ -13,6 +13,7 @@ from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
 from nexus.core.files import FileRegistry, LocalFileStore
 from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
 from nexus.core.memory import memory_store
+from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, byok_provider_manager
 from nexus.core.research import ResearchEngine
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
@@ -54,6 +55,116 @@ def _build_task(payload: TaskCreate) -> Task:
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]: return {"status": "ok", "service": "nexus-api"}
+
+@app.get("/api/v1/byok/providers")
+def list_byok_providers() -> dict:
+    """List supported BYOK providers without exposing credentials."""
+    return {"providers": sorted(SUPPORTED_PROVIDERS)}
+
+
+def _byok_user(user_id: str | None) -> str:
+    value = (user_id or "").strip()
+    if not value:
+        raise HTTPException(status_code=401, detail="X-Nexus-User-ID header is required")
+    return value
+
+
+@app.get("/api/v1/byok/credentials")
+def list_byok_credentials(x_nexus_user_id: str | None = Header(default=None)) -> dict:
+    user_id = _byok_user(x_nexus_user_id)
+    return {
+        "providers": [
+            {"provider": provider, "configured": provider in byok_provider_manager.configured(user_id)}
+            for provider in sorted(SUPPORTED_PROVIDERS)
+        ]
+    }
+
+
+@app.put("/api/v1/byok/credentials/{provider}")
+def configure_byok_credential(
+    provider: str,
+    payload: dict,
+    x_nexus_user_id: str | None = Header(default=None),
+) -> dict:
+    user_id = _byok_user(x_nexus_user_id)
+    api_key = payload.get("api_key")
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise HTTPException(status_code=422, detail="api_key is required")
+    if len(api_key.strip()) < 8:
+        raise HTTPException(status_code=422, detail="api_key is too short")
+    try:
+        masked = byok_provider_manager.configure(user_id, provider, api_key)
+    except ProviderCredentialError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"provider": provider.strip().lower(), "configured": True, "masked_key": masked}
+
+
+@app.delete("/api/v1/byok/credentials/{provider}", status_code=204)
+def remove_byok_credential(
+    provider: str,
+    x_nexus_user_id: str | None = Header(default=None),
+) -> Response:
+    user_id = _byok_user(x_nexus_user_id)
+    try:
+        byok_provider_manager.credential(user_id, provider)
+    except ProviderNotConfiguredError:
+        return Response(status_code=204)
+    except ProviderCredentialError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    byok_provider_manager.remove(user_id, provider)
+    return Response(status_code=204)
+
+
+@app.post("/api/v1/byok/generate")
+def generate_with_byok(
+    payload: dict,
+    x_nexus_user_id: str | None = Header(default=None),
+) -> dict:
+    user_id = _byok_user(x_nexus_user_id)
+    provider = str(payload.get("provider", "")).strip().lower()
+    model_id = str(payload.get("model", "")).strip()
+    prompt = str(payload.get("prompt", "")).strip()
+    if provider not in SUPPORTED_PROVIDERS:
+        raise HTTPException(status_code=422, detail=f"Unsupported provider: {provider}")
+    if not model_id:
+        raise HTTPException(status_code=422, detail="model is required")
+    if not prompt:
+        raise HTTPException(status_code=422, detail="prompt is required")
+    if len(prompt) > 20_000:
+        raise HTTPException(status_code=422, detail="prompt is too long")
+    try:
+        model = ModelSpec(
+            key=f"byok:{provider}:{model_id}",
+            model_id=model_id,
+            provider=provider,
+            tier="byok",
+            description="User-supplied BYOK model",
+            capabilities=frozenset({"reasoning", "coding", "research", "tools"}),
+            reasoning_levels=frozenset({"low", "medium", "high"}),
+            context_window=128_000,
+            supports_tools=False,
+            cost_score=0,
+            latency_score=0,
+        )
+        response = byok_provider_manager.generate(
+            user_id=user_id,
+            model=model,
+            input_items=[{"role": "user", "content": prompt}],
+            tools=[],
+            timeout_seconds=30,
+        )
+    except ProviderNotConfiguredError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (ProviderCredentialError, BYOKProviderError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "provider": response.provider,
+        "model": response.model_id,
+        "response_id": response.response_id,
+        "output": response.output,
+    }
+
+
 
 @app.post("/api/v1/memories", status_code=201)
 def create_memory(payload: dict) -> dict:
