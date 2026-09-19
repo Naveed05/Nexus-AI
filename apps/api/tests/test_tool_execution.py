@@ -113,6 +113,19 @@ def test_tool_executor_audits_permission_and_execution_events(tmp_path) -> None:
     assert all(event.actor == "reviewer" for event in events)
 
 
+def test_tool_executor_enforces_timeout() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        "slow", "Slow operation", {
+            "type": "object", "properties": {}, "required": [], "additionalProperties": False,
+        }, "low", lambda: __import__("time").sleep(0.05), timeout_seconds=0.01,
+    ))
+    result = ToolExecutor(registry=registry).execute(Task(objective="slow"), "slow", {})
+    assert result.success is False
+    assert result.output is None
+    assert "exceeded timeout" in result.error
+
+
 def test_tool_executor_rejects_oversized_output() -> None:
     registry = ToolRegistry()
     registry.register(ToolSpec(

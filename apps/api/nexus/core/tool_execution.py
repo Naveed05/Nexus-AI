@@ -1,5 +1,8 @@
 from dataclasses import dataclass
 import json
+import os
+import signal
+import threading
 import time
 from typing import Any, Mapping
 
@@ -79,6 +82,31 @@ class ToolExecutor:
                 reason,
             )
 
+    @staticmethod
+    def _run_with_timeout(tool: ToolSpec, kwargs: dict[str, Any]) -> Any:
+        if os.name == "posix" and threading.current_thread() is threading.main_thread():
+            def timeout_handler(signum, frame):
+                raise TimeoutError(
+                    f"tool execution exceeded timeout of {tool.timeout_seconds:g} seconds"
+                )
+
+            previous = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.setitimer(signal.ITIMER_REAL, tool.timeout_seconds)
+            try:
+                return tool.handler(**kwargs)
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, previous)
+
+        started = time.perf_counter()
+        output = tool.handler(**kwargs)
+        elapsed = time.perf_counter() - started
+        if elapsed > tool.timeout_seconds:
+            raise TimeoutError(
+                f"tool execution exceeded timeout of {tool.timeout_seconds:g} seconds"
+            )
+        return output
+
     def execute(
         self,
         task: Task,
@@ -143,7 +171,7 @@ class ToolExecutor:
             )
 
         try:
-            output = tool.handler(**kwargs)
+            output = self._run_with_timeout(tool, kwargs)
             encoded_output = json.dumps(
                 output, sort_keys=True, default=str, separators=(",", ":")
             ).encode("utf-8")
