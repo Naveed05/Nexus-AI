@@ -226,6 +226,34 @@ class BYOKProviderManager:
             raise ProviderCredentialError(f"Unsupported provider: {provider}")
         return self._store.get(user_id, normalized)
 
+    def generate(
+        self,
+        *,
+        user_id: str,
+        model: ModelSpec,
+        input_items: list[Any],
+        tools: list[Mapping[str, Any]] | None = None,
+        tool_choice: str = "auto",
+        transport: "BYOKHTTPTransport | None" = None,
+        timeout_seconds: float = 30.0,
+    ) -> ModelResponse:
+        """Execute a provider request using the caller's own credential.
+
+        BYOK generation is deliberately provider-agnostic and never returns the
+        raw credential. Tool execution remains behind NEXUS's normal tool
+        permission boundary; callers can pass an empty tool list for text-only
+        BYOK generation.
+        """
+        request = build_byok_request(
+            user_id=user_id,
+            model=model,
+            input_items=input_items,
+            tools=tools or [],
+            tool_choice=tool_choice,
+            manager=self,
+        )
+        return (transport or BYOKHTTPTransport()).execute(request, timeout_seconds=timeout_seconds)
+
 
 byok_provider_manager = BYOKProviderManager()
 
