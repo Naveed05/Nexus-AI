@@ -1,5 +1,8 @@
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+import json
+from typing import Any, Callable, Mapping, Protocol
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 
 
@@ -224,6 +227,82 @@ class BYOKProviderManager:
 
 
 byok_provider_manager = BYOKProviderManager()
+
+
+class BYOKProviderError(RuntimeError):
+    """Raised when a provider request cannot be completed or parsed."""
+
+
+class BYOKHTTPTransport:
+    """Small real HTTPS transport with injectable opener for deterministic tests."""
+
+    def __init__(self, opener: Callable[..., Any] = urlopen) -> None:
+        self._opener = opener
+
+    def execute(self, request: ProviderRequest, *, timeout_seconds: float = 30.0) -> ModelResponse:
+        body = json.dumps(request.payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        http_request = Request(
+            request.endpoint,
+            data=body,
+            headers=dict(request.headers),
+            method="POST",
+        )
+        try:
+            with self._opener(http_request, timeout=timeout_seconds) as response:
+                raw = response.read()
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:1000]
+            raise BYOKProviderError(
+                f"{request.provider} request failed with HTTP {exc.code}: {detail}"
+            ) from exc
+        except URLError as exc:
+            raise BYOKProviderError(
+                f"{request.provider} request failed: {exc.reason}"
+            ) from exc
+        except TimeoutError as exc:
+            raise BYOKProviderError(f"{request.provider} request timed out") from exc
+
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BYOKProviderError(f"{request.provider} returned invalid JSON") from exc
+
+        return self._parse_response(request, data)
+
+    @staticmethod
+    def _parse_response(request: ProviderRequest, data: Mapping[str, Any]) -> ModelResponse:
+        provider = request.provider
+        response_id = str(data.get("id", ""))
+        output = ""
+
+        if provider == "openai":
+            output = str(data.get("output_text", "") or "")
+            if not output:
+                chunks: list[str] = []
+                for item in data.get("output", []) or []:
+                    if not isinstance(item, Mapping):
+                        continue
+                    for content in item.get("content", []) or []:
+                        if isinstance(content, Mapping) and content.get("text"):
+                            chunks.append(str(content["text"]))
+                output = "".join(chunks)
+        else:
+            chunks = []
+            for item in data.get("content", []) or []:
+                if isinstance(item, Mapping) and item.get("text"):
+                    chunks.append(str(item["text"]))
+            output = "".join(chunks)
+
+        if not output:
+            raise BYOKProviderError(f"{provider} response did not contain text output")
+        if not response_id:
+            response_id = "provider-response"
+        return ModelResponse(
+            output=output,
+            response_id=response_id,
+            provider=provider,
+            model_id=request.model_id,
+        )
 
 
 @dataclass(frozen=True)
