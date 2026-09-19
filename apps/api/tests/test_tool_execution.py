@@ -226,3 +226,18 @@ def test_tool_executor_routes_sandbox_required_tool_to_runner() -> None:
     assert result.success is True
     assert result.output == {"sandboxed": "hello"}
     assert calls == [("sandboxed", {"value": "hello"})]
+
+def test_tool_executor_rejects_approval_from_different_actor() -> None:
+    registry = _risky_registry()
+    executor = ToolExecutor(registry=registry, actor="executor")
+    task = Task(objective="risky", risk_level=RiskLevel.MEDIUM)
+    approval = issue_approval(
+        approver="different-reviewer",
+        tool_name="risky",
+        arguments={"value": "hello"},
+        ttl_seconds=60,
+    )
+    result = executor.execute(task, "risky", {"value": "hello"}, approval=approval)
+    assert result.success is False
+    assert result.permission.value == "approval_required"
+    assert "approver" in result.error
