@@ -222,26 +222,30 @@ def execute_task(payload: TaskCreate) -> ExecutionResponse:
         tool_calls=len(result.execution.tool_calls), events=[event.event_type.value for event in result.events],
     )
 
+@app.get("/api/v1/runs")
+def list_agent_runs() -> list[dict]:
+    return [_run_payload(run) for run in agent_runtime.list_runs()]
+
+
+def _run_payload(run) -> dict:
+    return {
+        "run_id": str(run.run_id), "task_id": str(run.task_id) if run.task_id else None,
+        "status": run.status.value, "task_status": run.task_status.value,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "duration_ms": run.duration_ms, "steps_completed": run.steps_completed,
+        "tool_calls": run.tool_calls, "retries": run.retries, "error": run.error,
+        "metadata": run.metadata,
+    }
+
+
 @app.get("/api/v1/runs/{run_id}")
 def get_agent_run(run_id: UUID) -> dict:
     try:
         run = agent_runtime.get(run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {
-        "run_id": str(run.run_id),
-        "task_id": str(run.task_id) if run.task_id else None,
-        "status": run.status.value,
-        "task_status": run.task_status.value,
-        "started_at": run.started_at.isoformat() if run.started_at else None,
-        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
-        "duration_ms": run.duration_ms,
-        "steps_completed": run.steps_completed,
-        "tool_calls": run.tool_calls,
-        "retries": run.retries,
-        "error": run.error,
-        "metadata": run.metadata,
-    }
+    return _run_payload(run)
 
 
 @app.post("/api/v1/runs/{run_id}/cancel")
