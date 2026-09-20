@@ -13,6 +13,7 @@ class ModelResponse:
     response_id: str
     provider: str
     model_id: str
+    tool_calls: tuple[Mapping[str, Any], ...] = ()
 
 
 
@@ -360,29 +361,52 @@ class BYOKHTTPTransport:
         response_id = str(data.get("id", ""))
         output = ""
 
+        tool_calls: list[Mapping[str, Any]] = []
         if provider == "openai":
             output = str(data.get("output_text", "") or "")
-            if not output:
-                chunks: list[str] = []
-                for item in data.get("output", []) or []:
-                    if not isinstance(item, Mapping):
-                        continue
-                    for content in item.get("content", []) or []:
-                        if isinstance(content, Mapping) and content.get("text"):
-                            chunks.append(str(content["text"]))
-                output = "".join(chunks)
+            for item in data.get("output", []) or []:
+                if not isinstance(item, Mapping):
+                    continue
+                if item.get("type") == "function_call":
+                    tool_calls.append({
+                        "name": str(item.get("name", "")),
+                        "arguments": str(item.get("arguments", "{}")),
+                        "call_id": str(item.get("call_id", "")),
+                    })
+                for content in item.get("content", []) or []:
+                    if isinstance(content, Mapping) and content.get("text"):
+                        output += str(content["text"])
         elif provider == "anthropic":
             chunks = []
             for item in data.get("content", []) or []:
-                if isinstance(item, Mapping) and item.get("text"):
+                if not isinstance(item, Mapping):
+                    continue
+                if item.get("type") == "tool_use":
+                    tool_calls.append({
+                        "name": str(item.get("name", "")),
+                        "arguments": json.dumps(item.get("input", {}), separators=(",", ":")),
+                        "call_id": str(item.get("id", "")),
+                    })
+                if item.get("text"):
                     chunks.append(str(item["text"]))
             output = "".join(chunks)
         else:
             choices = data.get("choices", []) or []
             if choices and isinstance(choices[0], Mapping):
                 message = choices[0].get("message", {})
-                if isinstance(message, Mapping) and message.get("content"):
-                    output = str(message["content"])
+                if isinstance(message, Mapping):
+                    if message.get("content"):
+                        output = str(message["content"])
+                    for call in message.get("tool_calls", []) or []:
+                        if not isinstance(call, Mapping):
+                            continue
+                        function = call.get("function", {})
+                        if isinstance(function, Mapping):
+                            tool_calls.append({
+                                "name": str(function.get("name", "")),
+                                "arguments": str(function.get("arguments", "{}")),
+                                "call_id": str(call.get("id", "")),
+                            })
 
         if not output:
             raise BYOKProviderError(f"{provider} response did not contain text output")
@@ -393,6 +417,7 @@ class BYOKHTTPTransport:
             response_id=response_id,
             provider=provider,
             model_id=request.model_id,
+            tool_calls=tuple(tool_calls),
         )
 
 
