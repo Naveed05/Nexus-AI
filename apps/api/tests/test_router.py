@@ -79,3 +79,31 @@ def test_model_registry_rejects_incompatible_model() -> None:
     )
     with pytest.raises(ModelCapabilityError):
         model_registry.validate(model_registry.get("terra"), requirements)
+
+
+def test_router_exposes_explainable_multi_factor_candidates() -> None:
+    task = Task(objective="Write production Python code", capabilities=["coding"])
+    decision = router.decide(task)
+
+    assert decision.model.key == "sol"
+    assert decision.candidates
+    assert {candidate.model.key for candidate in decision.candidates} == {"astra", "sol"}
+    assert all(candidate.total >= 0 for candidate in decision.candidates)
+    assert all(candidate.capability_fit == 1.0 for candidate in decision.candidates)
+
+
+def test_router_hard_signal_requires_high_reasoning_candidates() -> None:
+    task = Task(objective="Research and reason about a complex architecture")
+    decision = router.decide(task)
+
+    assert decision.model.key == "astra"
+    assert {candidate.model.key for candidate in decision.candidates} == {"astra", "sol"}
+    assert all(candidate.reasoning_fit == 1.0 for candidate in decision.candidates)
+
+
+def test_router_budget_gate_limits_candidates_to_luna() -> None:
+    task = Task(objective="Summarize this", budget=1)
+    decision = router.decide(task)
+
+    assert decision.model.key == "luna"
+    assert [candidate.model.key for candidate in decision.candidates] == ["luna"]
