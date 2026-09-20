@@ -266,3 +266,10 @@ def test_executor_uses_central_tool_execution_boundary() -> None:
 
     assert result.tool_calls[0].result == {"result": "boundary"}
     assert boundary.calls[0][1] == "calculator"
+
+
+def test_executor_uses_canonical_boundary_for_builtin_registry() -> None:
+    from nexus.core.executor import tool_executor
+
+    executor = ModelExecutor(client=FakeClient())
+    assert executor._execution_boundary is tool_executor
