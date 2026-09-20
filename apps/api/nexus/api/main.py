@@ -305,6 +305,12 @@ def list_memories(workspace_id: UUID) -> list[dict]:
     _require_workspace(workspace_id)
     return [_memory_payload(record) for record in memory_store.list(workspace_id=workspace_id)]
 
+@app.get("/api/v1/workspaces/{workspace_id}/memories/stats")
+def memory_stats(workspace_id: UUID) -> dict:
+    _require_workspace(workspace_id)
+    return {"workspace_id": str(workspace_id), **memory_store.stats(workspace_id=workspace_id)}
+
+
 @app.post("/api/v1/workspaces/{workspace_id}/memories/recall")
 def recall_memories(workspace_id: UUID, payload: dict) -> dict:
     _require_workspace(workspace_id)
