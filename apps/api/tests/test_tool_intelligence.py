@@ -62,8 +62,8 @@ def test_selector_reports_required_and_matched_capabilities() -> None:
 def test_selector_rejects_capability_incompatible_preferred_tool() -> None:
     registry = ToolRegistry()
     registry.register(ToolSpec(
-        name="calculator",
-        description="Calculator",
+        name="profile_dataset",
+        description="Profile dataset",
         input_schema={"type": "object"},
         risk_level="low",
         handler=calculator,
