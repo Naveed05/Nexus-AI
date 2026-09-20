@@ -321,6 +321,8 @@ class NexusEngine:
                         "tool_name": step.selected_tool,
                         "score": decision.score,
                         "reasons": list(decision.reasons),
+                        "required_capabilities": sorted(decision.required_capabilities),
+                        "matched_capabilities": sorted(decision.matched_capabilities),
                     },
                 )
             )
