@@ -2,9 +2,8 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from nexus.api.main import app
+from nexus.api.main import agent_runtime, app
 from nexus.core.research import ResearchEngine, ResearchResult, ResearchSource
-from nexus.core.runtime import agent_runtime
 from nexus.core.task import Task
 from nexus.core.workspaces import workspace_registry
 
