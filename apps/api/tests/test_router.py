@@ -1,3 +1,4 @@
+import pytest
 from nexus.core.models import model_registry
 from nexus.core.router import router
 from nexus.core.task import RiskLevel, Task
