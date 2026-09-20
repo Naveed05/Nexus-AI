@@ -454,7 +454,7 @@ class MemoryStore:
                 ):
                     updated = replace(
                         record,
-                        importance=max(minimum_importance, record.importance - amount),
+                        importance=round(max(minimum_importance, record.importance - amount), 10),
                         updated_at=datetime.now(timezone.utc),
                     )
                     self._records[record.memory_id] = updated
