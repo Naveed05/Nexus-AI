@@ -45,6 +45,44 @@ class ModelSpec:
     latency_score: int
 
 
+class ModelCapabilityError(ValueError):
+    """Raised when a model cannot satisfy an explicit capability contract."""
+
+
+@dataclass(frozen=True)
+class ModelRequirements:
+    """Provider-neutral requirements used by routing and fallback planning."""
+
+    required_capabilities: frozenset[str] = frozenset()
+    reasoning_level: str | None = None
+    minimum_context_window: int = 0
+    require_tools: bool = False
+    maximum_cost_score: int | None = None
+    maximum_latency_score: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.minimum_context_window < 0:
+            raise ValueError("minimum_context_window cannot be negative")
+        if self.maximum_cost_score is not None and self.maximum_cost_score < 0:
+            raise ValueError("maximum_cost_score cannot be negative")
+        if self.maximum_latency_score is not None and self.maximum_latency_score < 0:
+            raise ValueError("maximum_latency_score cannot be negative")
+        if self.reasoning_level is not None and self.reasoning_level not in {"low", "medium", "high", "xhigh", "max"}:
+            raise ValueError("unsupported reasoning level")
+
+
+@dataclass(frozen=True)
+class ModelHealth:
+    """Runtime health snapshot for a model/provider pair."""
+
+    key: str
+    provider: str
+    available: bool = True
+    consecutive_failures: int = 0
+    last_error: str | None = None
+    latency_ms: float | None = None
+
+
 class ModelRegistry:
     """Extensible registry for NEXUS model providers and capabilities."""
 
@@ -124,6 +162,24 @@ class ModelRegistry:
 
     def all(self) -> tuple[ModelSpec, ...]:
         return tuple(self._models.values())
+
+    def find(self, requirements: ModelRequirements) -> tuple[ModelSpec, ...]:
+        matches = [
+            spec for spec in self._models.values()
+            if requirements.required_capabilities.issubset(spec.capabilities)
+            and (requirements.reasoning_level is None or requirements.reasoning_level in spec.reasoning_levels)
+            and spec.context_window >= requirements.minimum_context_window
+            and (not requirements.require_tools or spec.supports_tools)
+            and (requirements.maximum_cost_score is None or spec.cost_score <= requirements.maximum_cost_score)
+            and (requirements.maximum_latency_score is None or spec.latency_score <= requirements.maximum_latency_score)
+        ]
+        return tuple(sorted(matches, key=lambda spec: (spec.cost_score, spec.latency_score, spec.key)))
+
+    def validate(self, model: ModelSpec, requirements: ModelRequirements) -> None:
+        if model not in self.find(requirements):
+            raise ModelCapabilityError(
+                f"model '{model.key}' does not satisfy the requested model requirements"
+            )
 
 
 model_registry = ModelRegistry()
