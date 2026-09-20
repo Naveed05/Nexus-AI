@@ -1,4 +1,5 @@
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -13,6 +14,7 @@ from nexus.core.models import (
     ModelResponse,
     ModelSpec,
     byok_provider_manager,
+    model_health_registry,
 )
 from nexus.core.permissions import PermissionDecision, PermissionPolicy
 from nexus.core.task import Task
@@ -246,6 +248,7 @@ class ModelExecutor:
         workspace_token = set_knowledge_workspace(task.workspace_id)
         try:
             while True:
+                started_at = time.perf_counter()
                 try:
                     response = provider.generate(
                         model=model,
@@ -253,10 +256,16 @@ class ModelExecutor:
                         tools=tools,
                         tool_choice="auto" if tools else "none",
                     )
-                except ModelProviderExecutionError:
+                except ModelProviderExecutionError as exc:
+                    model_health_registry.record_failure(model, str(exc))
                     raise
                 except Exception as exc:
+                    model_health_registry.record_failure(model, str(exc))
                     raise ModelProviderExecutionError(str(exc)) from exc
+                model_health_registry.record_success(
+                    model,
+                    latency_ms=(time.perf_counter() - started_at) * 1000,
+                )
 
                 function_calls = list(response.tool_calls)
                 if not function_calls:
