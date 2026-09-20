@@ -223,6 +223,15 @@ def execute_task(payload: TaskCreate) -> ExecutionResponse:
         tool_calls=len(result.execution.tool_calls), events=[event.event_type.value for event in result.events],
     )
 
+@app.get("/api/v1/runs/{run_id}")
+def get_agent_run(run_id: UUID) -> dict:
+    try:
+        run = agent_runtime.get(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _run_payload(run)
+
+
 @app.get("/api/v1/runs")
 def list_agent_runs() -> list[dict]:
     return [_run_payload(run) for run in agent_runtime.list_runs()]
