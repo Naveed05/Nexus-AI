@@ -89,12 +89,12 @@ class ToolSelector:
             if permission != PermissionDecision.ALLOW:
                 rejected.append(f"{name} blocked by permission policy ({permission.value})")
                 continue
-            if not required.issubset(tool.capabilities):
+            if tool.capabilities and not required.issubset(tool.capabilities):
                 missing = sorted(required - tool.capabilities)
                 rejected.append(f"{name} missing capabilities: {', '.join(missing)}")
                 continue
             matched = required & tool.capabilities
-            score = 100.0 - index * 10.0 + len(matched) * 5.0
+            score = 100.0 - index * 10.0
             ranked.append((score, index, tool, matched))
 
         if ranked:
