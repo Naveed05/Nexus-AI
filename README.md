@@ -214,6 +214,10 @@ NEXUS has bounded adaptive-execution contracts for autonomous workflows:
 
 These controls provide a safe foundation for multi-step autonomous execution without allowing unbounded agent loops.
 
+### ⚙️ Agent runtime
+
+NEXUS now exposes a bounded agent runtime with durable SQLite-backed run state, explicit task/run lifecycle states, cancellation, step/tool/retry budgets, structured execution telemetry, runtime status APIs, and deterministic run inspection. The runtime is designed as the control boundary for future asynchronous workers and distributed execution. Runtime persistence is configurable through `RUN_STORAGE_PATH` and defaults to `.nexus/runs.sqlite3`.
+
 ### 🌐 Advanced frontier-model workflows
 
 NEXUS now has a frontier workflow foundation with:
@@ -293,7 +297,7 @@ NEXUS has progressed beyond the original kernel prototype into a multi-layer AI 
 - frontier-model capability and fallback planning foundations
 - evaluation quality gates, category aggregation, and regression detection foundations
 
-The next major engineering focus is **Security & Human Control Hardening**, followed by a real product frontend/deployment stack.
+The next major engineering focus is extending the agent runtime into a production model/tool execution layer, followed by product frontend, security, deployment, and scale hardening.
 
 ## Roadmap
 

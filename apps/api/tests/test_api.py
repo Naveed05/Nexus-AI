@@ -2,8 +2,9 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from nexus.api.main import app
+from nexus.api.main import agent_runtime, app
 from nexus.core.research import ResearchEngine, ResearchResult, ResearchSource
+from nexus.core.task import Task
 from nexus.core.workspaces import workspace_registry
 
 client = TestClient(app)
@@ -200,3 +201,37 @@ def test_byok_generate_uses_user_credential_without_exposing_it(monkeypatch) -> 
 def test_byok_requires_user_identity() -> None:
     response = client.get("/api/v1/byok/credentials")
     assert response.status_code == 401
+
+
+def test_agent_run_lifecycle_endpoints() -> None:
+    task = Task(objective="API runtime lifecycle")
+    run = agent_runtime.create_run(task)
+
+    status = client.get(f"/api/v1/runs/{run.run_id}")
+    assert status.status_code == 200
+    assert status.json()["status"] == "created"
+
+    cancelled = client.post(f"/api/v1/runs/{run.run_id}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    final = client.get(f"/api/v1/runs/{run.run_id}")
+    assert final.json()["task_status"] == "cancelled"
+
+
+def test_agent_run_endpoint_rejects_unknown_run() -> None:
+    response = client.get("/api/v1/runs/00000000-0000-0000-0000-000000000000")
+    assert response.status_code == 404
+
+
+def test_agent_run_list_endpoint_includes_created_run() -> None:
+    from nexus.api.main import agent_runtime
+
+    task = Task(objective="list runtime runs")
+    run = agent_runtime.create_run(task)
+    response = client.get("/api/v1/runs")
+    assert response.status_code == 200
+    payload = response.json()
+    match = next(item for item in payload if item["run_id"] == str(run.run_id))
+    assert match["task_id"] == str(task.task_id)
+    assert match["status"] == "created"

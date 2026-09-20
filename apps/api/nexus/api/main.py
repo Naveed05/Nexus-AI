@@ -15,6 +15,7 @@ from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
 from nexus.core.memory import memory_store
 from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, byok_provider_manager
 from nexus.core.research import ResearchEngine
+from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tools import configure_dataset_workspace
@@ -30,6 +31,7 @@ document_workspace = DocumentWorkspace(Path(settings.file_storage_path) / "docum
 knowledge_engine = KnowledgeEngine(document_workspace, settings.knowledge_index_path)
 configure_knowledge_engine(knowledge_engine)
 research_engine = ResearchEngine()
+agent_runtime = AgentRuntime(settings.run_storage_path)
 
 
 def _workspace_payload(workspace) -> dict:
@@ -209,15 +211,64 @@ def create_task(payload: TaskCreate) -> TaskResponse:
 
 @app.post("/api/v1/tasks/execute", response_model=ExecutionResponse, status_code=200)
 def execute_task(payload: TaskCreate) -> ExecutionResponse:
-    task = _build_task(payload); result = engine.run(task)
+    task = _build_task(payload)
+    run, result = agent_runtime.run_engine(task, engine, budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8))
     verification = result.verification
     return ExecutionResponse(
+        run_id=str(run.run_id),
         task_id=str(task.task_id), model=result.model.model_id, response_id=result.execution.response_id, output=result.execution.output,
         verification_passed=result.state.verification_passed, verification_checks=verification.checks, verification_issues=list(verification.issues),
         grounding_score=verification.grounding_score,
         grounding=[{"citation": item.citation, "claim": item.claim, "overlap_score": item.overlap_score, "supported": item.supported} for item in verification.grounding],
         tool_calls=len(result.execution.tool_calls), events=[event.event_type.value for event in result.events],
     )
+
+@app.get("/api/v1/runs/{run_id}")
+def get_agent_run(run_id: str) -> dict:
+    try:
+        parsed_run_id = UUID(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="run_id must be a UUID") from exc
+    try:
+        run = agent_runtime.get(parsed_run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _run_payload(run)
+
+
+@app.get("/api/v1/runs")
+def list_agent_runs() -> list[dict]:
+    return [_run_payload(run) for run in agent_runtime.list_runs()]
+
+
+def _run_payload(run) -> dict:
+    return {
+        "run_id": str(run.run_id), "task_id": str(run.task_id) if run.task_id else None,
+        "status": run.status.value, "task_status": run.task_status.value,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "duration_ms": run.duration_ms, "steps_completed": run.steps_completed,
+        "tool_calls": run.tool_calls, "retries": run.retries, "error": run.error,
+        "metadata": run.metadata,
+    }
+
+
+@app.post("/api/v1/runs/{run_id}/cancel")
+def cancel_agent_run(run_id: str) -> dict:
+    try:
+        parsed_run_id = UUID(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="run_id must be a UUID") from exc
+    try:
+        run = agent_runtime.cancel(parsed_run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "run_id": str(run.run_id),
+        "status": run.status.value,
+        "task_status": run.task_status.value,
+    }
+
 
 @app.post("/api/v1/research", response_model=ResearchResponse, status_code=200)
 def research(payload: ResearchRequest) -> ResearchResponse:
