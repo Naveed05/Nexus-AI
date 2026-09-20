@@ -261,3 +261,32 @@ def test_memory_decay_only_changes_aging_active_records() -> None:
     assert [item.memory_id for item in changed] == [record.memory_id]
     assert changed[0].importance == 0.6
     assert store._records[active.memory_id].importance == 0.8
+
+
+def test_memory_stats_report_active_archived_expired_and_task_outcomes() -> None:
+    from dataclasses import replace
+    from nexus.core.memory import MemoryKind
+
+    store = MemoryStore()
+    workspace = uuid4()
+    now = datetime.now(timezone.utc)
+    active = store.remember("Active fact", workspace_id=workspace)
+    archived = store.remember("Archived fact", workspace_id=workspace)
+    expired = store.remember("Expired fact", workspace_id=workspace, expires_at=now - timedelta(days=1))
+    outcome = store.remember("Verified outcome", workspace_id=workspace, memory_kind=MemoryKind.TASK_OUTCOME)
+    store.archive(archived.memory_id, workspace_id=workspace)
+
+    stats = store.stats(workspace_id=workspace)
+    assert stats == {"total": 4, "active": 2, "archived": 1, "expired": 1, "task_outcomes": 1}
+    assert active.memory_id != expired.memory_id
+
+
+def test_memory_stats_are_workspace_scoped() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    other = uuid4()
+    store.remember("Workspace memory", workspace_id=workspace)
+    store.remember("Other memory", workspace_id=other)
+
+    assert store.stats(workspace_id=workspace)["total"] == 1
+    assert store.stats(workspace_id=other)["total"] == 1
