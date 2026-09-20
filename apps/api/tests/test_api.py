@@ -267,3 +267,25 @@ def test_tool_contract_and_health_api() -> None:
 def test_unknown_tool_contract_and_health_are_404() -> None:
     assert client.get("/api/v1/tools/does-not-exist").status_code == 404
     assert client.get("/api/v1/tools/does-not-exist/health").status_code == 404
+
+
+def test_model_catalog_and_health_api_are_safe() -> None:
+    models = client.get("/api/v1/models")
+    assert models.status_code == 200
+    body = models.json()
+    assert {item["key"] for item in body} == {"astra", "sol", "terra", "luna"}
+    astra = next(item for item in body if item["key"] == "astra")
+    assert "agentic" in astra["capabilities"]
+    assert "health" in astra
+    assert "api_key" not in str(body)
+
+    health = client.get("/api/v1/models/health")
+    assert health.status_code == 200
+    assert isinstance(health.json()["models"], list)
+
+
+def test_model_detail_and_unknown_model() -> None:
+    detail = client.get("/api/v1/models/sol")
+    assert detail.status_code == 200
+    assert detail.json()["model_id"] == "gpt-5.6-sol"
+    assert client.get("/api/v1/models/not-a-model").status_code == 404
