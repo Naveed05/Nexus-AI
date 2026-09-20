@@ -153,6 +153,19 @@ Tool
 
 Current tool families include calculation, dataset profiling/analysis, baseline ML, knowledge retrieval, and evidence-first research.
 
+### 🧩 Tool & capability evolution
+
+NEXUS now treats tools as discoverable, versioned capabilities rather than only callable functions:
+
+- immutable tool contracts with semantic versions and capability tags
+- deterministic capability inventory and filtered tool discovery
+- capability-aware step selection with permission-policy enforcement
+- explicit required/matched capability telemetry in execution events
+- thread-safe tool health tracking with repeated-failure isolation
+- cooldown-based circuit breaking for unstable tools
+- API endpoints for tool contracts, capability discovery, and health inspection
+- backward-compatible support for legacy custom tools without capability metadata
+
 ### 🔐 Secure execution foundations
 
 NEXUS separates task intent from tool authorization and execution. The architecture includes:
@@ -297,7 +310,7 @@ NEXUS has progressed beyond the original kernel prototype into a multi-layer AI 
 - frontier-model capability and fallback planning foundations
 - evaluation quality gates, category aggregation, and regression detection foundations
 
-The next major engineering focus is extending the agent runtime into a production model/tool execution layer, followed by product frontend, security, deployment, and scale hardening.
+The next major engineering focus is production model/tool runtime integration and productization, followed by frontend, security, deployment, observability, and scale hardening.
 
 ## Roadmap
 
@@ -320,7 +333,8 @@ The next major engineering focus is extending the agent runtime into a productio
 [✓] Advanced Frontier-Model Workflow Foundation
 [✓] Evaluation & Benchmark Platform Foundation
 [✓] Security & Human Control Hardening
-[→] Multi-Provider / BYOK Model Layer
+[✓] Multi-Provider / BYOK Model Layer
+[✓] Tool & Capability Evolution
 [ ] Production Frontend
 [ ] Productization
 [ ] Deployment & Observability
