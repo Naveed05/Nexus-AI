@@ -254,7 +254,7 @@ def test_memory_decay_only_changes_aging_active_records() -> None:
     old = datetime.now(timezone.utc) - timedelta(days=90)
     record = store.remember("Aging workflow memory", workspace_id=workspace, importance=0.8)
     active = store.remember("Fresh workflow memory", workspace_id=workspace, importance=0.8)
-    store._records[record.memory_id] = replace(record, updated_at=old)
+    store._records[record.memory_id] = replace(record, created_at=old, updated_at=old)
 
     changed = store.decay(workspace_id=workspace, older_than_days=30, amount=0.2, minimum_importance=0.2)
 
