@@ -388,6 +388,80 @@ class MemoryStore:
                 break
         return "\n".join(lines)[:max_chars]
 
+    def archive(self, memory_id: UUID, *, workspace_id: UUID | None = None) -> MemoryRecord:
+        """Archive a memory without destroying its durable provenance."""
+        with self._lock:
+            record = self._records.get(memory_id)
+            if record is None or record.workspace_id != workspace_id:
+                raise KeyError(f"Unknown memory: {memory_id}")
+            updated = replace(record, archived=True, updated_at=datetime.now(timezone.utc))
+            self._records[memory_id] = updated
+            self._save(updated)
+            return updated
+
+    def supersede(
+        self,
+        memory_id: UUID,
+        content: str,
+        *,
+        workspace_id: UUID | None = None,
+        importance: float | None = None,
+        source: str = "user",
+        source_id: str | None = None,
+    ) -> MemoryRecord:
+        """Create a replacement memory while retaining the predecessor relationship."""
+        with self._lock:
+            current = self._records.get(memory_id)
+            if current is None or current.workspace_id != workspace_id:
+                raise KeyError(f"Unknown memory: {memory_id}")
+            replacement = self.remember(
+                content,
+                workspace_id=workspace_id,
+                tags=current.tags,
+                importance=current.importance if importance is None else importance,
+                memory_kind=current.memory_kind,
+                source=source,
+                source_id=source_id,
+                supersedes_id=memory_id,
+            )
+            self.archive(memory_id, workspace_id=workspace_id)
+            return replacement
+
+    def decay(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        older_than_days: int = 30,
+        amount: float = 0.1,
+        minimum_importance: float = 0.0,
+    ) -> tuple[MemoryRecord, ...]:
+        """Apply bounded importance decay to aging, active memories."""
+        if older_than_days < 0:
+            raise ValueError("older_than_days must be non-negative")
+        if not 0.0 < amount <= 1.0:
+            raise ValueError("amount must be greater than 0 and at most 1")
+        if not 0.0 <= minimum_importance <= 1.0:
+            raise ValueError("minimum_importance must be between 0 and 1")
+        cutoff = datetime.now(timezone.utc).timestamp() - older_than_days * 86400
+        updated_records: list[MemoryRecord] = []
+        with self._lock:
+            for record in tuple(self._records.values()):
+                if (
+                    record.workspace_id == workspace_id
+                    and not record.archived
+                    and record.updated_at.timestamp() <= cutoff
+                    and record.importance > minimum_importance
+                ):
+                    updated = replace(
+                        record,
+                        importance=max(minimum_importance, record.importance - amount),
+                        updated_at=datetime.now(timezone.utc),
+                    )
+                    self._records[record.memory_id] = updated
+                    self._save(updated)
+                    updated_records.append(updated)
+        return tuple(sorted(updated_records, key=lambda item: str(item.memory_id)))
+
     def reinforce(self, memory_id: UUID, *, workspace_id: UUID | None = None, amount: float = 0.1) -> MemoryRecord:
         """Increase a memory's importance without allowing it to exceed the safe bound."""
         if amount < 0:
