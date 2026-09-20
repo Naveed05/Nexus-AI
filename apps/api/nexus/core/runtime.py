@@ -173,7 +173,7 @@ class RunStore:
 
     def load_all(self) -> list[AgentRun]:
         with self._lock, self._connect() as conn:
-            rows = conn.execute("SELECT * FROM agent_runs ORDER BY started_at, run_id").fetchall()
+            rows = conn.execute("SELECT * FROM agent_runs ORDER BY rowid").fetchall()
         return [self._from_row(row) for row in rows]
 
     def get(self, run_id: UUID) -> AgentRun | None:
@@ -300,7 +300,7 @@ class AgentRuntime:
 
     def list_runs(self) -> tuple[AgentRun, ...]:
         with self._lock:
-            return tuple(sorted(self._runs.values(), key=lambda run: (run.started_at or datetime.min.replace(tzinfo=timezone.utc), str(run.run_id))))
+            return tuple(self._runs.values())
 
 
 agent_runtime = AgentRuntime()
