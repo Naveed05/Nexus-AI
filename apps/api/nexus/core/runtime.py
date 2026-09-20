@@ -287,14 +287,14 @@ class AgentRuntime:
             run.status = RunStatus.FAILED
             run.task_status = TaskStatus.FAILED
             run.error = str(exc)
-            self._store.save(run)
+            self._persist(run)
             raise
         finally:
             run.steps_completed = control.steps
             run.tool_calls = control.tool_calls
             run.retries = control.retries
             run.finished_at = datetime.now(timezone.utc)
-            self._store.save(run)
+            self._persist(run)
 
 
     def run_engine(self, task: Task, engine: Any, *, budget: RunBudget | None = None) -> tuple[AgentRun, Any]:
