@@ -289,3 +289,42 @@ def test_model_detail_and_unknown_model() -> None:
     assert detail.status_code == 200
     assert detail.json()["model_id"] == "gpt-5.6-sol"
     assert client.get("/api/v1/models/not-a-model").status_code == 404
+
+
+def test_memory_evolution_api_exposes_provenance_and_lifecycle() -> None:
+    workspace = workspace_registry.create(name="Memory Evolution API Test")
+
+    created = client.post(
+        "/api/v1/memories",
+        json={
+            "workspace_id": str(workspace.workspace_id),
+            "content": "Use PostgreSQL for production",
+            "memory_kind": "preference",
+            "source": "user",
+            "source_id": "profile-1",
+            "importance": 0.8,
+        },
+    )
+    assert created.status_code == 201
+    memory = created.json()
+    assert memory["memory_kind"] == "preference"
+    assert memory["source_id"] == "profile-1"
+
+    superseded = client.post(
+        f"/api/v1/workspaces/{workspace.workspace_id}/memories/{memory['memory_id']}/supersede",
+        json={"content": "Use PostgreSQL with pgvector", "source": "user", "source_id": "correction-1"},
+    )
+    assert superseded.status_code == 200
+    replacement = superseded.json()
+    assert replacement["supersedes_id"] == memory["memory_id"]
+
+    listed = client.get(f"/api/v1/workspaces/{workspace.workspace_id}/memories")
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["content"] == "Use PostgreSQL with pgvector"
+
+    archived = client.post(
+        f"/api/v1/workspaces/{workspace.workspace_id}/memories/{replacement['memory_id']}/archive",
+    )
+    assert archived.status_code == 200
+    assert archived.json()["archived"] is True
