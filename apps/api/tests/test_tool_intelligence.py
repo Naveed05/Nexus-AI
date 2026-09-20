@@ -45,3 +45,51 @@ def test_selector_works_with_custom_registry() -> None:
     decision = ToolSelector(registry).select(Task(objective="Do a calculation"), PlanStep("execute", "Calculate 2 + 2"))
     assert decision.tool is not None
     assert decision.tool.name == "calculator"
+
+
+def test_selector_reports_required_and_matched_capabilities() -> None:
+    decision = ToolSelector().select(
+        Task(objective="Analyze this dataset", capabilities=["data_analysis"]),
+        PlanStep("analyze_data", "Analyze this dataset"),
+    )
+    assert decision.tool is not None
+    assert decision.tool.name == "analyze_dataset"
+    assert decision.required_capabilities == frozenset({"data_analysis"})
+    assert decision.matched_capabilities == frozenset({"data_analysis"})
+    assert any("capabilities satisfied" in reason for reason in decision.reasons)
+
+
+def test_selector_rejects_capability_incompatible_preferred_tool() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        name="calculator",
+        description="Calculator",
+        input_schema={"type": "object"},
+        risk_level="low",
+        handler=calculator,
+        capabilities=frozenset({"calculation"}),
+    ))
+    decision = ToolSelector(registry).select(
+        Task(objective="Inspect data"),
+        PlanStep("inspect_data", "Inspect data"),
+    )
+    assert decision.tool is None
+    assert any("missing capabilities" in reason for reason in decision.reasons)
+
+
+def test_selector_keeps_legacy_custom_tools_compatible_without_metadata() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        name="calculator",
+        description="Calculator",
+        input_schema={"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]},
+        risk_level="low",
+        handler=calculator,
+    ))
+    decision = ToolSelector(registry).select(
+        Task(objective="Do a calculation"),
+        PlanStep("execute", "Calculate 2 + 2"),
+    )
+    assert decision.tool is not None
+    assert decision.tool.name == "calculator"
+    assert decision.score == 100.0
