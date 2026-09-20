@@ -224,9 +224,13 @@ def execute_task(payload: TaskCreate) -> ExecutionResponse:
     )
 
 @app.get("/api/v1/runs/{run_id}")
-def get_agent_run(run_id: UUID) -> dict:
+def get_agent_run(run_id: str) -> dict:
     try:
-        run = agent_runtime.get(run_id)
+        parsed_run_id = UUID(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="run_id must be a UUID") from exc
+    try:
+        run = agent_runtime.get(parsed_run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _run_payload(run)
@@ -250,9 +254,13 @@ def _run_payload(run) -> dict:
 
 
 @app.post("/api/v1/runs/{run_id}/cancel")
-def cancel_agent_run(run_id: UUID) -> dict:
+def cancel_agent_run(run_id: str) -> dict:
     try:
-        run = agent_runtime.cancel(run_id)
+        parsed_run_id = UUID(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="run_id must be a UUID") from exc
+    try:
+        run = agent_runtime.cancel(parsed_run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
