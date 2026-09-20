@@ -235,3 +235,35 @@ def test_agent_run_list_endpoint_includes_created_run() -> None:
     match = next(item for item in payload if item["run_id"] == str(run.run_id))
     assert match["task_id"] == str(task.task_id)
     assert match["status"] == "created"
+
+
+def test_tool_capability_discovery_api() -> None:
+    capabilities = client.get("/api/v1/tools/capabilities")
+    assert capabilities.status_code == 200
+    body = capabilities.json()
+    assert "data_analysis" in body["capabilities"]
+    assert body["capabilities"] == sorted(body["capabilities"])
+
+    tools = client.get("/api/v1/tools")
+    assert tools.status_code == 200
+    calculator = next(item for item in tools.json() if item["name"] == "calculator")
+    assert calculator["version"] == "1.0.0"
+    assert "calculation" in calculator["capabilities"]
+
+
+def test_tool_contract_and_health_api() -> None:
+    contract = client.get("/api/v1/tools/calculator")
+    assert contract.status_code == 200
+    assert contract.json()["name"] == "calculator"
+
+    health = client.get("/api/v1/tools/calculator/health")
+    assert health.status_code == 200
+    body = health.json()
+    assert body["tool_name"] == "calculator"
+    assert body["healthy"] is True
+    assert body["failures"] == 0
+
+
+def test_unknown_tool_contract_and_health_are_404() -> None:
+    assert client.get("/api/v1/tools/does-not-exist").status_code == 404
+    assert client.get("/api/v1/tools/does-not-exist/health").status_code == 404
