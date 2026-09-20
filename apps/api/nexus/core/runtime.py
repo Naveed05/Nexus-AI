@@ -199,9 +199,12 @@ class AgentRuntime:
     and distributed execution can be added later without changing the run contract.
     """
 
-    def __init__(self, store_path: str = ".nexus/runs.sqlite3", *, store: RunStore | None = None) -> None:
-        self._store = store or RunStore(store_path)
-        self._runs: dict[UUID, AgentRun] = {run.run_id: run for run in self._store.load_all()}
+    def __init__(self, store_path: str | None = None, *, store: RunStore | None = None) -> None:
+        # Library/test runtimes are ephemeral by default. The API supplies an
+        # explicit SQLite path when durable run state is required.
+        self._store = store or (RunStore(store_path) if store_path is not None else None)
+        persisted_runs = self._store.load_all() if self._store is not None else []
+        self._runs: dict[UUID, AgentRun] = {run.run_id: run for run in persisted_runs}
         self._controls: dict[UUID, ExecutionControl] = {}
         self._lock = RLock()
 
@@ -211,7 +214,7 @@ class AgentRuntime:
         with self._lock:
             self._runs[run.run_id] = run
             self._controls[run.run_id] = control
-        self._store.save(run)
+        self._persist(run)
         return run
 
     def get(self, run_id: UUID) -> AgentRun:
@@ -272,13 +275,13 @@ class AgentRuntime:
                 if run.task_status == TaskStatus.COMPLETED
                 else RunStatus.FAILED
             )
-            self._store.save(run)
+            self._persist(run)
             return run, result
         except RunCancelledError as exc:
             run.status = RunStatus.CANCELLED
             run.task_status = TaskStatus.CANCELLED
             run.error = str(exc)
-            self._store.save(run)
+            self._persist(run)
             raise
         except Exception as exc:
             run.status = RunStatus.FAILED
@@ -297,6 +300,10 @@ class AgentRuntime:
     def run_engine(self, task: Task, engine: Any, *, budget: RunBudget | None = None) -> tuple[AgentRun, Any]:
         """Run a NEXUS engine through the runtime control boundary."""
         return self.run(task, lambda current_task, control: engine.run(current_task, control=control), budget=budget)
+
+    def _persist(self, run: AgentRun) -> None:
+        if self._store is not None:
+            self._store.save(run)
 
     def list_runs(self) -> tuple[AgentRun, ...]:
         with self._lock:
