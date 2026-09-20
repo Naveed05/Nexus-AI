@@ -211,3 +211,53 @@ def test_task_outcomes_record_explicit_provenance() -> None:
     assert record.memory_kind is MemoryKind.TASK_OUTCOME
     assert record.source == "task"
     assert record.source_id == "Build the API"
+
+
+def test_memory_supersession_preserves_history_and_archives_predecessor() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    original = store.remember("Preferred database is SQLite", workspace_id=workspace, importance=0.7)
+
+    replacement = store.supersede(
+        original.memory_id,
+        "Preferred database is PostgreSQL",
+        workspace_id=workspace,
+        source="user",
+        source_id="correction-1",
+    )
+
+    assert replacement.supersedes_id == original.memory_id
+    assert replacement.content == "Preferred database is PostgreSQL"
+    assert store.recall("database", workspace_id=workspace) == (replacement,)
+    assert store.list(workspace_id=workspace, include_archived=True)[0].archived is True
+
+
+def test_memory_archive_is_workspace_scoped() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    other = uuid4()
+    record = store.remember("Archive me", workspace_id=workspace)
+
+    with pytest.raises(KeyError):
+        store.archive(record.memory_id, workspace_id=other)
+
+    archived = store.archive(record.memory_id, workspace_id=workspace)
+    assert archived.archived is True
+    assert store.recall("Archive", workspace_id=workspace) == ()
+
+
+def test_memory_decay_only_changes_aging_active_records() -> None:
+    from dataclasses import replace
+
+    store = MemoryStore()
+    workspace = uuid4()
+    old = datetime.now(timezone.utc) - timedelta(days=90)
+    record = store.remember("Aging workflow memory", workspace_id=workspace, importance=0.8)
+    active = store.remember("Fresh workflow memory", workspace_id=workspace, importance=0.8)
+    store._records[record.memory_id] = replace(record, updated_at=old)
+
+    changed = store.decay(workspace_id=workspace, older_than_days=30, amount=0.2, minimum_importance=0.2)
+
+    assert [item.memory_id for item in changed] == [record.memory_id]
+    assert changed[0].importance == 0.6
+    assert store._records[active.memory_id].importance == 0.8
