@@ -238,7 +238,7 @@ class AgentRuntime:
             run.status = RunStatus.CANCELLED
             run.task_status = TaskStatus.CANCELLED
             run.finished_at = datetime.now(timezone.utc)
-        self._store.save(run)
+        self._persist(run)
         return run
 
     def run(
