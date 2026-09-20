@@ -227,3 +227,77 @@ def test_tool_executor_routes_sandbox_required_tool_to_runner() -> None:
     assert result.output == {"sandboxed": "hello"}
     assert calls == [("sandboxed", {"value": "hello"})]
 
+
+
+def test_tool_health_tracks_success_and_failure_state() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        "echo", "Echo text", {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+        "low", lambda text: {"text": text},
+    ))
+    health = __import__("nexus.core.tool_execution", fromlist=["ToolHealthRegistry"]).ToolHealthRegistry(
+        failure_threshold=2, cooldown_seconds=60
+    )
+    executor = ToolExecutor(registry=registry, health_registry=health)
+    task = Task(objective="echo")
+
+    first = executor.execute(task, "echo", {"text": "hello"})
+    assert first.success is True
+    snapshot = executor.health("echo")
+    assert snapshot.executions == 1
+    assert snapshot.successes == 1
+    assert snapshot.consecutive_failures == 0
+    assert snapshot.healthy is True
+
+
+def test_tool_health_opens_circuit_after_repeated_failures() -> None:
+    registry = ToolRegistry()
+    registry.register(ToolSpec(
+        "boom", "Failing operation", {"type": "object", "properties": {}, "required": []},
+        "low", lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    ))
+    from nexus.core.tool_execution import ToolHealthRegistry
+
+    health = ToolHealthRegistry(failure_threshold=2, cooldown_seconds=60)
+    executor = ToolExecutor(registry=registry, health_registry=health)
+    task = Task(objective="boom")
+
+    assert executor.execute(task, "boom", {}).success is False
+    assert executor.execute(task, "boom", {}).success is False
+    blocked = executor.execute(task, "boom", {})
+    assert blocked.success is False
+    assert blocked.permission.value == "deny"
+    assert "temporarily unavailable" in blocked.error
+    snapshot = executor.health("boom")
+    assert snapshot.failures == 2
+    assert snapshot.consecutive_failures == 2
+    assert snapshot.healthy is False
+
+
+def test_tool_health_resets_after_success() -> None:
+    registry = ToolRegistry()
+    calls = {"count": 0}
+
+    def flaky() -> str:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("temporary")
+        return "ok"
+
+    registry.register(ToolSpec(
+        "flaky", "Flaky operation", {"type": "object", "properties": {}, "required": []},
+        "low", flaky,
+    ))
+    from nexus.core.tool_execution import ToolHealthRegistry
+
+    health = ToolHealthRegistry(failure_threshold=3, cooldown_seconds=60)
+    executor = ToolExecutor(registry=registry, health_registry=health)
+    task = Task(objective="flaky")
+
+    assert executor.execute(task, "flaky", {}).success is False
+    assert executor.execute(task, "flaky", {}).success is True
+    snapshot = executor.health("flaky")
+    assert snapshot.successes == 1
+    assert snapshot.failures == 1
+    assert snapshot.consecutive_failures == 0
+    assert snapshot.healthy is True

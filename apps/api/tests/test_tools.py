@@ -236,3 +236,46 @@ def test_byok_transport_rejects_invalid_json() -> None:
     )
     with pytest.raises(BYOKProviderError, match="invalid JSON"):
         BYOKHTTPTransport(lambda request, timeout: InvalidResponse()).execute(request)
+
+
+def test_tool_contract_exposes_version_capabilities_and_safety_metadata() -> None:
+    contract = tool_registry.get("calculator").contract()
+    assert contract["name"] == "calculator"
+    assert contract["version"] == "1.0.0"
+    assert contract["capabilities"] == ["calculation", "deterministic"]
+    assert contract["idempotent"] is True
+    assert contract["risk_level"] == "low"
+    assert contract["input_schema"]["required"] == ["expression"]
+
+
+def test_registry_discovers_tools_by_capability_and_budget() -> None:
+    matches = tool_registry.find({"data_profiling"}, maximum_risk="low", maximum_cost_units=1.0)
+    assert {tool.name for tool in matches} == {"profile_dataset", "profile_dataset_by_id"}
+    assert matches[0].cost_units <= matches[1].cost_units
+
+
+def test_registry_capability_inventory_is_deterministic() -> None:
+    capabilities = tool_registry.capabilities()
+    assert capabilities == tuple(sorted(capabilities))
+    assert {"calculation", "research", "machine_learning", "knowledge_retrieval"}.issubset(capabilities)
+
+
+def test_registry_rejects_invalid_discovery_constraints() -> None:
+    with pytest.raises(ValueError, match="Unsupported risk level"):
+        tool_registry.find({"calculation"}, maximum_risk="critical")
+    with pytest.raises(ValueError, match="maximum_cost_units"):
+        tool_registry.find({"calculation"}, maximum_cost_units=-1)
+
+
+def test_tool_spec_normalizes_capability_names() -> None:
+    from nexus.core.tools import ToolSpec
+
+    spec = ToolSpec(
+        name="custom",
+        description="Custom capability",
+        input_schema={"type": "object"},
+        risk_level="low",
+        handler=lambda: "ok",
+        capabilities=frozenset({"  Search  ", "RESEARCH"}),
+    )
+    assert spec.capabilities == frozenset({"search", "research"})

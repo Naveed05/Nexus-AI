@@ -18,7 +18,8 @@ from nexus.core.research import ResearchEngine
 from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
-from nexus.core.tools import configure_dataset_workspace
+from nexus.core.tool_execution import tool_executor
+from nexus.core.tools import configure_dataset_workspace, tool_registry
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
@@ -57,6 +58,46 @@ def _build_task(payload: TaskCreate) -> Task:
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]: return {"status": "ok", "service": "nexus-api"}
+
+
+
+@app.get("/api/v1/tools")
+def list_tools() -> list[dict]:
+    """Expose provider-neutral tool contracts for capability discovery."""
+    return list(tool_registry.contracts())
+
+
+@app.get("/api/v1/tools/capabilities")
+def list_tool_capabilities() -> dict:
+    return {"capabilities": list(tool_registry.capabilities())}
+
+
+@app.get("/api/v1/tools/{tool_name}")
+def get_tool_contract(tool_name: str) -> dict:
+    try:
+        return tool_registry.get(tool_name).contract()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/tools/{tool_name}/health")
+def get_tool_health(tool_name: str) -> dict:
+    try:
+        tool_registry.get(tool_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    snapshot = tool_executor.health(tool_name)
+    return {
+        "tool_name": snapshot.tool_name,
+        "healthy": snapshot.healthy,
+        "executions": snapshot.executions,
+        "successes": snapshot.successes,
+        "failures": snapshot.failures,
+        "consecutive_failures": snapshot.consecutive_failures,
+        "last_error": snapshot.last_error,
+        "last_success_at": snapshot.last_success_at.isoformat() if snapshot.last_success_at else None,
+        "disabled_until": snapshot.disabled_until.isoformat() if snapshot.disabled_until else None,
+    }
 
 @app.get("/api/v1/byok/providers")
 def list_byok_providers() -> dict:

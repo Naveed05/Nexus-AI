@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import os
 import signal
@@ -13,6 +14,99 @@ from nexus.core.permissions import PermissionDecision, PermissionPolicy
 from nexus.core.task import Task
 from nexus.core.tool_security import ToolSecurityPolicy
 from nexus.core.tools import ToolRegistry, ToolSpec, tool_registry
+
+
+@dataclass(frozen=True)
+class ToolHealthSnapshot:
+    tool_name: str
+    executions: int
+    successes: int
+    failures: int
+    consecutive_failures: int
+    last_error: str | None
+    last_success_at: datetime | None
+    disabled_until: datetime | None
+
+    @property
+    def healthy(self) -> bool:
+        return self.disabled_until is None or self.disabled_until <= datetime.now(timezone.utc)
+
+
+class ToolHealthRegistry:
+    """Thread-safe per-tool health state used to prevent repeated failing executions."""
+
+    def __init__(self, *, failure_threshold: int = 3, cooldown_seconds: float = 30.0) -> None:
+        if failure_threshold < 1:
+            raise ValueError("failure_threshold must be at least 1")
+        if cooldown_seconds <= 0:
+            raise ValueError("cooldown_seconds must be greater than zero")
+        self._failure_threshold = failure_threshold
+        self._cooldown_seconds = cooldown_seconds
+        self._lock = threading.RLock()
+        self._state: dict[str, dict[str, Any]] = {}
+
+    def _entry(self, tool_name: str) -> dict[str, Any]:
+        return self._state.setdefault(
+            tool_name,
+            {
+                "executions": 0,
+                "successes": 0,
+                "failures": 0,
+                "consecutive_failures": 0,
+                "last_error": None,
+                "last_success_at": None,
+                "disabled_until": None,
+            },
+        )
+
+    def available(self, tool_name: str) -> bool:
+        with self._lock:
+            disabled_until = self._entry(tool_name)["disabled_until"]
+            if disabled_until is None:
+                return True
+            if disabled_until <= datetime.now(timezone.utc):
+                self._entry(tool_name)["disabled_until"] = None
+                return True
+            return False
+
+    def record_success(self, tool_name: str) -> None:
+        with self._lock:
+            entry = self._entry(tool_name)
+            entry["executions"] += 1
+            entry["successes"] += 1
+            entry["consecutive_failures"] = 0
+            entry["last_error"] = None
+            entry["last_success_at"] = datetime.now(timezone.utc)
+            entry["disabled_until"] = None
+
+    def record_failure(self, tool_name: str, error: str) -> None:
+        with self._lock:
+            entry = self._entry(tool_name)
+            entry["executions"] += 1
+            entry["failures"] += 1
+            entry["consecutive_failures"] += 1
+            entry["last_error"] = error
+            if entry["consecutive_failures"] >= self._failure_threshold:
+                entry["disabled_until"] = datetime.now(timezone.utc).timestamp() + self._cooldown_seconds
+                entry["disabled_until"] = datetime.fromtimestamp(entry["disabled_until"], timezone.utc)
+
+    def snapshot(self, tool_name: str) -> ToolHealthSnapshot:
+        with self._lock:
+            entry = self._entry(tool_name)
+            return ToolHealthSnapshot(
+                tool_name=tool_name,
+                executions=entry["executions"],
+                successes=entry["successes"],
+                failures=entry["failures"],
+                consecutive_failures=entry["consecutive_failures"],
+                last_error=entry["last_error"],
+                last_success_at=entry["last_success_at"],
+                disabled_until=entry["disabled_until"],
+            )
+
+    def all(self) -> tuple[ToolHealthSnapshot, ...]:
+        with self._lock:
+            return tuple(self.snapshot(name) for name in sorted(self._state))
 
 
 @dataclass(frozen=True)
@@ -40,7 +134,7 @@ class ToolExecutionResult:
 
 
 class ToolExecutor:
-    """Execute registered tools behind security, permission, approval, and audit boundaries."""
+    """Execute registered tools behind security, permission, approval, audit, and health boundaries."""
 
     def __init__(
         self,
@@ -50,6 +144,7 @@ class ToolExecutor:
         audit_ledger: ControlLedger | None = None,
         actor: str = "system",
         sandbox_runner: Callable[[ToolSpec, dict[str, Any]], Any] | None = None,
+        health_registry: ToolHealthRegistry | None = None,
     ) -> None:
         if not actor.strip():
             raise ValueError("actor must not be empty")
@@ -59,6 +154,12 @@ class ToolExecutor:
         self._audit_ledger = audit_ledger
         self._actor = actor.strip()
         self._sandbox_runner = sandbox_runner
+        self._health = health_registry or ToolHealthRegistry()
+
+    def health(self, tool_name: str | None = None):
+        if tool_name is not None:
+            return self._health.snapshot(tool_name)
+        return self._health.all()
 
     @staticmethod
     def _validate_arguments(tool: ToolSpec, arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -131,9 +232,18 @@ class ToolExecutor:
         except ValueError as exc:
             return ToolExecutionResult(tool_name, False, error=str(exc), permission=PermissionDecision.DENY)
 
+        if not self._health.available(tool.name):
+            error = "tool temporarily unavailable after repeated execution failures"
+            self._audit(tool.name, PermissionDecision.DENY, error)
+            return ToolExecutionResult(
+                tool.name,
+                False,
+                error=error,
+                permission=PermissionDecision.DENY,
+                duration_ms=(time.perf_counter() - started) * 1000,
+            )
+
         try:
-            # Security filtering happens before schema validation and approval
-            # binding, so restricted fields cannot be smuggled into an approval.
             kwargs = self._security_policy.validate(arguments)
             kwargs = self._validate_arguments(tool, kwargs)
             decision = self._permission_policy.authorize(
@@ -185,6 +295,7 @@ class ToolExecutor:
                 if self._sandbox_runner is None:
                     error = "sandbox-required tool cannot execute without a sandbox runner"
                     self._audit(tool.name, PermissionDecision.DENY, error)
+                    self._health.record_failure(tool.name, error)
                     return ToolExecutionResult(
                         tool.name,
                         False,
@@ -204,6 +315,7 @@ class ToolExecutor:
                     f"bytes > {tool.max_output_bytes} bytes"
                 )
                 self._audit(tool.name, decision, error)
+                self._health.record_failure(tool.name, error)
                 return ToolExecutionResult(
                     tool.name,
                     False,
@@ -211,6 +323,7 @@ class ToolExecutor:
                     permission=decision,
                     duration_ms=(time.perf_counter() - started) * 1000,
                 )
+            self._health.record_success(tool.name)
             self._audit(tool.name, PermissionDecision.ALLOW, "tool execution completed")
             return ToolExecutionResult(
                 tool.name,
@@ -220,6 +333,7 @@ class ToolExecutor:
                 duration_ms=(time.perf_counter() - started) * 1000,
             )
         except Exception as exc:
+            self._health.record_failure(tool.name, str(exc))
             self._audit(tool.name, decision, f"tool execution failed: {exc}")
             return ToolExecutionResult(
                 tool.name,
