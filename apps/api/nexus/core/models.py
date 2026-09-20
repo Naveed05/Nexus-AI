@@ -84,6 +84,57 @@ class ModelHealth:
     latency_ms: float | None = None
 
 
+class ModelHealthRegistry:
+    """Process-local health telemetry for provider/model pairs."""
+
+    def __init__(self) -> None:
+        self._health: dict[str, ModelHealth] = {}
+
+    def _get(self, model: ModelSpec) -> ModelHealth:
+        return self._health.get(
+            model.key,
+            ModelHealth(key=model.key, provider=model.provider),
+        )
+
+    def record_success(self, model: ModelSpec, latency_ms: float | None = None) -> ModelHealth:
+        current = self._get(model)
+        updated = ModelHealth(
+            key=model.key,
+            provider=model.provider,
+            available=True,
+            consecutive_failures=0,
+            last_error=None,
+            latency_ms=latency_ms,
+        )
+        self._health[model.key] = updated
+        return updated
+
+    def record_failure(self, model: ModelSpec, error: str) -> ModelHealth:
+        current = self._get(model)
+        updated = ModelHealth(
+            key=model.key,
+            provider=model.provider,
+            available=False if current.consecutive_failures >= 2 else True,
+            consecutive_failures=current.consecutive_failures + 1,
+            last_error=error[:500],
+            latency_ms=current.latency_ms,
+        )
+        self._health[model.key] = updated
+        return updated
+
+    def get(self, model_key: str) -> ModelHealth:
+        return self._health.get(model_key, ModelHealth(key=model_key, provider="unknown"))
+
+    def all(self) -> tuple[ModelHealth, ...]:
+        return tuple(self._health[key] for key in sorted(self._health))
+
+    def reset(self) -> None:
+        self._health.clear()
+
+
+model_health_registry = ModelHealthRegistry()
+
+
 class ModelRegistry:
     """Extensible registry for NEXUS model providers and capabilities."""
 
