@@ -55,3 +55,27 @@ def test_general_task_routes_to_terra() -> None:
 def test_route_remains_backward_compatible() -> None:
     task = Task(objective="Explain this result")
     assert router.route(task).key == "terra"
+
+
+def test_capability_routing_uses_model_contracts() -> None:
+    task = Task(objective="Write production code", capabilities=["coding", "reasoning:high"])
+    decision = router.decide(task)
+    assert decision.model.key in {"astra", "sol"}
+    assert any("reasoning" in reason for reason in decision.reasons)
+
+
+def test_tool_required_routing_rejects_models_without_tools() -> None:
+    task = Task(objective="Use tools for an agent task", capabilities=["agentic"])
+    decision = router.decide(task)
+    assert decision.model.supports_tools is True
+    assert any("compatible" in reason for reason in decision.reasons)
+
+
+def test_context_window_is_a_hard_routing_constraint() -> None:
+    task = Task(
+        objective="Analyze a very large context",
+        context="x" * 520_000,
+        capabilities=["reasoning:high"],
+    )
+    decision = router.decide(task)
+    assert decision.model.context_window >= 130_000
