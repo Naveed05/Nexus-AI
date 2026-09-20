@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import json
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable, Iterable, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -30,6 +30,9 @@ class ModelProvider(Protocol):
         ...
 
 
+REASONING_ORDER = {"low": 0, "medium": 1, "high": 2, "xhigh": 3, "max": 4}
+
+
 @dataclass(frozen=True)
 class ModelSpec:
     key: str
@@ -43,6 +46,74 @@ class ModelSpec:
     supports_tools: bool
     cost_score: int
     latency_score: int
+
+    def __post_init__(self) -> None:
+        if not self.key.strip() or not self.model_id.strip() or not self.provider.strip():
+            raise ValueError("model key, model_id, and provider cannot be empty")
+        if self.context_window < 1:
+            raise ValueError("context_window must be positive")
+        if self.cost_score < 1 or self.latency_score < 1:
+            raise ValueError("cost_score and latency_score must be positive")
+        if not self.reasoning_levels:
+            raise ValueError("model must expose at least one reasoning level")
+        unknown = set(self.reasoning_levels) - set(REASONING_ORDER)
+        if unknown:
+            raise ValueError(f"unsupported reasoning levels: {', '.join(sorted(unknown))}")
+        object.__setattr__(self, "capabilities", frozenset(value.strip().lower() for value in self.capabilities if value.strip()))
+        object.__setattr__(self, "reasoning_levels", frozenset(value.strip().lower() for value in self.reasoning_levels if value.strip()))
+
+    @property
+    def maximum_reasoning(self) -> str:
+        return max(self.reasoning_levels, key=REASONING_ORDER.__getitem__)
+
+    def supports_capabilities(self, required: Iterable[str]) -> bool:
+        required_set = {value.strip().lower() for value in required if value.strip()}
+        return required_set.issubset(self.capabilities)
+
+    def supports_reasoning(self, level: str) -> bool:
+        return level.strip().lower() in self.reasoning_levels
+
+    def fit_score(self, *, required_capabilities: Iterable[str] = (), reasoning_level: str | None = None,
+                  estimated_input_tokens: int = 0, needs_tools: bool = False) -> tuple[bool, float, tuple[str, ...]]:
+        required = {value.strip().lower() for value in required_capabilities if value.strip()}
+        reasons: list[str] = []
+        if not required.issubset(self.capabilities):
+            return False, 0.0, (f"missing capabilities: {', '.join(sorted(required - self.capabilities))}",)
+        if needs_tools and not self.supports_tools:
+            return False, 0.0, ("tool use is required but this model does not support tools",)
+        if estimated_input_tokens < 0:
+            raise ValueError("estimated_input_tokens cannot be negative")
+        if estimated_input_tokens > self.context_window:
+            return False, 0.0, ("estimated input exceeds model context window",)
+        if reasoning_level is not None:
+            requested = reasoning_level.strip().lower()
+            if requested not in REASONING_ORDER:
+                raise ValueError(f"unsupported reasoning level: {reasoning_level}")
+            if not self.supports_reasoning(requested):
+                return False, 0.0, (f"reasoning level '{requested}' is not supported",)
+            reasons.append(f"supports requested {requested} reasoning")
+        if required:
+            reasons.append(f"supports capabilities: {', '.join(sorted(required))}")
+        if estimated_input_tokens:
+            reasons.append(f"context utilization: {estimated_input_tokens / self.context_window:.1%}")
+        score = 100.0 + len(required & self.capabilities) * 4.0 + self.latency_score - self.cost_score * 2.0
+        return True, score, tuple(reasons)
+
+    def contract(self) -> dict[str, Any]:
+        return {
+            "key": self.key,
+            "model_id": self.model_id,
+            "provider": self.provider,
+            "tier": self.tier,
+            "description": self.description,
+            "capabilities": sorted(self.capabilities),
+            "reasoning_levels": sorted(self.reasoning_levels, key=REASONING_ORDER.__getitem__),
+            "maximum_reasoning": self.maximum_reasoning,
+            "context_window": self.context_window,
+            "supports_tools": self.supports_tools,
+            "cost_score": self.cost_score,
+            "latency_score": self.latency_score,
+        }
 
 
 class ModelRegistry:
@@ -124,6 +195,23 @@ class ModelRegistry:
 
     def all(self) -> tuple[ModelSpec, ...]:
         return tuple(self._models.values())
+
+    def find(self, *, required_capabilities: Iterable[str] = (), reasoning_level: str | None = None,
+             estimated_input_tokens: int = 0, needs_tools: bool = False) -> tuple[ModelSpec, ...]:
+        compatible: list[tuple[float, ModelSpec]] = []
+        for model in self._models.values():
+            fits, score, _ = model.fit_score(
+                required_capabilities=required_capabilities,
+                reasoning_level=reasoning_level,
+                estimated_input_tokens=estimated_input_tokens,
+                needs_tools=needs_tools,
+            )
+            if fits:
+                compatible.append((score, model))
+        return tuple(model for _, model in sorted(compatible, key=lambda item: (-item[0], item[1].key)))
+
+    def contracts(self) -> tuple[dict[str, Any], ...]:
+        return tuple(model.contract() for model in self._models.values())
 
 
 model_registry = ModelRegistry()
