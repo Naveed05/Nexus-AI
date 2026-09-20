@@ -328,3 +328,19 @@ def test_memory_evolution_api_exposes_provenance_and_lifecycle() -> None:
     )
     assert archived.status_code == 200
     assert archived.json()["archived"] is True
+
+
+def test_memory_stats_api_is_workspace_scoped() -> None:
+    workspace = workspace_registry.create(name="Memory Stats API Test")
+    created = client.post(
+        "/api/v1/memories",
+        json={"workspace_id": str(workspace.workspace_id), "content": "Stats memory", "memory_kind": "fact"},
+    )
+    assert created.status_code == 201
+
+    stats = client.get(f"/api/v1/workspaces/{workspace.workspace_id}/memories/stats")
+    assert stats.status_code == 200
+    body = stats.json()
+    assert body["workspace_id"] == str(workspace.workspace_id)
+    assert body["total"] >= 1
+    assert body["active"] >= 1
