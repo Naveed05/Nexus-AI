@@ -157,3 +157,57 @@ def test_memory_ranking_remains_bounded_and_prefers_importance() -> None:
     assert 0.0 <= matches[0].confidence <= 1.0
     assert 0.0 <= matches[1].confidence <= 1.0
     assert matches[0].confidence > matches[1].confidence
+
+
+def test_memory_provenance_kind_and_expiry_metadata() -> None:
+    from nexus.core.memory import MemoryKind
+
+    store = MemoryStore()
+    workspace = uuid4()
+    expires = datetime.now(timezone.utc) + timedelta(days=1)
+    record = store.remember(
+        "Preferred deployment workflow",
+        workspace_id=workspace,
+        memory_kind=MemoryKind.PROCEDURAL,
+        source="agent",
+        source_id="run-123",
+        expires_at=expires,
+    )
+
+    loaded = store.list(workspace_id=workspace)[0]
+    assert loaded.memory_kind is MemoryKind.PROCEDURAL
+    assert loaded.source == "agent"
+    assert loaded.source_id == "run-123"
+    assert loaded.expires_at == expires
+    assert loaded.archived is False
+
+
+def test_expired_and_archived_memories_are_excluded_from_recall() -> None:
+    from dataclasses import replace
+
+    store = MemoryStore()
+    workspace = uuid4()
+    expired = store.remember("Expired deployment note", workspace_id=workspace)
+    archived = store.remember("Archived deployment note", workspace_id=workspace)
+    old = datetime.now(timezone.utc) - timedelta(days=1)
+    store._records[expired.memory_id] = replace(expired, expires_at=old)
+    store._records[archived.memory_id] = replace(archived, archived=True)
+
+    assert store.recall("deployment", workspace_id=workspace) == ()
+    assert len(store.list(workspace_id=workspace)) == 1
+    assert len(store.list(workspace_id=workspace, include_archived=True)) == 2
+
+
+def test_task_outcomes_record_explicit_provenance() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    record = store.remember_task_outcome(
+        "Build the API",
+        "API tests passed",
+        workspace_id=workspace,
+    )
+
+    from nexus.core.memory import MemoryKind
+    assert record.memory_kind is MemoryKind.TASK_OUTCOME
+    assert record.source == "task"
+    assert record.source_id == "Build the API"
