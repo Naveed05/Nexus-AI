@@ -249,15 +249,6 @@ def _run_payload(run) -> dict:
     }
 
 
-@app.get("/api/v1/runs/{run_id}")
-def get_agent_run(run_id: UUID) -> dict:
-    try:
-        run = agent_runtime.get(run_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return _run_payload(run)
-
-
 @app.post("/api/v1/runs/{run_id}/cancel")
 def cancel_agent_run(run_id: UUID) -> dict:
     try:
