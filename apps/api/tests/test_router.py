@@ -55,3 +55,26 @@ def test_general_task_routes_to_terra() -> None:
 def test_route_remains_backward_compatible() -> None:
     task = Task(objective="Explain this result")
     assert router.route(task).key == "terra"
+
+
+def test_model_registry_filters_explicit_requirements() -> None:
+    from nexus.core.models import ModelRequirements
+
+    matches = model_registry.find(ModelRequirements(
+        required_capabilities=frozenset({"coding"}),
+        reasoning_level="high",
+        require_tools=True,
+    ))
+    assert {model.key for model in matches} == {"astra", "sol"}
+    assert matches[0].cost_score <= matches[1].cost_score
+
+
+def test_model_registry_rejects_incompatible_model() -> None:
+    from nexus.core.models import ModelCapabilityError, ModelRequirements
+
+    requirements = ModelRequirements(
+        required_capabilities=frozenset({"research"}),
+        reasoning_level="high",
+    )
+    with pytest.raises(ModelCapabilityError):
+        model_registry.validate(model_registry.get("terra"), requirements)
