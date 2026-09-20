@@ -43,7 +43,11 @@ class TaskRouter:
         needs_tools = "tools" in required_capabilities or "agentic" in required_capabilities
         estimated_input_tokens = self._estimate_input_tokens(task)
 
-        compatible = model_registry.find(
+        if not required_capabilities and requested_reasoning is None and not needs_tools:
+            # Keep legacy deterministic routing for unconstrained tasks.
+            compatible = ()
+        else:
+            compatible = model_registry.find(
             required_capabilities=required_capabilities,
             reasoning_level=requested_reasoning,
             estimated_input_tokens=estimated_input_tokens,
