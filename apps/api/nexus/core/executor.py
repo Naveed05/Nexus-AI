@@ -65,11 +65,18 @@ class ModelExecutor:
         self._registry = registry or tool_registry
         self._policy = policy or ToolPermissionPolicy()
         self._max_tool_rounds = max_tool_rounds
-        self._execution_boundary = execution_boundary or ToolExecutor(
-            registry=self._registry,
-            permission_policy=self._policy._policy,
-            actor="model-executor",
-        )
+        if execution_boundary is not None:
+            self._execution_boundary = execution_boundary
+        elif self._registry is tool_registry:
+            # Share the canonical boundary for the built-in registry so health,
+            # audit, and execution state describe the same runtime path.
+            self._execution_boundary = tool_executor
+        else:
+            self._execution_boundary = ToolExecutor(
+                registry=self._registry,
+                permission_policy=self._policy._policy,
+                actor="model-executor",
+            )
 
     def _get_client(self) -> OpenAI:
         if self._client is None:
