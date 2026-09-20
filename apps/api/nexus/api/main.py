@@ -13,7 +13,7 @@ from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
 from nexus.core.files import FileRegistry, LocalFileStore
 from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
 from nexus.core.memory import memory_store
-from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, byok_provider_manager
+from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, byok_provider_manager, model_health_registry, model_registry
 from nexus.core.research import ResearchEngine
 from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
@@ -98,6 +98,61 @@ def get_tool_health(tool_name: str) -> dict:
         "last_success_at": snapshot.last_success_at.isoformat() if snapshot.last_success_at else None,
         "disabled_until": snapshot.disabled_until.isoformat() if snapshot.disabled_until else None,
     }
+
+def _model_payload(model: ModelSpec) -> dict:
+    health = model_health_registry.get(model.key)
+    return {
+        "key": model.key,
+        "model_id": model.model_id,
+        "provider": model.provider,
+        "tier": model.tier,
+        "description": model.description,
+        "capabilities": sorted(model.capabilities),
+        "reasoning_levels": sorted(model.reasoning_levels),
+        "context_window": model.context_window,
+        "supports_tools": model.supports_tools,
+        "cost_score": model.cost_score,
+        "latency_score": model.latency_score,
+        "health": {
+            "available": health.available,
+            "consecutive_failures": health.consecutive_failures,
+            "last_error": health.last_error,
+            "latency_ms": health.latency_ms,
+        },
+    }
+
+
+@app.get("/api/v1/models")
+def list_models() -> list[dict]:
+    """Expose safe model capability metadata without credentials or provider secrets."""
+    return [_model_payload(model) for model in model_registry.all()]
+
+
+@app.get("/api/v1/models/health")
+def list_model_health() -> dict:
+    return {
+        "models": [
+            {
+                "key": health.key,
+                "provider": health.provider,
+                "available": health.available,
+                "consecutive_failures": health.consecutive_failures,
+                "last_error": health.last_error,
+                "latency_ms": health.latency_ms,
+            }
+            for health in model_health_registry.all()
+        ]
+    }
+
+
+@app.get("/api/v1/models/{model_key}")
+def get_model(model_key: str) -> dict:
+    try:
+        model = model_registry.get(model_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _model_payload(model)
+
 
 @app.get("/api/v1/byok/providers")
 def list_byok_providers() -> dict:
