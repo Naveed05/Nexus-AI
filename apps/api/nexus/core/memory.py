@@ -475,6 +475,19 @@ class MemoryStore:
             self._save(updated)
             return updated
 
+    def stats(self, *, workspace_id: UUID | None = None) -> dict[str, int]:
+        """Return bounded lifecycle counters for operational inspection."""
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            records = [record for record in self._records.values() if record.workspace_id == workspace_id]
+        return {
+            "total": len(records),
+            "active": sum(1 for record in records if not record.archived and (record.expires_at is None or record.expires_at > now)),
+            "archived": sum(1 for record in records if record.archived),
+            "expired": sum(1 for record in records if not record.archived and record.expires_at is not None and record.expires_at <= now),
+            "task_outcomes": sum(1 for record in records if record.memory_kind is MemoryKind.TASK_OUTCOME),
+        }
+
     def list(self, *, workspace_id: UUID | None = None, include_archived: bool = False) -> tuple[MemoryRecord, ...]:
         with self._lock:
             return tuple(sorted(
