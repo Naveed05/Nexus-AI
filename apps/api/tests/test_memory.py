@@ -157,3 +157,136 @@ def test_memory_ranking_remains_bounded_and_prefers_importance() -> None:
     assert 0.0 <= matches[0].confidence <= 1.0
     assert 0.0 <= matches[1].confidence <= 1.0
     assert matches[0].confidence > matches[1].confidence
+
+
+def test_memory_provenance_kind_and_expiry_metadata() -> None:
+    from nexus.core.memory import MemoryKind
+
+    store = MemoryStore()
+    workspace = uuid4()
+    expires = datetime.now(timezone.utc) + timedelta(days=1)
+    record = store.remember(
+        "Preferred deployment workflow",
+        workspace_id=workspace,
+        memory_kind=MemoryKind.PROCEDURAL,
+        source="agent",
+        source_id="run-123",
+        expires_at=expires,
+    )
+
+    loaded = store.list(workspace_id=workspace)[0]
+    assert loaded.memory_kind is MemoryKind.PROCEDURAL
+    assert loaded.source == "agent"
+    assert loaded.source_id == "run-123"
+    assert loaded.expires_at == expires
+    assert loaded.archived is False
+
+
+def test_expired_and_archived_memories_are_excluded_from_recall() -> None:
+    from dataclasses import replace
+
+    store = MemoryStore()
+    workspace = uuid4()
+    expired = store.remember("Expired deployment note", workspace_id=workspace)
+    archived = store.remember("Archived deployment note", workspace_id=workspace)
+    old = datetime.now(timezone.utc) - timedelta(days=1)
+    store._records[expired.memory_id] = replace(expired, expires_at=old)
+    store._records[archived.memory_id] = replace(archived, archived=True)
+
+    assert store.recall("deployment", workspace_id=workspace) == ()
+    assert len(store.list(workspace_id=workspace)) == 1
+    assert len(store.list(workspace_id=workspace, include_archived=True)) == 2
+
+
+def test_task_outcomes_record_explicit_provenance() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    record = store.remember_task_outcome(
+        "Build the API",
+        "API tests passed",
+        workspace_id=workspace,
+    )
+
+    from nexus.core.memory import MemoryKind
+    assert record.memory_kind is MemoryKind.TASK_OUTCOME
+    assert record.source == "task"
+    assert record.source_id == "Build the API"
+
+
+def test_memory_supersession_preserves_history_and_archives_predecessor() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    original = store.remember("Preferred database is SQLite", workspace_id=workspace, importance=0.7)
+
+    replacement = store.supersede(
+        original.memory_id,
+        "Preferred database is PostgreSQL",
+        workspace_id=workspace,
+        source="user",
+        source_id="correction-1",
+    )
+
+    assert replacement.supersedes_id == original.memory_id
+    assert replacement.content == "Preferred database is PostgreSQL"
+    assert store.recall("database", workspace_id=workspace) == (replacement,)
+    assert store.list(workspace_id=workspace, include_archived=True)[0].archived is True
+
+
+def test_memory_archive_is_workspace_scoped() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    other = uuid4()
+    record = store.remember("Archive me", workspace_id=workspace)
+
+    with pytest.raises(KeyError):
+        store.archive(record.memory_id, workspace_id=other)
+
+    archived = store.archive(record.memory_id, workspace_id=workspace)
+    assert archived.archived is True
+    assert store.recall("Archive", workspace_id=workspace) == ()
+
+
+def test_memory_decay_only_changes_aging_active_records() -> None:
+    from dataclasses import replace
+
+    store = MemoryStore()
+    workspace = uuid4()
+    old = datetime.now(timezone.utc) - timedelta(days=90)
+    record = store.remember("Aging workflow memory", workspace_id=workspace, importance=0.8)
+    active = store.remember("Fresh workflow memory", workspace_id=workspace, importance=0.8)
+    store._records[record.memory_id] = replace(record, created_at=old, updated_at=old)
+
+    changed = store.decay(workspace_id=workspace, older_than_days=30, amount=0.2, minimum_importance=0.2)
+
+    assert [item.memory_id for item in changed] == [record.memory_id]
+    assert changed[0].importance == 0.6
+    assert store._records[active.memory_id].importance == 0.8
+
+
+def test_memory_stats_report_active_archived_expired_and_task_outcomes() -> None:
+    from dataclasses import replace
+    from nexus.core.memory import MemoryKind
+
+    store = MemoryStore()
+    workspace = uuid4()
+    now = datetime.now(timezone.utc)
+    active = store.remember("Active fact", workspace_id=workspace)
+    archived = store.remember("Archived fact", workspace_id=workspace)
+    expired = store.remember("Expired fact", workspace_id=workspace, expires_at=now - timedelta(days=1))
+    outcome = store.remember("Verified outcome", workspace_id=workspace, memory_kind=MemoryKind.TASK_OUTCOME)
+    store.archive(archived.memory_id, workspace_id=workspace)
+
+    stats = store.stats(workspace_id=workspace)
+    assert stats == {"total": 4, "active": 2, "archived": 1, "expired": 1, "task_outcomes": 1}
+    assert active.memory_id != expired.memory_id
+
+
+def test_memory_stats_are_workspace_scoped() -> None:
+    store = MemoryStore()
+    workspace = uuid4()
+    other = uuid4()
+    store.remember("Workspace memory", workspace_id=workspace)
+    store.remember("Other memory", workspace_id=other)
+
+    assert store.stats(workspace_id=workspace)["total"] == 1
+    assert store.stats(workspace_id=other)["total"] == 1

@@ -231,6 +231,18 @@ These controls provide a safe foundation for multi-step autonomous execution wit
 
 NEXUS now exposes a bounded agent runtime with durable SQLite-backed run state, explicit task/run lifecycle states, cancellation, step/tool/retry budgets, structured execution telemetry, runtime status APIs, and deterministic run inspection. The runtime is designed as the control boundary for future asynchronous workers and distributed execution. Runtime persistence is configurable through `RUN_STORAGE_PATH` and defaults to `.nexus/runs.sqlite3`.
 
+### 🧠 Memory evolution
+
+Phase 23 evolves persistent memory into a lifecycle-aware context system with:
+
+- typed memories for facts, preferences, procedures, episodes, and verified task outcomes
+- provenance metadata linking memories to their source and source identifiers
+- expiry and archival controls so stale context does not silently re-enter reasoning
+- explicit supersession for correcting outdated memories while preserving history
+- bounded importance decay for aging memories
+- workspace-scoped lifecycle statistics and inspection APIs
+- safe memory APIs that expose lifecycle metadata without crossing workspace boundaries
+
 ### 🧠 Model intelligence
 
 Phase 22 adds provider-neutral model intelligence with:
@@ -348,6 +360,7 @@ The next major engineering focus is production model/tool runtime integration an
 [✓] Multi-Provider / BYOK Model Layer
 [✓] Tool & Capability Evolution
 [✓] Model Intelligence
+[✓] Memory Evolution
 [ ] Production Frontend
 [ ] Productization
 [ ] Deployment & Observability

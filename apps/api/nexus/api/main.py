@@ -12,7 +12,7 @@ from nexus.core.engine import engine
 from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
 from nexus.core.files import FileRegistry, LocalFileStore
 from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
-from nexus.core.memory import memory_store
+from nexus.core.memory import MemoryKind, memory_store
 from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, byok_provider_manager, model_health_registry, model_registry
 from nexus.core.research import ResearchEngine
 from nexus.core.runtime import AgentRuntime, RunBudget
@@ -42,7 +42,21 @@ def _file_payload(file_ref) -> dict:
     return {"file_id": str(file_ref.file_id), "workspace_id": str(file_ref.workspace_id) if file_ref.workspace_id else None, "filename": file_ref.filename, "mime_type": file_ref.mime_type, "size_bytes": file_ref.size_bytes, "metadata": file_ref.metadata, "created_at": file_ref.created_at.isoformat()}
 
 def _memory_payload(record) -> dict:
-    return {"memory_id": str(record.memory_id), "workspace_id": str(record.workspace_id) if record.workspace_id else None, "content": record.content, "tags": list(record.tags), "importance": record.importance, "created_at": record.created_at.isoformat(), "updated_at": record.updated_at.isoformat()}
+    return {
+        "memory_id": str(record.memory_id),
+        "workspace_id": str(record.workspace_id) if record.workspace_id else None,
+        "content": record.content,
+        "tags": list(record.tags),
+        "importance": record.importance,
+        "memory_kind": record.memory_kind.value,
+        "source": record.source,
+        "source_id": record.source_id,
+        "expires_at": record.expires_at.isoformat() if record.expires_at else None,
+        "supersedes_id": str(record.supersedes_id) if record.supersedes_id else None,
+        "archived": record.archived,
+        "created_at": record.created_at.isoformat(),
+        "updated_at": record.updated_at.isoformat(),
+    }
 
 def _require_workspace(workspace_id: UUID):
     try: return workspace_registry.get(workspace_id)
@@ -274,7 +288,15 @@ def create_memory(payload: dict) -> dict:
     if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
         raise HTTPException(status_code=422, detail="tags must be an array of strings")
     try:
-        record = memory_store.remember(str(payload.get("content", "")), workspace_id=parsed_workspace, tags=tuple(tags), importance=float(payload.get("importance", 0.5)))
+        record = memory_store.remember(
+            str(payload.get("content", "")),
+            workspace_id=parsed_workspace,
+            tags=tuple(tags),
+            importance=float(payload.get("importance", 0.5)),
+            memory_kind=MemoryKind(str(payload.get("memory_kind", "fact"))),
+            source=str(payload.get("source", "user")),
+            source_id=payload.get("source_id"),
+        )
     except (TypeError, ValueError) as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _memory_payload(record)
 
@@ -282,6 +304,12 @@ def create_memory(payload: dict) -> dict:
 def list_memories(workspace_id: UUID) -> list[dict]:
     _require_workspace(workspace_id)
     return [_memory_payload(record) for record in memory_store.list(workspace_id=workspace_id)]
+
+@app.get("/api/v1/workspaces/{workspace_id}/memories/stats")
+def memory_stats(workspace_id: UUID) -> dict:
+    _require_workspace(workspace_id)
+    return {"workspace_id": str(workspace_id), **memory_store.stats(workspace_id=workspace_id)}
+
 
 @app.post("/api/v1/workspaces/{workspace_id}/memories/recall")
 def recall_memories(workspace_id: UUID, payload: dict) -> dict:
@@ -292,6 +320,51 @@ def recall_memories(workspace_id: UUID, payload: dict) -> dict:
     try: matches = memory_store.recall_ranked(query, workspace_id=workspace_id, top_k=top_k)
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"query": query, "workspace_id": str(workspace_id), "matches": [{**_memory_payload(match.record), "relevance": match.relevance, "confidence": match.confidence} for match in matches]}
+
+@app.post("/api/v1/workspaces/{workspace_id}/memories/{memory_id}/archive")
+def archive_memory(workspace_id: UUID, memory_id: UUID) -> dict:
+    _require_workspace(workspace_id)
+    try:
+        record = memory_store.archive(memory_id, workspace_id=workspace_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _memory_payload(record)
+
+
+@app.post("/api/v1/workspaces/{workspace_id}/memories/{memory_id}/supersede")
+def supersede_memory(workspace_id: UUID, memory_id: UUID, payload: dict) -> dict:
+    _require_workspace(workspace_id)
+    content = str(payload.get("content", "")).strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="content is required")
+    try:
+        record = memory_store.supersede(
+            memory_id,
+            content,
+            workspace_id=workspace_id,
+            importance=float(payload["importance"]) if "importance" in payload else None,
+            source=str(payload.get("source", "user")),
+            source_id=payload.get("source_id"),
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422 if isinstance(exc, ValueError) else 404, detail=str(exc)) from exc
+    return _memory_payload(record)
+
+
+@app.post("/api/v1/workspaces/{workspace_id}/memories/decay")
+def decay_memories(workspace_id: UUID, payload: dict) -> dict:
+    _require_workspace(workspace_id)
+    try:
+        records = memory_store.decay(
+            workspace_id=workspace_id,
+            older_than_days=int(payload.get("older_than_days", 30)),
+            amount=float(payload.get("amount", 0.1)),
+            minimum_importance=float(payload.get("minimum_importance", 0.0)),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"updated": [_memory_payload(record) for record in records]}
+
 
 @app.delete("/api/v1/workspaces/{workspace_id}/memories/{memory_id}", status_code=204)
 def delete_memory(workspace_id: UUID, memory_id: UUID) -> Response:

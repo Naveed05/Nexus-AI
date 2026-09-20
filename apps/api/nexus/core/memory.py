@@ -4,10 +4,19 @@ import json
 import os
 import sqlite3
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from uuid import UUID, uuid4
+
+
+class MemoryKind(str, Enum):
+    FACT = "fact"
+    PREFERENCE = "preference"
+    TASK_OUTCOME = "task_outcome"
+    PROCEDURAL = "procedural"
+    EPISODIC = "episodic"
 
 
 @dataclass(frozen=True)
@@ -19,6 +28,12 @@ class MemoryRecord:
     memory_id: UUID = field(default_factory=uuid4)
     tags: tuple[str, ...] = ()
     importance: float = 0.5
+    memory_kind: MemoryKind = MemoryKind.FACT
+    source: str = "user"
+    source_id: str | None = None
+    expires_at: datetime | None = None
+    supersedes_id: UUID | None = None
+    archived: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -36,6 +51,19 @@ class MemoryRecord:
             raise ValueError("memory content cannot contain control characters")
         if not 0.0 <= self.importance <= 1.0:
             raise ValueError("importance must be between 0 and 1")
+        if not isinstance(self.memory_kind, MemoryKind):
+            try:
+                object.__setattr__(self, "memory_kind", MemoryKind(str(self.memory_kind)))
+            except ValueError as exc:
+                raise ValueError("unsupported memory kind") from exc
+        if not self.source.strip():
+            raise ValueError("memory source cannot be empty")
+        if len(self.source) > 128:
+            raise ValueError("memory source cannot exceed 128 characters")
+        if self.source_id is not None and len(self.source_id) > 256:
+            raise ValueError("memory source_id cannot exceed 256 characters")
+        if self.expires_at is not None and (self.expires_at.tzinfo is None or self.expires_at.utcoffset() is None):
+            raise ValueError("expires_at must include a timezone offset")
         normalized_tags = tuple(sorted({tag.strip().lower() for tag in self.tags if tag.strip()}))
         if len(normalized_tags) > self.MAX_TAGS:
             raise ValueError(f"memory cannot contain more than {self.MAX_TAGS} tags")
@@ -78,9 +106,27 @@ class MemoryStore:
                     tags TEXT NOT NULL,
                     importance REAL NOT NULL,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    memory_kind TEXT NOT NULL DEFAULT 'fact',
+                    source TEXT NOT NULL DEFAULT 'user',
+                    source_id TEXT,
+                    expires_at TEXT,
+                    supersedes_id TEXT,
+                    archived INTEGER NOT NULL DEFAULT 0
                 )"""
             )
+            columns = {row[1] for row in self._connection.execute("PRAGMA table_info(memories)").fetchall()}
+            migrations = {
+                "memory_kind": "ALTER TABLE memories ADD COLUMN memory_kind TEXT NOT NULL DEFAULT 'fact'",
+                "source": "ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT 'user'",
+                "source_id": "ALTER TABLE memories ADD COLUMN source_id TEXT",
+                "expires_at": "ALTER TABLE memories ADD COLUMN expires_at TEXT",
+                "supersedes_id": "ALTER TABLE memories ADD COLUMN supersedes_id TEXT",
+                "archived": "ALTER TABLE memories ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+            }
+            for name, statement in migrations.items():
+                if name not in columns:
+                    self._connection.execute(statement)
             self._connection.commit()
             self._load()
 
@@ -94,6 +140,12 @@ class MemoryStore:
             record.importance,
             record.created_at.isoformat(),
             record.updated_at.isoformat(),
+            record.memory_kind.value,
+            record.source,
+            record.source_id,
+            record.expires_at.isoformat() if record.expires_at else None,
+            str(record.supersedes_id) if record.supersedes_id else None,
+            int(record.archived),
         )
 
     @staticmethod
@@ -106,6 +158,12 @@ class MemoryStore:
             importance=float(row[4]),
             created_at=datetime.fromisoformat(row[5]),
             updated_at=datetime.fromisoformat(row[6]),
+            memory_kind=MemoryKind(row[7] or "fact"),
+            source=row[8] or "user",
+            source_id=row[9],
+            expires_at=datetime.fromisoformat(row[10]) if row[10] else None,
+            supersedes_id=UUID(row[11]) if row[11] else None,
+            archived=bool(row[12]),
         )
 
     def _load(self) -> None:
@@ -122,8 +180,8 @@ class MemoryStore:
         with self._lock:
             self._connection.execute(
                 """INSERT OR REPLACE INTO memories
-                (memory_id, workspace_id, content, tags, importance, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (memory_id, workspace_id, content, tags, importance, created_at, updated_at, memory_kind, source, source_id, expires_at, supersedes_id, archived)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 self._serialize(record),
             )
             self._connection.commit()
@@ -142,8 +200,18 @@ class MemoryStore:
         workspace_id: UUID | None = None,
         tags: tuple[str, ...] = (),
         importance: float = 0.5,
+        memory_kind: MemoryKind = MemoryKind.FACT,
+        source: str = "user",
+        source_id: str | None = None,
+        expires_at: datetime | None = None,
+        supersedes_id: UUID | None = None,
+        archived: bool = False,
     ) -> MemoryRecord:
-        candidate = MemoryRecord(content=content, workspace_id=workspace_id, tags=tags, importance=importance)
+        candidate = MemoryRecord(
+            content=content, workspace_id=workspace_id, tags=tags, importance=importance,
+            memory_kind=memory_kind, source=source, source_id=source_id,
+            expires_at=expires_at, supersedes_id=supersedes_id, archived=archived,
+        )
         with self._lock:
             for record in self._records.values():
                 if (
@@ -169,7 +237,7 @@ class MemoryStore:
         if not clean_output:
             raise ValueError("output cannot be empty")
         content = f"Task: {clean_objective}\nVerified outcome: {clean_output[:2000]}"
-        return self.remember(content, workspace_id=workspace_id, tags=("task-outcome", "verified"), importance=0.7)
+        return self.remember(content, workspace_id=workspace_id, tags=("task-outcome", "verified"), importance=0.7, memory_kind=MemoryKind.TASK_OUTCOME, source="task", source_id=clean_objective)
 
     @staticmethod
     def _validate_min_confidence(min_confidence: float) -> None:
@@ -244,6 +312,8 @@ class MemoryStore:
             candidates = [
                 record for record in self._records.values()
                 if record.workspace_id == workspace_id
+                and not record.archived
+                and (record.expires_at is None or record.expires_at > datetime.now(timezone.utc))
                 and normalized_required_tags.issubset(record.tags)
             ]
 
@@ -318,6 +388,80 @@ class MemoryStore:
                 break
         return "\n".join(lines)[:max_chars]
 
+    def archive(self, memory_id: UUID, *, workspace_id: UUID | None = None) -> MemoryRecord:
+        """Archive a memory without destroying its durable provenance."""
+        with self._lock:
+            record = self._records.get(memory_id)
+            if record is None or record.workspace_id != workspace_id:
+                raise KeyError(f"Unknown memory: {memory_id}")
+            updated = replace(record, archived=True, updated_at=datetime.now(timezone.utc))
+            self._records[memory_id] = updated
+            self._save(updated)
+            return updated
+
+    def supersede(
+        self,
+        memory_id: UUID,
+        content: str,
+        *,
+        workspace_id: UUID | None = None,
+        importance: float | None = None,
+        source: str = "user",
+        source_id: str | None = None,
+    ) -> MemoryRecord:
+        """Create a replacement memory while retaining the predecessor relationship."""
+        with self._lock:
+            current = self._records.get(memory_id)
+            if current is None or current.workspace_id != workspace_id:
+                raise KeyError(f"Unknown memory: {memory_id}")
+            replacement = self.remember(
+                content,
+                workspace_id=workspace_id,
+                tags=current.tags,
+                importance=current.importance if importance is None else importance,
+                memory_kind=current.memory_kind,
+                source=source,
+                source_id=source_id,
+                supersedes_id=memory_id,
+            )
+            self.archive(memory_id, workspace_id=workspace_id)
+            return replacement
+
+    def decay(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        older_than_days: int = 30,
+        amount: float = 0.1,
+        minimum_importance: float = 0.0,
+    ) -> tuple[MemoryRecord, ...]:
+        """Apply bounded importance decay to aging, active memories."""
+        if older_than_days < 0:
+            raise ValueError("older_than_days must be non-negative")
+        if not 0.0 < amount <= 1.0:
+            raise ValueError("amount must be greater than 0 and at most 1")
+        if not 0.0 <= minimum_importance <= 1.0:
+            raise ValueError("minimum_importance must be between 0 and 1")
+        cutoff = datetime.now(timezone.utc).timestamp() - older_than_days * 86400
+        updated_records: list[MemoryRecord] = []
+        with self._lock:
+            for record in tuple(self._records.values()):
+                if (
+                    record.workspace_id == workspace_id
+                    and not record.archived
+                    and record.updated_at.timestamp() <= cutoff
+                    and record.importance > minimum_importance
+                ):
+                    updated = replace(
+                        record,
+                        importance=round(max(minimum_importance, record.importance - amount), 10),
+                        updated_at=datetime.now(timezone.utc),
+                    )
+                    self._records[record.memory_id] = updated
+                    self._save(updated)
+                    updated_records.append(updated)
+        return tuple(sorted(updated_records, key=lambda item: str(item.memory_id)))
+
     def reinforce(self, memory_id: UUID, *, workspace_id: UUID | None = None, amount: float = 0.1) -> MemoryRecord:
         """Increase a memory's importance without allowing it to exceed the safe bound."""
         if amount < 0:
@@ -331,9 +475,25 @@ class MemoryStore:
             self._save(updated)
             return updated
 
-    def list(self, *, workspace_id: UUID | None = None) -> tuple[MemoryRecord, ...]:
+    def stats(self, *, workspace_id: UUID | None = None) -> dict[str, int]:
+        """Return bounded lifecycle counters for operational inspection."""
+        now = datetime.now(timezone.utc)
         with self._lock:
-            return tuple(sorted((record for record in self._records.values() if record.workspace_id == workspace_id), key=lambda record: record.created_at))
+            records = [record for record in self._records.values() if record.workspace_id == workspace_id]
+        return {
+            "total": len(records),
+            "active": sum(1 for record in records if not record.archived and (record.expires_at is None or record.expires_at > now)),
+            "archived": sum(1 for record in records if record.archived),
+            "expired": sum(1 for record in records if not record.archived and record.expires_at is not None and record.expires_at <= now),
+            "task_outcomes": sum(1 for record in records if record.memory_kind is MemoryKind.TASK_OUTCOME),
+        }
+
+    def list(self, *, workspace_id: UUID | None = None, include_archived: bool = False) -> tuple[MemoryRecord, ...]:
+        with self._lock:
+            return tuple(sorted(
+                (record for record in self._records.values() if record.workspace_id == workspace_id and (include_archived or not record.archived)),
+                key=lambda record: record.created_at,
+            ))
 
     def forget(self, memory_id: UUID, *, workspace_id: UUID | None = None) -> MemoryRecord:
         with self._lock:
