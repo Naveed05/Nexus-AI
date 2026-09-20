@@ -231,6 +231,18 @@ These controls provide a safe foundation for multi-step autonomous execution wit
 
 NEXUS now exposes a bounded agent runtime with durable SQLite-backed run state, explicit task/run lifecycle states, cancellation, step/tool/retry budgets, structured execution telemetry, runtime status APIs, and deterministic run inspection. The runtime is designed as the control boundary for future asynchronous workers and distributed execution. Runtime persistence is configurable through `RUN_STORAGE_PATH` and defaults to `.nexus/runs.sqlite3`.
 
+### 🧠 Model intelligence
+
+Phase 22 adds provider-neutral model intelligence with:
+
+- explicit model requirement contracts for capabilities, reasoning, context, tools, cost, and latency
+- deterministic multi-factor routing with explainable score components
+- provider-neutral execution adapters and normalized tool-call responses
+- bounded primary/fallback execution using prevalidated frontier workflow plans
+- BYOK execution integration without exposing user credentials
+- model/provider health telemetry with failure counts and latency snapshots
+- safe model catalog and health APIs for operational observability
+
 ### 🌐 Advanced frontier-model workflows
 
 NEXUS now has a frontier workflow foundation with:
@@ -335,6 +347,7 @@ The next major engineering focus is production model/tool runtime integration an
 [✓] Security & Human Control Hardening
 [✓] Multi-Provider / BYOK Model Layer
 [✓] Tool & Capability Evolution
+[✓] Model Intelligence
 [ ] Production Frontend
 [ ] Productization
 [ ] Deployment & Observability

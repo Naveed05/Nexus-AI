@@ -13,6 +13,7 @@ class ModelResponse:
     response_id: str
     provider: str
     model_id: str
+    tool_calls: tuple[Mapping[str, Any], ...] = ()
 
 
 
@@ -43,6 +44,95 @@ class ModelSpec:
     supports_tools: bool
     cost_score: int
     latency_score: int
+
+
+class ModelCapabilityError(ValueError):
+    """Raised when a model cannot satisfy an explicit capability contract."""
+
+
+@dataclass(frozen=True)
+class ModelRequirements:
+    """Provider-neutral requirements used by routing and fallback planning."""
+
+    required_capabilities: frozenset[str] = frozenset()
+    reasoning_level: str | None = None
+    minimum_context_window: int = 0
+    require_tools: bool = False
+    maximum_cost_score: int | None = None
+    maximum_latency_score: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.minimum_context_window < 0:
+            raise ValueError("minimum_context_window cannot be negative")
+        if self.maximum_cost_score is not None and self.maximum_cost_score < 0:
+            raise ValueError("maximum_cost_score cannot be negative")
+        if self.maximum_latency_score is not None and self.maximum_latency_score < 0:
+            raise ValueError("maximum_latency_score cannot be negative")
+        if self.reasoning_level is not None and self.reasoning_level not in {"low", "medium", "high", "xhigh", "max"}:
+            raise ValueError("unsupported reasoning level")
+
+
+@dataclass(frozen=True)
+class ModelHealth:
+    """Runtime health snapshot for a model/provider pair."""
+
+    key: str
+    provider: str
+    available: bool = True
+    consecutive_failures: int = 0
+    last_error: str | None = None
+    latency_ms: float | None = None
+
+
+class ModelHealthRegistry:
+    """Process-local health telemetry for provider/model pairs."""
+
+    def __init__(self) -> None:
+        self._health: dict[str, ModelHealth] = {}
+
+    def _get(self, model: ModelSpec) -> ModelHealth:
+        return self._health.get(
+            model.key,
+            ModelHealth(key=model.key, provider=model.provider),
+        )
+
+    def record_success(self, model: ModelSpec, latency_ms: float | None = None) -> ModelHealth:
+        current = self._get(model)
+        updated = ModelHealth(
+            key=model.key,
+            provider=model.provider,
+            available=True,
+            consecutive_failures=0,
+            last_error=None,
+            latency_ms=latency_ms,
+        )
+        self._health[model.key] = updated
+        return updated
+
+    def record_failure(self, model: ModelSpec, error: str) -> ModelHealth:
+        current = self._get(model)
+        updated = ModelHealth(
+            key=model.key,
+            provider=model.provider,
+            available=False if current.consecutive_failures >= 2 else True,
+            consecutive_failures=current.consecutive_failures + 1,
+            last_error=error[:500],
+            latency_ms=current.latency_ms,
+        )
+        self._health[model.key] = updated
+        return updated
+
+    def get(self, model_key: str) -> ModelHealth:
+        return self._health.get(model_key, ModelHealth(key=model_key, provider="unknown"))
+
+    def all(self) -> tuple[ModelHealth, ...]:
+        return tuple(self._health[key] for key in sorted(self._health))
+
+    def reset(self) -> None:
+        self._health.clear()
+
+
+model_health_registry = ModelHealthRegistry()
 
 
 class ModelRegistry:
@@ -124,6 +214,24 @@ class ModelRegistry:
 
     def all(self) -> tuple[ModelSpec, ...]:
         return tuple(self._models.values())
+
+    def find(self, requirements: ModelRequirements) -> tuple[ModelSpec, ...]:
+        matches = [
+            spec for spec in self._models.values()
+            if requirements.required_capabilities.issubset(spec.capabilities)
+            and (requirements.reasoning_level is None or requirements.reasoning_level in spec.reasoning_levels)
+            and spec.context_window >= requirements.minimum_context_window
+            and (not requirements.require_tools or spec.supports_tools)
+            and (requirements.maximum_cost_score is None or spec.cost_score <= requirements.maximum_cost_score)
+            and (requirements.maximum_latency_score is None or spec.latency_score <= requirements.maximum_latency_score)
+        ]
+        return tuple(sorted(matches, key=lambda spec: (spec.cost_score, spec.latency_score, spec.key)))
+
+    def validate(self, model: ModelSpec, requirements: ModelRequirements) -> None:
+        if model not in self.find(requirements):
+            raise ModelCapabilityError(
+                f"model '{model.key}' does not satisfy the requested model requirements"
+            )
 
 
 model_registry = ModelRegistry()
@@ -304,29 +412,52 @@ class BYOKHTTPTransport:
         response_id = str(data.get("id", ""))
         output = ""
 
+        tool_calls: list[Mapping[str, Any]] = []
         if provider == "openai":
             output = str(data.get("output_text", "") or "")
-            if not output:
-                chunks: list[str] = []
-                for item in data.get("output", []) or []:
-                    if not isinstance(item, Mapping):
-                        continue
-                    for content in item.get("content", []) or []:
-                        if isinstance(content, Mapping) and content.get("text"):
-                            chunks.append(str(content["text"]))
-                output = "".join(chunks)
+            for item in data.get("output", []) or []:
+                if not isinstance(item, Mapping):
+                    continue
+                if item.get("type") == "function_call":
+                    tool_calls.append({
+                        "name": str(item.get("name", "")),
+                        "arguments": str(item.get("arguments", "{}")),
+                        "call_id": str(item.get("call_id", "")),
+                    })
+                for content in item.get("content", []) or []:
+                    if isinstance(content, Mapping) and content.get("text"):
+                        output += str(content["text"])
         elif provider == "anthropic":
             chunks = []
             for item in data.get("content", []) or []:
-                if isinstance(item, Mapping) and item.get("text"):
+                if not isinstance(item, Mapping):
+                    continue
+                if item.get("type") == "tool_use":
+                    tool_calls.append({
+                        "name": str(item.get("name", "")),
+                        "arguments": json.dumps(item.get("input", {}), separators=(",", ":")),
+                        "call_id": str(item.get("id", "")),
+                    })
+                if item.get("text"):
                     chunks.append(str(item["text"]))
             output = "".join(chunks)
         else:
             choices = data.get("choices", []) or []
             if choices and isinstance(choices[0], Mapping):
                 message = choices[0].get("message", {})
-                if isinstance(message, Mapping) and message.get("content"):
-                    output = str(message["content"])
+                if isinstance(message, Mapping):
+                    if message.get("content"):
+                        output = str(message["content"])
+                    for call in message.get("tool_calls", []) or []:
+                        if not isinstance(call, Mapping):
+                            continue
+                        function = call.get("function", {})
+                        if isinstance(function, Mapping):
+                            tool_calls.append({
+                                "name": str(function.get("name", "")),
+                                "arguments": str(function.get("arguments", "{}")),
+                                "call_id": str(call.get("id", "")),
+                            })
 
         if not output:
             raise BYOKProviderError(f"{provider} response did not contain text output")
@@ -337,6 +468,7 @@ class BYOKHTTPTransport:
             response_id=response_id,
             provider=provider,
             model_id=request.model_id,
+            tool_calls=tuple(tool_calls),
         )
 
 

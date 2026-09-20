@@ -273,3 +273,54 @@ def test_executor_uses_canonical_boundary_for_builtin_registry() -> None:
 
     executor = ModelExecutor(client=FakeClient())
     assert executor._execution_boundary is tool_executor
+
+
+def test_provider_registry_supports_custom_provider() -> None:
+    from nexus.core.executor import ModelProviderRegistry
+    from nexus.core.models import ModelResponse
+
+    class Provider:
+        name = "custom"
+
+        def generate(self, **kwargs):
+            return ModelResponse("custom output", "custom-1", "custom", kwargs["model"].model_id)
+
+    registry = ModelProviderRegistry({"custom": Provider()})
+    provider = registry.get("custom")
+    assert provider.generate(model=model_registry.get("terra"), input_items=[], tools=[], tool_choice="none").output == "custom output"
+
+
+def test_executor_falls_back_across_prevalidated_models() -> None:
+    from nexus.core.executor import ModelProviderRegistry, ModelProviderExecutionError
+    from nexus.core.frontier_workflows import FrontierWorkflowPlan
+    from nexus.core.models import ModelResponse
+
+    class SequenceProvider:
+        name = "openai"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def generate(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise ModelProviderExecutionError("temporary provider outage")
+            return ModelResponse("fallback success", "resp-fallback", "openai", kwargs["model"].model_id)
+
+    provider = SequenceProvider()
+    registry = ModelProviderRegistry({"openai": provider})
+    executor = ModelExecutor(client=FakeClient(), provider_registry=registry)
+    plan = FrontierWorkflowPlan(
+        primary=model_registry.get("astra"),
+        fallbacks=(model_registry.get("sol"),),
+        required_capabilities=frozenset(),
+        reasoning_level="medium",
+    )
+
+    result = executor.execute_with_fallback(Task(objective="Recover from provider outage"), plan)
+
+    assert result.model_key == "sol"
+    assert result.output == "fallback success"
+    assert result.fallback_count == 1
+    assert result.fallback_history[0].startswith("astra->sol:")
+    assert provider.calls == 2
