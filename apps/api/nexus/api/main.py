@@ -18,6 +18,7 @@ from nexus.core.models import BYOKProviderError, ProviderCredentialError, Provid
 from nexus.core.research import ResearchEngine
 from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.production_runtime import ProductionRuntime
+from nexus.core.product import product_catalog
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -38,6 +39,30 @@ async def security_headers(request, call_next):
         "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     )
     return response
+@app.get("/api/v1/product/plans")
+def product_plans() -> list[dict]:
+    return [
+        {"plan_id": plan.plan_id, "name": plan.name, "description": plan.description,
+         "monthly_run_limit": plan.monthly_run_limit, "monthly_file_limit": plan.monthly_file_limit,
+         "max_file_bytes": plan.max_file_bytes, "features": list(plan.features)}
+        for plan in product_catalog.plans()
+    ]
+
+
+@app.get("/api/v1/product/profile")
+def product_profile(x_user_id: str = Header(default="local-user")) -> dict:
+    profile = product_catalog.profile(x_user_id.strip() or "local-user")
+    return {"user_id": profile.user_id, "plan_id": profile.plan_id, "created_at": profile.created_at.isoformat()}
+
+
+@app.get("/api/v1/product/usage")
+def product_usage(x_user_id: str = Header(default="local-user")) -> dict:
+    usage = product_catalog.usage(x_user_id.strip() or "local-user")
+    return {"user_id": usage.user_id, "plan_id": usage.plan_id, "runs_used": usage.runs_used,
+            "runs_limit": usage.runs_limit, "files_used": usage.files_used,
+            "files_limit": usage.files_limit, "reset_at": usage.reset_at.isoformat()}
+
+
 WEB_ROOT = Path(__file__).resolve().parents[3] / "web"
 app.mount("/web", StaticFiles(directory=WEB_ROOT), name="web")
 
