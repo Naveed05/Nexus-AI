@@ -205,6 +205,20 @@ Phase 28 is the final Version 1 hardening pass before public beta:
 
 The beta deployment remains intentionally single-instance until shared identity, transactional state, object storage, distributed queueing, and centralized secrets are introduced.
 
+## 🤖 Advanced agent autonomy
+
+Phase 30 adds a bounded autonomy layer around NEXUS execution:
+
+- verification-driven completion using explicit confidence and evidence
+- bounded self-revision with hard revision limits
+- escalation when confidence is insufficient or revision budgets are exhausted
+- resumable agent state with objective-bound checkpoints
+- explainable self-correction plans derived from verification issues
+- an explicit autonomy policy matrix separating reversible actions from approval-gated side effects
+- regression and end-to-end autonomy contract coverage
+
+NEXUS autonomy remains policy- and budget-bound: the agent cannot self-authorize policy changes or external side effects.
+
 ## 🌐 Scale & distributed infrastructure
 
 Phase 29 establishes the migration boundary from the single-instance beta runtime toward distributed production infrastructure:
@@ -447,6 +461,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Deployment & Observability
 [✓] Public Beta
 [✓] Scale & Distributed Infrastructure
+[✓] Advanced Agent Autonomy
 ```
 
 ## Technology direction
