@@ -25,6 +25,8 @@ from nexus.core.metrics import service_metrics
 from nexus.core.rate_limit import RateLimitExceeded, SlidingWindowRateLimiter
 from nexus.core.scale import build_scale_topology, topology_payload
 from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
+from nexus.core.multi_agent import DelegationRequest, default_agent_registry
+from nexus.core.supervisor import AgentSupervisor
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -200,6 +202,22 @@ def observability_summary() -> dict:
 def metrics() -> Response:
     return Response(service_metrics.prometheus(settings.app_name), media_type="text/plain; version=0.0.4")
 
+
+
+@app.get("/api/v1/agents")
+def list_agents() -> list[dict]:
+    return [{"agent_id": a.agent_id, "role": a.role.value, "capabilities": list(a.capabilities), "max_steps": a.max_steps} for a in default_agent_registry().list()]
+
+
+@app.post("/api/v1/agents/collaborate")
+def build_collaboration(payload: dict) -> dict:
+    objective = str(payload.get("objective", "")).strip()
+    requests = tuple(DelegationRequest(str(item.get("objective", "")).strip(), str(item.get("required_capability", "")).strip(), str(item.get("requester", "supervisor")).strip()) for item in payload.get("requests", []))
+    try:
+        result = AgentSupervisor().build_plan(objective, requests)
+    except (ValueError, LookupError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"objective": result.plan.objective, "workstreams": [{"workstream_id": str(w.workstream_id), "objective": w.objective, "agent_id": w.agent_id, "dependencies": [str(d) for d in w.dependencies], "status": w.status} for w in result.plan.workstreams], "approval_required": result.approval_required, "rationale": list(result.rationale)}
 
 
 @app.get("/api/v1/tools")
