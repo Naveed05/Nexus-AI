@@ -18,6 +18,8 @@ from nexus.core.models import BYOKProviderError, ProviderCredentialError, Provid
 from nexus.core.research import ResearchEngine
 from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.production_runtime import ProductionRuntime
+from nexus.core.product import product_catalog
+from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -38,6 +40,56 @@ async def security_headers(request, call_next):
         "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     )
     return response
+@app.get("/api/v1/product/templates")
+def product_templates() -> list[dict]:
+    return [
+        {"template_id": item.template_id, "name": item.name, "description": item.description,
+         "objective": item.objective, "capabilities": list(item.capabilities), "risk_level": item.risk_level}
+        for item in list_workflow_templates()
+    ]
+
+
+@app.get("/api/v1/product/templates/{template_id}")
+def product_template(template_id: str) -> dict:
+    try:
+        item = get_workflow_template(template_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="unknown workflow template") from exc
+    return {"template_id": item.template_id, "name": item.name, "description": item.description,
+            "objective": item.objective, "capabilities": list(item.capabilities), "risk_level": item.risk_level}
+
+
+@app.get("/api/v1/product/onboarding")
+def product_onboarding(x_user_id: str = Header(default="local-user")) -> dict:
+    user_id = x_user_id.strip() or "local-user"
+    profile = product_catalog.profile(user_id)
+    return {"steps": [{"id": "workspace", "label": "Create or select a workspace", "complete": bool(workspace_registry.list())}, {"id": "template", "label": "Start from a workflow template", "complete": True}, {"id": "execution", "label": "Run and verify a task", "complete": False}, {"id": "memory", "label": "Save useful workspace context", "complete": False}], "plan_id": profile.plan_id}
+
+
+@app.get("/api/v1/product/plans")
+def product_plans() -> list[dict]:
+    return [
+        {"plan_id": plan.plan_id, "name": plan.name, "description": plan.description,
+         "monthly_run_limit": plan.monthly_run_limit, "monthly_file_limit": plan.monthly_file_limit,
+         "max_file_bytes": plan.max_file_bytes, "features": list(plan.features)}
+        for plan in product_catalog.plans()
+    ]
+
+
+@app.get("/api/v1/product/profile")
+def product_profile(x_user_id: str = Header(default="local-user")) -> dict:
+    profile = product_catalog.profile(x_user_id.strip() or "local-user")
+    return {"user_id": profile.user_id, "plan_id": profile.plan_id, "created_at": profile.created_at.isoformat()}
+
+
+@app.get("/api/v1/product/usage")
+def product_usage(x_user_id: str = Header(default="local-user")) -> dict:
+    usage = product_catalog.usage(x_user_id.strip() or "local-user")
+    return {"user_id": usage.user_id, "plan_id": usage.plan_id, "runs_used": usage.runs_used,
+            "runs_limit": usage.runs_limit, "files_used": usage.files_used,
+            "files_limit": usage.files_limit, "reset_at": usage.reset_at.isoformat()}
+
+
 WEB_ROOT = Path(__file__).resolve().parents[3] / "web"
 app.mount("/web", StaticFiles(directory=WEB_ROOT), name="web")
 
@@ -442,7 +494,12 @@ def production_health() -> dict:
 
 
 @app.post("/api/v1/production/tasks/execute", response_model=ExecutionResponse, status_code=200)
-def execute_production_task(payload: TaskCreate, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> ExecutionResponse:
+def execute_production_task(payload: TaskCreate, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), x_user_id: str = Header(default="local-user", alias="X-User-Id")) -> ExecutionResponse:
+    user_id = x_user_id.strip() or "local-user"
+    try:
+        product_catalog.consume_run(user_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     task = _build_task(payload)
     try:
         run, result = production_runtime.start(task, idempotency_key=idempotency_key, budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8))
@@ -519,11 +576,17 @@ def list_workspaces() -> list[dict]: return [_workspace_payload(workspace) for w
 def get_workspace(workspace_id: UUID) -> dict: return _workspace_payload(_require_workspace(workspace_id))
 
 @app.post("/api/v1/workspaces/{workspace_id}/files", status_code=201)
-async def upload_workspace_file(workspace_id: UUID, file: UploadFile = File(...)) -> dict:
+async def upload_workspace_file(workspace_id: UUID, file: UploadFile = File(...), x_user_id: str = Header(default="local-user", alias="X-User-Id")) -> dict:
     _require_workspace(workspace_id); filename = Path(file.filename or "").name
     if not filename: raise HTTPException(status_code=422, detail="filename cannot be empty")
+    user_id = x_user_id.strip() or "local-user"
+    plan = next(item for item in product_catalog.plans() if item.plan_id == product_catalog.profile(user_id).plan_id)
+    payload_bytes = await file.read()
+    if len(payload_bytes) > plan.max_file_bytes:
+        raise HTTPException(status_code=413, detail="file exceeds the active product plan limit")
     try:
-        file_ref = file_store.put(await file.read(), filename=filename, workspace_id=workspace_id, mime_type=file.content_type); file_registry.register(file_ref); workspace_registry.context(workspace_id).add_file(file_ref.file_id)
+        product_catalog.consume_file(user_id)
+        file_ref = file_store.put(payload_bytes, filename=filename, workspace_id=workspace_id, mime_type=file.content_type); file_registry.register(file_ref); workspace_registry.context(workspace_id).add_file(file_ref.file_id)
     except (TypeError, ValueError) as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _file_payload(file_ref)
 
