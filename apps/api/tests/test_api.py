@@ -344,3 +344,13 @@ def test_memory_stats_api_is_workspace_scoped() -> None:
     assert body["workspace_id"] == str(workspace.workspace_id)
     assert body["total"] >= 1
     assert body["active"] >= 1
+
+
+def test_production_health_exposes_runtime_capacity() -> None:
+    response = client.get("/api/v1/production/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["runtime"]["status"] == "ready"
+    assert body["runtime"]["max_concurrent_runs"] >= 1
+    assert "completed" in body["runs"]
