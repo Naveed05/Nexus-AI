@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.testclient import TestClient
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +22,7 @@ from nexus.core.product import product_catalog
 from nexus.core.http_telemetry import observe_http_request
 from nexus.core.observability import observability
 from nexus.core.metrics import service_metrics
+from nexus.core.rate_limit import RateLimitExceeded, SlidingWindowRateLimiter
 from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
@@ -31,6 +32,22 @@ from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
 
 app = FastAPI(title=settings.app_name, version=settings.service_version)
 app.middleware("http")(observe_http_request)
+
+@app.middleware("http")
+async def beta_guard(request: Request, call_next):
+    if request.method != "OPTIONS":
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > settings.max_request_body_bytes:
+            return Response("request body too large", status_code=413)
+        client_id = request.headers.get("X-Nexus-User-ID") or (request.client.host if request.client else "unknown")
+        try:
+            rate_limiter.check(client_id)
+        except RateLimitExceeded:
+            return Response("rate limit exceeded", status_code=429, headers={"Retry-After": "60"})
+        if settings.environment.lower() == "production" and settings.beta_access_key:
+            if request.headers.get("X-Nexus-Beta-Key") != settings.beta_access_key:
+                return Response("beta access key required", status_code=401)
+    return await call_next(request)
 
 @app.middleware("http")
 async def security_headers(request, call_next):
@@ -111,6 +128,7 @@ configure_knowledge_engine(knowledge_engine)
 research_engine = ResearchEngine()
 agent_runtime = AgentRuntime(settings.run_storage_path,)
 production_runtime = ProductionRuntime(store_path=settings.run_storage_path, engine=engine)
+rate_limiter = SlidingWindowRateLimiter(limit=settings.rate_limit_per_minute)
 
 
 def _workspace_payload(workspace) -> dict:
