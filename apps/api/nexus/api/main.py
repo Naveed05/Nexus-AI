@@ -156,7 +156,7 @@ def health() -> dict[str, str]:
 @app.get("/api/v1/ready")
 def readiness() -> dict:
     runtime = production_runtime.health()
-    checks = {"runtime": runtime.get("status") == "healthy", "frontend": WEB_ROOT.exists()}
+    checks = {"runtime": runtime.get("status") == "ready", "frontend": WEB_ROOT.exists()}
     return {"status": "ready" if all(checks.values()) else "not_ready", "service": "nexus-api", "checks": checks}
 
 
