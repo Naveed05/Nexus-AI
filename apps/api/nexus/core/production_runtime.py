@@ -41,6 +41,7 @@ class ProductionRuntime:
         self._policy = policy or ProductionRunPolicy()
         self._lock = RLock()
         self._active = 0
+        self._inflight_keys: set[str] = set()
 
     @property
     def runtime(self) -> AgentRuntime:
@@ -65,9 +66,12 @@ class ProductionRuntime:
 
         with self._lock:
             if idempotency_key:
+                if idempotency_key in self._inflight_keys:
+                    raise ValueError(f"run already exists for idempotency key: {idempotency_key}")
                 existing = self._find_idempotent(idempotency_key)
                 if existing is not None:
                     raise ValueError(f"run already exists for idempotency key: {idempotency_key}")
+                self._inflight_keys.add(idempotency_key)
             if self._active >= self._policy.max_concurrent_runs:
                 raise RuntimeError("production runtime concurrency limit reached")
             self._active += 1
@@ -82,6 +86,8 @@ class ProductionRuntime:
         finally:
             with self._lock:
                 self._active -= 1
+                if idempotency_key:
+                    self._inflight_keys.discard(idempotency_key)
 
     def status(self, run_id: UUID) -> AgentRun:
         """Return durable run state, including runs created by another process."""
