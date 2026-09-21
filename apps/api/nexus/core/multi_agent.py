@@ -57,7 +57,7 @@ class CollaborationPlan:
     def ready(self, completed: set[UUID]) -> tuple[Workstream, ...]:
         return tuple(
             item for item in self.workstreams
-            if item.status == "pending" and all(dep in completed for dep in item.dependencies)
+            if item.status == "pending" and item.workstream_id not in completed and all(dep in completed for dep in item.dependencies)
         )
 
 
