@@ -2,8 +2,9 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from fastapi.testclient import TestClient
+from fastapi.staticfiles import StaticFiles
 
 from nexus.core.config import settings
 from nexus.core.dataset_workspace import DatasetWorkspace
@@ -24,6 +25,25 @@ from nexus.core.tools import configure_dataset_workspace, tool_registry
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+        "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    )
+    return response
+WEB_ROOT = Path(__file__).resolve().parents[3] / "web"
+app.mount("/web", StaticFiles(directory=WEB_ROOT), name="web")
+
+@app.get("/")
+def frontend() -> FileResponse:
+    return FileResponse(WEB_ROOT / "index.html")
 client = TestClient(app)
 dataset_workspace = DatasetWorkspace(settings.dataset_storage_path)
 configure_dataset_workspace(dataset_workspace)

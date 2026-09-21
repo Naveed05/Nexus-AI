@@ -231,6 +231,18 @@ These controls provide a safe foundation for multi-step autonomous execution wit
 
 NEXUS now exposes a bounded agent runtime with durable SQLite-backed run state, explicit task/run lifecycle states, cancellation, step/tool/retry budgets, structured execution telemetry, runtime status APIs, and deterministic run inspection. The runtime is designed as the control boundary for future asynchronous workers and distributed execution. Runtime persistence is configurable through `RUN_STORAGE_PATH` and defaults to `.nexus/runs.sqlite3`.
 
+### 🌐 Production frontend
+
+Phase 25 adds a production-oriented task-first web interface served by the NEXUS API with:
+
+- responsive task execution and verified-result surfaces
+- live runtime health, capacity, model, and tool capability visibility
+- workspace creation, file upload, and workspace-scoped memory controls
+- dependency-free browser runtime with no client-side credential persistence
+- same-origin API integration and production security headers
+- web app metadata for standalone installation
+- automated frontend serving, contract, and security regression coverage
+
 ### ⚙️ Production runtime integration
 
 Phase 24 establishes the production execution boundary on top of the completed runtime/model/tool foundations with:
@@ -347,7 +359,7 @@ NEXUS has progressed beyond the original kernel prototype into a multi-layer AI 
 - frontier-model capability and fallback planning foundations
 - evaluation quality gates, category aggregation, and regression detection foundations
 
-The next major engineering focus is productization and production frontend work, followed by deployment, observability, and scale hardening.
+The next major engineering focus is productization, followed by deployment, observability, and scale hardening.
 
 ## Roadmap
 
@@ -375,7 +387,7 @@ The next major engineering focus is productization and production frontend work,
 [✓] Model Intelligence
 [✓] Memory Evolution
 [✓] Production Runtime Integration
-[ ] Production Frontend
+[✓] Production Frontend
 [ ] Productization
 [ ] Deployment & Observability
 [ ] Public Beta
