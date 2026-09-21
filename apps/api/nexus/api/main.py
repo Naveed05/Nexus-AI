@@ -20,6 +20,7 @@ from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.production_runtime import ProductionRuntime
 from nexus.core.product import product_catalog
 from nexus.core.http_telemetry import observe_http_request
+from nexus.core.observability import observability
 from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
