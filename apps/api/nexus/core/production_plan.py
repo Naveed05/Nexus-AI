@@ -27,9 +27,9 @@ class ProductionPlanner:
         routing = self._router.decide(task)
         decisions = tuple(self._tools.decide(step) for step in steps)
         missing = [
-            decision for decision in decisions
-            if decision.tool is None and any(capability in step.objective.lower() for capability in task.capabilities)
-            for step in steps
+            decision
+            for decision in decisions
+            if decision.tool is None
         ]
         safe = not missing
         reasons = list(routing.reasons)
