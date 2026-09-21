@@ -19,6 +19,9 @@ from nexus.core.research import ResearchEngine
 from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.production_runtime import ProductionRuntime
 from nexus.core.product import product_catalog
+from nexus.core.http_telemetry import observe_http_request
+from nexus.core.observability import observability
+from nexus.core.metrics import service_metrics
 from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
@@ -26,7 +29,8 @@ from nexus.core.tool_execution import tool_executor
 from nexus.core.tools import configure_dataset_workspace, tool_registry
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
 
-app = FastAPI(title=settings.app_name, version="0.1.0")
+app = FastAPI(title=settings.app_name, version=settings.service_version)
+app.middleware("http")(observe_http_request)
 
 @app.middleware("http")
 async def security_headers(request, call_next):
@@ -145,7 +149,25 @@ def _build_task(payload: TaskCreate) -> Task:
     return Task(**payload.model_dump(exclude={"context"}), context="\n".join(context_parts) or None)
 
 @app.get("/api/v1/health")
-def health() -> dict[str, str]: return {"status": "ok", "service": "nexus-api"}
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "nexus-api", "version": settings.service_version}
+
+
+@app.get("/api/v1/ready")
+def readiness() -> dict:
+    runtime = production_runtime.health()
+    checks = {"runtime": runtime.get("status") == "ready", "frontend": WEB_ROOT.exists()}
+    return {"status": "ready" if all(checks.values()) else "not_ready", "service": "nexus-api", "checks": checks}
+
+
+@app.get("/api/v1/observability/summary")
+def observability_summary() -> dict:
+    return {"service": settings.app_name, "version": settings.service_version, **observability.health()}
+
+
+@app.get("/api/v1/metrics", response_class=Response)
+def metrics() -> Response:
+    return Response(service_metrics.prometheus(settings.app_name), media_type="text/plain; version=0.0.4")
 
 
 

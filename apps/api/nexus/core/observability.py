@@ -40,3 +40,6 @@ class RuntimeObservability:
     def health(self) -> dict[str, Any]:
         snapshot = self.snapshot()
         return {"status": "healthy", "active_runs": snapshot.active_runs, "total_runs": snapshot.total_runs}
+
+
+observability = RuntimeObservability()

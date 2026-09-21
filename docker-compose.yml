@@ -1,0 +1,19 @@
+services:
+  nexus-api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: production
+      SERVICE_VERSION: "0.1.0"
+      LOG_LEVEL: INFO
+      REQUEST_METRICS_MAX_SAMPLES: "1000"
+    volumes:
+      - nexus-data:/app/.nexus
+    restart: unless-stopped
+    init: true
+
+volumes:
+  nexus-data:

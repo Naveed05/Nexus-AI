@@ -192,7 +192,22 @@ NEXUS now includes an evidence-first developer workflow with deterministic patch
 
 Developer changes are represented as immutable, reviewable artifacts before execution. High-risk patches require an exact, approved, fresh audit fingerprint.
 
-### 🧠 Persistent memory
+### 🚀 Deployment & observability
+
+Phase 27 adds the operational boundary needed to move NEXUS toward a public beta:
+
+- containerized FastAPI deployment with a non-root runtime user
+- Docker Compose persistence for the local runtime/workspace state
+- liveness and readiness endpoints
+- structured JSON HTTP request telemetry with propagated request IDs
+- dependency-free Prometheus-compatible service metrics
+- operational observability summary and deployment runbook
+- container-image build validation in GitHub Actions
+- explicit single-instance scaling boundary and migration guidance for shared production state
+
+The current deployment is intentionally conservative: local SQLite and in-process registries remain the safe single-instance boundary. Horizontal scale should follow a migration to shared transactional state, object storage, distributed queueing, and shared cache.
+
+## 🧠 Persistent memory
 
 The persistent-memory foundation provides workspace-scoped durable records, SQLite persistence, deterministic ranked recall, confidence-aware context rendering, reinforcement, deduplication, explicit forgetting controls, bounded record sizes, timezone-aware timestamps, and minimum-confidence recall filtering.
 
@@ -402,7 +417,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Production Runtime Integration
 [✓] Production Frontend
 [✓] Productization
-[ ] Deployment & Observability
+[✓] Deployment & Observability
 [ ] Public Beta
 ```
 
