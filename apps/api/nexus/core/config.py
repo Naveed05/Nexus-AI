@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     beta_access_key: str | None = None
     rate_limit_per_minute: int = 120
     max_request_body_bytes: int = 10 * 1024 * 1024
+    state_backend: str = "sqlite"
+    cache_backend: str = "memory"
+    object_storage_backend: str = "filesystem"
+    queue_backend: str = "sqlite"
 
     model_config = SettingsConfigDict(
         env_file=".env",

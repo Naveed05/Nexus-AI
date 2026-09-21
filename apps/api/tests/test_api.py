@@ -354,3 +354,13 @@ def test_production_health_exposes_runtime_capacity() -> None:
     assert body["runtime"]["status"] == "ready"
     assert body["runtime"]["max_concurrent_runs"] >= 1
     assert "completed" in body["runs"]
+
+
+
+def test_scale_topology_endpoint_is_explicit():
+    response = client.get("/api/v1/scale/topology")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["horizontal_scaling_ready"] is False
+    assert payload["state_backend"] == "sqlite"
+    assert payload["blockers"]
