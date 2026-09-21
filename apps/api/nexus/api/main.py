@@ -23,6 +23,7 @@ from nexus.core.http_telemetry import observe_http_request
 from nexus.core.observability import observability
 from nexus.core.metrics import service_metrics
 from nexus.core.rate_limit import RateLimitExceeded, SlidingWindowRateLimiter
+from nexus.core.scale import build_scale_topology, topology_payload
 from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
@@ -171,10 +172,22 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "nexus-api", "version": settings.service_version}
 
 
+@app.get("/api/v1/scale/topology")
+def scale_topology() -> dict:
+    topology = build_scale_topology(
+        state_backend=settings.state_backend,
+        queue_backend=settings.queue_backend,
+        cache_backend=settings.cache_backend,
+        object_storage_backend=settings.object_storage_backend,
+    )
+    return topology_payload(topology)
+
+
 @app.get("/api/v1/ready")
 def readiness() -> dict:
     runtime = production_runtime.health()
-    checks = {"runtime": runtime.get("status") == "ready", "frontend": WEB_ROOT.exists()}
+    topology = build_scale_topology(state_backend=settings.state_backend, queue_backend=settings.queue_backend, cache_backend=settings.cache_backend, object_storage_backend=settings.object_storage_backend)
+    checks = {"runtime": runtime.get("status") == "ready", "frontend": WEB_ROOT.exists(), "scale_contract": True}
     return {"status": "ready" if all(checks.values()) else "not_ready", "service": "nexus-api", "checks": checks}
 
 
