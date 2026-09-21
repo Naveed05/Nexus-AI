@@ -16,6 +16,7 @@ from nexus.core.memory import MemoryKind, memory_store
 from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, byok_provider_manager, model_health_registry, model_registry
 from nexus.core.research import ResearchEngine
 from nexus.core.runtime import AgentRuntime, RunBudget
+from nexus.core.production_runtime import ProductionRuntime
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -32,7 +33,8 @@ document_workspace = DocumentWorkspace(Path(settings.file_storage_path) / "docum
 knowledge_engine = KnowledgeEngine(document_workspace, settings.knowledge_index_path)
 configure_knowledge_engine(knowledge_engine)
 research_engine = ResearchEngine()
-agent_runtime = AgentRuntime(settings.run_storage_path)
+agent_runtime = AgentRuntime(settings.run_storage_path,)
+production_runtime = ProductionRuntime(store_path=settings.run_storage_path, engine=engine)
 
 
 def _workspace_payload(workspace) -> dict:
@@ -408,6 +410,26 @@ def get_agent_run(run_id: str) -> dict:
 @app.get("/api/v1/runs")
 def list_agent_runs() -> list[dict]:
     return [_run_payload(run) for run in agent_runtime.list_runs()]
+
+
+@app.get("/api/v1/production/health")
+def production_health() -> dict:
+    runs = production_runtime.list_runs()
+    active = sum(1 for run in runs if run.status.value in {"created", "running"})
+    failed = sum(1 for run in runs if run.status.value == "failed")
+    completed = sum(1 for run in runs if run.status.value == "completed")
+    return {"status": "healthy", "runtime": production_runtime.health(), "runs": {"total": len(runs), "active": active, "completed": completed, "failed": failed}}
+
+
+@app.post("/api/v1/production/tasks/execute", response_model=ExecutionResponse, status_code=200)
+def execute_production_task(payload: TaskCreate, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> ExecutionResponse:
+    task = _build_task(payload)
+    try:
+        run, result = production_runtime.start(task, idempotency_key=idempotency_key, budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    verification = result.verification
+    return ExecutionResponse(run_id=str(run.run_id), task_id=str(task.task_id), model=result.model.model_id, response_id=result.execution.response_id, output=result.execution.output, verification_passed=result.state.verification_passed, verification_checks=verification.checks, verification_issues=list(verification.issues), grounding_score=verification.grounding_score, grounding=[{"citation": item.citation, "claim": item.claim, "overlap_score": item.overlap_score, "supported": item.supported} for item in verification.grounding], tool_calls=len(result.execution.tool_calls), events=[event.event_type.value for event in result.events])
 
 
 def _run_payload(run) -> dict:
