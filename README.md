@@ -231,6 +231,19 @@ These controls provide a safe foundation for multi-step autonomous execution wit
 
 NEXUS now exposes a bounded agent runtime with durable SQLite-backed run state, explicit task/run lifecycle states, cancellation, step/tool/retry budgets, structured execution telemetry, runtime status APIs, and deterministic run inspection. The runtime is designed as the control boundary for future asynchronous workers and distributed execution. Runtime persistence is configurable through `RUN_STORAGE_PATH` and defaults to `.nexus/runs.sqlite3`.
 
+### 🧭 Productization
+
+Phase 26 turns the completed runtime and frontend foundations into a clearer product contract:
+
+- product plans with bounded run/file quotas and visible usage
+- stable product profile and onboarding APIs
+- reusable workflow templates for research, data, documents, and code
+- quick-start template selection directly from the frontend
+- workspace-aware product context and usage dashboard
+- explicit file-size and quota enforcement at the API boundary
+- product onboarding/readiness signals
+- automated regression coverage for product contracts and limits
+
 ### 🌐 Production frontend
 
 Phase 25 adds a production-oriented task-first web interface served by the NEXUS API with:
@@ -359,7 +372,7 @@ NEXUS has progressed beyond the original kernel prototype into a multi-layer AI 
 - frontier-model capability and fallback planning foundations
 - evaluation quality gates, category aggregation, and regression detection foundations
 
-The next major engineering focus is productization, followed by deployment, observability, and scale hardening.
+The next major engineering focus is deployment, observability, scale hardening, and public-beta readiness.
 
 ## Roadmap
 
@@ -388,7 +401,7 @@ The next major engineering focus is productization, followed by deployment, obse
 [✓] Memory Evolution
 [✓] Production Runtime Integration
 [✓] Production Frontend
-[ ] Productization
+[✓] Productization
 [ ] Deployment & Observability
 [ ] Public Beta
 ```
