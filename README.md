@@ -205,6 +205,20 @@ Phase 28 is the final Version 1 hardening pass before public beta:
 
 The beta deployment remains intentionally single-instance until shared identity, transactional state, object storage, distributed queueing, and centralized secrets are introduced.
 
+## 🌐 Scale & distributed infrastructure
+
+Phase 29 establishes the migration boundary from the single-instance beta runtime toward distributed production infrastructure:
+
+- versioned durable state with compare-and-swap conflict protection
+- leased execution jobs with worker ownership, retry limits, expired-lease recovery, and dead-letter handling
+- bounded TTL caching behind a cache contract
+- content-addressed object storage behind an object-store contract
+- explicit backend configuration for state, queue, cache, and object storage
+- scale-topology inspection at `/api/v1/scale/topology`
+- readiness visibility that keeps the current SQLite/in-process/filesystem boundary explicit
+
+The current default remains intentionally single-instance. Horizontal scale is reported as ready only when shared transactional state, distributed queueing, shared cache, and shared object storage are configured.
+
 ## 🚀 Deployment & observability
 
 Phase 27 adds the operational boundary needed to move NEXUS toward a public beta:
@@ -432,6 +446,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Productization
 [✓] Deployment & Observability
 [✓] Public Beta
+[✓] Scale & Distributed Infrastructure
 ```
 
 ## Technology direction
