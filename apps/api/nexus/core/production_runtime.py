@@ -71,9 +71,10 @@ class ProductionRuntime:
                 existing = self._find_idempotent(idempotency_key)
                 if existing is not None:
                     raise ValueError(f"run already exists for idempotency key: {idempotency_key}")
-                self._inflight_keys.add(idempotency_key)
             if self._active >= self._policy.max_concurrent_runs:
                 raise RuntimeError("production runtime concurrency limit reached")
+            if idempotency_key:
+                self._inflight_keys.add(idempotency_key)
             self._active += 1
 
         try:
