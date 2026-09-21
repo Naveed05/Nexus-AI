@@ -462,6 +462,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Public Beta
 [✓] Scale & Distributed Infrastructure
 [✓] Advanced Agent Autonomy
+[✓] Multi-Agent Collaboration
 ```
 
 ## Technology direction
