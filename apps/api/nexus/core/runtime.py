@@ -219,10 +219,15 @@ class AgentRuntime:
 
     def get(self, run_id: UUID) -> AgentRun:
         with self._lock:
-            try:
-                return self._runs[run_id]
-            except KeyError as exc:
-                raise KeyError(f"Unknown run: {run_id}") from exc
+            run = self._runs.get(run_id)
+            if run is not None:
+                return run
+            if self._store is not None:
+                persisted = self._store.get(run_id)
+                if persisted is not None:
+                    self._runs[run_id] = persisted
+                    return persisted
+            raise KeyError(f"Unknown run: {run_id}")
 
     def control(self, run_id: UUID) -> ExecutionControl:
         with self._lock:
@@ -307,6 +312,10 @@ class AgentRuntime:
 
     def list_runs(self) -> tuple[AgentRun, ...]:
         with self._lock:
+            if self._store is not None:
+                persisted = self._store.load_all()
+                for run in persisted:
+                    self._runs[run.run_id] = run
             return tuple(self._runs.values())
 
 
