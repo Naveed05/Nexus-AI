@@ -549,3 +549,22 @@ NEXUS is intended to become a general AI work platform where a user can state a 
 ## License
 
 TBD during the productization phase.
+
+
+### 🤝 Multi-Agent Collaboration
+
+Phase 31 adds a bounded collaboration layer for specialized agents:
+
+- explicit specialist roles and capability declarations
+- deterministic capability-aware delegation
+- bounded workstream counts and dependency-aware readiness
+- versioned shared context with agent provenance
+- explicit handoff envelopes between agents
+- deterministic conflict resolution using evidence and confidence
+- escalation when competing proposals lack a decisive margin
+- supervisor orchestration that preserves human approval boundaries
+- collaboration catalog and planning APIs at `/api/v1/agents` and `/api/v1/agents/collaborate`
+- focused regression coverage for delegation, context, conflicts, supervision, and API contracts
+
+Agents can coordinate work, but cannot self-authorize policy changes or external side effects.
+
