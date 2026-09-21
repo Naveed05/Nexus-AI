@@ -231,6 +231,19 @@ These controls provide a safe foundation for multi-step autonomous execution wit
 
 NEXUS now exposes a bounded agent runtime with durable SQLite-backed run state, explicit task/run lifecycle states, cancellation, step/tool/retry budgets, structured execution telemetry, runtime status APIs, and deterministic run inspection. The runtime is designed as the control boundary for future asynchronous workers and distributed execution. Runtime persistence is configurable through `RUN_STORAGE_PATH` and defaults to `.nexus/runs.sqlite3`.
 
+### ⚙️ Production runtime integration
+
+Phase 24 establishes the production execution boundary on top of the completed runtime/model/tool foundations with:
+
+- durable production run coordination and idempotency protection
+- bounded runtime concurrency and capacity reporting
+- SQLite-backed execution jobs with deterministic claiming and completion state
+- explainable production model/tool planning before execution
+- production execution and health APIs
+- bounded runtime execution metrics suitable for operational export
+- cross-process refresh of durable run state
+- regression coverage for persistence, queue lifecycle, planning, health, and metrics
+
 ### 🧠 Memory evolution
 
 Phase 23 evolves persistent memory into a lifecycle-aware context system with:
@@ -334,7 +347,7 @@ NEXUS has progressed beyond the original kernel prototype into a multi-layer AI 
 - frontier-model capability and fallback planning foundations
 - evaluation quality gates, category aggregation, and regression detection foundations
 
-The next major engineering focus is production model/tool runtime integration and productization, followed by frontend, security, deployment, observability, and scale hardening.
+The next major engineering focus is productization and production frontend work, followed by deployment, observability, and scale hardening.
 
 ## Roadmap
 
@@ -361,6 +374,7 @@ The next major engineering focus is production model/tool runtime integration an
 [✓] Tool & Capability Evolution
 [✓] Model Intelligence
 [✓] Memory Evolution
+[✓] Production Runtime Integration
 [ ] Production Frontend
 [ ] Productization
 [ ] Deployment & Observability
