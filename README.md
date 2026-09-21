@@ -192,7 +192,20 @@ NEXUS now includes an evidence-first developer workflow with deterministic patch
 
 Developer changes are represented as immutable, reviewable artifacts before execution. High-risk patches require an exact, approved, fresh audit fingerprint.
 
-### 🚀 Deployment & observability
+### 🚀 Public Beta hardening
+
+Phase 28 is the final Version 1 hardening pass before public beta:
+
+- production beta access-key boundary
+- bounded request body size and sliding-window rate limiting
+- backup snapshot utility and recovery drill guidance
+- incident-response and operational runbook
+- final public-beta regression coverage
+- explicit migration boundary for identity, distributed state, and distributed rate limiting
+
+The beta deployment remains intentionally single-instance until shared identity, transactional state, object storage, distributed queueing, and centralized secrets are introduced.
+
+## 🚀 Deployment & observability
 
 Phase 27 adds the operational boundary needed to move NEXUS toward a public beta:
 
@@ -418,7 +431,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Production Frontend
 [✓] Productization
 [✓] Deployment & Observability
-[ ] Public Beta
+[✓] Public Beta
 ```
 
 ## Technology direction

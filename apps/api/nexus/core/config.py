@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     request_metrics_max_samples: int = 1000
     service_version: str = "0.1.0"
+    beta_access_key: str | None = None
+    rate_limit_per_minute: int = 120
+    max_request_body_bytes: int = 10 * 1024 * 1024
 
     model_config = SettingsConfigDict(
         env_file=".env",
