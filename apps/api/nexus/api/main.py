@@ -59,6 +59,13 @@ def product_template(template_id: str) -> dict:
             "objective": item.objective, "capabilities": list(item.capabilities), "risk_level": item.risk_level}
 
 
+@app.get("/api/v1/product/onboarding")
+def product_onboarding(x_user_id: str = Header(default="local-user")) -> dict:
+    user_id = x_user_id.strip() or "local-user"
+    profile = product_catalog.profile(user_id)
+    return {"steps": [{"id": "workspace", "label": "Create or select a workspace", "complete": bool(workspace_registry.list())}, {"id": "template", "label": "Start from a workflow template", "complete": True}, {"id": "execution", "label": "Run and verify a task", "complete": False}, {"id": "memory", "label": "Save useful workspace context", "complete": False}], "plan_id": profile.plan_id}
+
+
 @app.get("/api/v1/product/plans")
 def product_plans() -> list[dict]:
     return [
@@ -487,7 +494,12 @@ def production_health() -> dict:
 
 
 @app.post("/api/v1/production/tasks/execute", response_model=ExecutionResponse, status_code=200)
-def execute_production_task(payload: TaskCreate, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> ExecutionResponse:
+def execute_production_task(payload: TaskCreate, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), x_user_id: str = Header(default="local-user", alias="X-User-Id")) -> ExecutionResponse:
+    user_id = x_user_id.strip() or "local-user"
+    try:
+        product_catalog.consume_run(user_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     task = _build_task(payload)
     try:
         run, result = production_runtime.start(task, idempotency_key=idempotency_key, budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8))
