@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     file_storage_path: str = ".nexus/files"
     knowledge_index_path: str = ".nexus/knowledge/index.json"
     run_storage_path: str = ".nexus/runs.sqlite3"
+    log_level: str = "INFO"
+    request_metrics_max_samples: int = 1000
+    service_version: str = "0.1.0"
 
     model_config = SettingsConfigDict(
         env_file=".env",
