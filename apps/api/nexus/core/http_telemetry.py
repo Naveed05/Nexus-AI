@@ -8,6 +8,8 @@ from uuid import uuid4
 
 from fastapi import Request
 
+from nexus.core.metrics import service_metrics
+
 logger = logging.getLogger("nexus.http")
 if not logger.handlers:
     handler = logging.StreamHandler()
@@ -28,6 +30,7 @@ async def observe_http_request(request: Request, call_next):
         return response
     finally:
         duration_ms = (time.perf_counter() - started) * 1000
+        service_metrics.observe_request(status_code)
         logger.info(json.dumps({
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "event": "http.request",
