@@ -19,6 +19,7 @@ from nexus.core.research import ResearchEngine
 from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.production_runtime import ProductionRuntime
 from nexus.core.product import product_catalog
+from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -39,6 +40,25 @@ async def security_headers(request, call_next):
         "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     )
     return response
+@app.get("/api/v1/product/templates")
+def product_templates() -> list[dict]:
+    return [
+        {"template_id": item.template_id, "name": item.name, "description": item.description,
+         "objective": item.objective, "capabilities": list(item.capabilities), "risk_level": item.risk_level}
+        for item in list_workflow_templates()
+    ]
+
+
+@app.get("/api/v1/product/templates/{template_id}")
+def product_template(template_id: str) -> dict:
+    try:
+        item = get_workflow_template(template_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="unknown workflow template") from exc
+    return {"template_id": item.template_id, "name": item.name, "description": item.description,
+            "objective": item.objective, "capabilities": list(item.capabilities), "risk_level": item.risk_level}
+
+
 @app.get("/api/v1/product/plans")
 def product_plans() -> list[dict]:
     return [
