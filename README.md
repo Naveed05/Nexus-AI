@@ -599,3 +599,18 @@ Phase 33 evolves the Phase 32 collaboration audit into a durable control-plane r
 - collaboration audit remains observational and does not grant agents additional authority
 
 The collaboration audit database is intentionally separate from task execution state so audit retention and runtime lifecycle can evolve independently.
+
+
+### 🌍 Global Production Scale Contract
+
+Phase 35 closes the production-scale control-plane boundary for NEXUS:
+
+- explicit single, horizontal, and global deployment modes
+- deterministic readiness evaluation for distributed deployments
+- fail-closed checks for shared transactional state, queueing, cache, and object storage
+- explicit deployment region and instance identity for distributed runtimes
+- `/api/v1/scale/deployment` operational inspection endpoint
+- readiness now surfaces the scale contract instead of silently reporting local infrastructure as globally ready
+- regression coverage for local, horizontal, and global deployment modes
+
+The contract does not pretend that external PostgreSQL, Redis, or object-storage infrastructure exists when it has not been configured. A global deployment becomes ready only after the required shared backends and deployment identity are supplied.
