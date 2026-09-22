@@ -614,3 +614,17 @@ Phase 35 closes the production-scale control-plane boundary for NEXUS:
 - regression coverage for local, horizontal, and global deployment modes
 
 The contract does not pretend that external PostgreSQL, Redis, or object-storage infrastructure exists when it has not been configured. A global deployment becomes ready only after the required shared backends and deployment identity are supplied.
+
+
+### 🔎 Collaboration Audit Operations
+
+Phase 34 makes the durable collaboration audit operationally queryable without weakening its integrity boundary:
+
+- bounded event filtering by event type and actor
+- cursor-style pagination using a sequence boundary
+- operational audit statistics for event count, capacity, head sequence, and latest event time
+- integrity status exposed through a dedicated audit summary endpoint
+- API validation for invalid limits and cursor values
+- regression coverage for filtered queries, pagination, statistics, and API contracts
+
+The audit remains append-only and hash-chained. Querying and operational inspection never grant agents additional authority or mutation access.
