@@ -501,6 +501,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Phase 35 Deployment Identity Hardening
 [✓] Phase 36 Production Intelligence & Control Center
 [✓] Phase 37 Premium Frontend & Experience
+[✓] Phase 38 Interactive Agent Workspace
 ```
 
 ## Technology direction
@@ -680,3 +681,22 @@ The global production scale contract now exposes a deterministic deployment iden
 - regression coverage for identity stability and separation
 
 This identity is observational: it does not grant permissions or bypass readiness blockers.
+
+
+### 🧑‍🚀 Phase 38 — Interactive Agent Workspace
+
+Phase 38 turns the premium frontend into an operator workspace for active agent work:
+
+- dedicated Agent Workspace surface with live run inspection
+- run progress, state, step/tool/retry telemetry, metadata and failure visibility
+- safe run cancellation through the existing runtime control boundary
+- automatic live polling while an execution is active
+- recent-run queue with direct inspection
+- bounded multi-agent collaboration builder using the existing collaboration API
+- explicit specialist objectives and capability selection
+- approval-aware collaboration plan presentation before execution
+- responsive workspace layouts for desktop and mobile
+- frontend regression contracts for the interactive workspace surface
+
+The workspace remains an operator surface: it exposes execution state and prepares bounded collaboration plans without granting the browser additional agent authority.
+
