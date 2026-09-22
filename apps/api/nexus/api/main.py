@@ -254,9 +254,19 @@ def build_collaboration(payload: dict) -> dict:
 
 
 @app.get("/api/v1/agents/audit")
-def collaboration_audit_events(limit: int = 100) -> list[dict]:
+def collaboration_audit_events(
+    limit: int = 100,
+    event_type: str | None = None,
+    actor: str | None = None,
+    before_sequence: int | None = None,
+) -> list[dict]:
     try:
-        events = collaboration_audit.list(limit=limit)
+        events = collaboration_audit.list(
+            limit=limit,
+            event_type=event_type,
+            actor=actor,
+            before_sequence=before_sequence,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return [
@@ -271,6 +281,13 @@ def collaboration_audit_events(limit: int = 100) -> list[dict]:
         }
         for event in events
     ]
+
+
+@app.get("/api/v1/agents/audit/summary")
+def collaboration_audit_summary() -> dict:
+    stats = collaboration_audit.stats()
+    valid, error = collaboration_audit.verify()
+    return {**stats, "valid": valid, "error": error}
 
 
 @app.get("/api/v1/agents/audit/verify")
