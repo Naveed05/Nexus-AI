@@ -34,3 +34,31 @@ def test_frontend_has_required_navigation_surfaces() -> None:
     for section in ("overview", "workspace", "agents", "runs", "knowledge", "control-center"):
         assert 'href="#'+section+'"' in html
         assert 'id="'+section+'"' in html
+
+def test_agent_workspace_surface_contract_is_present() -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    html = response.text
+    for marker in (
+        'href="#agent-workspace"',
+        'id="agent-workspace"',
+        'id="live-run-title"',
+        'id="run-timeline"',
+        'id="cancel-run-btn"',
+        'id="collab-objective"',
+        'id="build-collab-btn"',
+        'id="workspace-run-list"',
+    ):
+        assert marker in html
+
+def test_agent_workspace_assets_expose_live_control_contract() -> None:
+    script = client.get("/web/app.js")
+    styles = client.get("/web/styles.css")
+    assert script.status_code == 200
+    assert "/api/v1/runs/" in script.text
+    assert "/api/v1/agents/collaborate" in script.text
+    assert "/cancel" in script.text
+    assert "inspectRun" in script.text
+    assert styles.status_code == 200
+    assert ".workspace-command-grid" in styles.text
+    assert ".run-timeline" in styles.text
