@@ -188,7 +188,6 @@ def scale_topology() -> dict:
     return topology_payload(topology)
 
 
-@app.get("/api/v1/ready")
 def _scale_deployment():
     topology = build_scale_topology(
         state_backend=settings.state_backend,
