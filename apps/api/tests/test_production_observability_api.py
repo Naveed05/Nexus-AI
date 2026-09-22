@@ -22,3 +22,12 @@ def test_request_id_is_returned_and_can_be_provided() -> None:
 
     supplied = client.get("/api/v1/health", headers={"X-Request-ID": "test-request-123"})
     assert supplied.headers["X-Request-ID"] == "test-request-123"
+
+
+def test_scale_deployment_contract_is_exposed():
+    response = client.get("/api/v1/scale/deployment")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "single"
+    assert body["ready"] is True
+    assert body["topology"]["horizontal_scaling_ready"] is False
