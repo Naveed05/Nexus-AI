@@ -19,3 +19,17 @@ def test_collaboration_api_builds_workstreams():
     assert response.status_code == 200
     assert len(response.json()["workstreams"]) == 2
     assert response.json()["approval_required"] is True
+
+
+def test_collaboration_audit_summary_and_filters():
+    response = client.get("/api/v1/agents/audit", params={"event_type": "plan_created", "limit": 10})
+    assert response.status_code == 200
+    assert all(item["event_type"] == "plan_created" for item in response.json())
+
+    summary = client.get("/api/v1/agents/audit/summary")
+    assert summary.status_code == 200
+    body = summary.json()
+    assert body["event_count"] >= 1
+    assert body["capacity"] >= body["event_count"]
+    assert body["head_sequence"] == body["event_count"]
+    assert body["valid"] is True
