@@ -21,6 +21,7 @@
       <a href="#overview" class="nav-item active" data-nav="overview"><span>⌂</span> Overview</a>
       <a href="#workspace" class="nav-item" data-nav="workspace"><span>✦</span> Workspace</a>
       <a href="#agents" class="nav-item" data-nav="agents"><span>◈</span> Agents</a>
+      <a href="#agent-workspace" class="nav-item" data-nav="agent-workspace"><span>⌁</span> Agent workspace</a>
       <a href="#runs" class="nav-item" data-nav="runs"><span>↯</span> Executions</a>
       <a href="#knowledge" class="nav-item" data-nav="knowledge"><span>◉</span> Knowledge</a>
       <a href="#control-center" class="nav-item" data-nav="control-center"><span>◌</span> Control center</a>
@@ -102,6 +103,34 @@
         <section class="panel"><div class="section-head"><div><h2>Current workspace context</h2><span id="knowledge-summary" class="muted">Loading…</span></div></div><div id="knowledge-detail" class="knowledge-detail"></div></section>
       </section>
 
+      <section id="agent-workspace" class="view-section">
+        <div class="page-intro"><p class="eyebrow">AGENT WORKSPACE</p><h2>Operate the work, not just observe it.</h2><p>Follow a run in real time, inspect its execution state, cancel safely, and compose bounded multi-agent collaboration from one workspace.</p></div>
+        <div class="workspace-command-grid">
+          <section class="panel live-run-panel">
+            <div class="section-head"><div><p class="eyebrow">LIVE EXECUTION</p><h2 id="live-run-title">Select a run</h2><span id="live-run-subtitle" class="muted">Choose an execution from the list to inspect it.</span></div><div class="run-actions"><span id="live-run-status" class="status-pill">Idle</span><button id="cancel-run-btn" class="ghost" disabled>Cancel run</button></div></div>
+            <div class="run-progress"><div class="progress-track"><span id="run-progress-bar"></span></div><div class="progress-labels"><span id="run-progress-phase">Waiting</span><span id="run-progress-count">0 steps</span></div></div>
+            <div id="run-timeline" class="run-timeline"><div class="empty">Select a run to see its execution timeline.</div></div>
+          </section>
+          <section class="panel run-inspector">
+            <div class="section-head"><div><p class="eyebrow">INSPECTOR</p><h2>Run details</h2></div><button id="open-run-result" class="ghost" disabled>Open result</button></div>
+            <div id="run-detail-grid" class="detail-grid"><div class="empty">No run selected.</div></div>
+            <div class="inspector-output" id="run-inspector-output">Execution metadata will appear here.</div>
+          </section>
+        </div>
+        <div class="workspace-command-grid lower">
+          <section class="panel collaboration-builder">
+            <div class="section-head"><div><p class="eyebrow">COLLABORATION BUILDER</p><h2>Compose a specialist team</h2><span class="muted">Bounded delegation with explicit approval.</span></div><span class="live-badge">SAFE BY DESIGN</span></div>
+            <input id="collab-objective" class="full-input" maxlength="5000" placeholder="What should the team accomplish?">
+            <div id="collab-request-list" class="collab-request-list"></div>
+            <div class="builder-actions"><button id="add-collab-request" class="ghost">＋ Add specialist</button><button id="build-collab-btn" class="primary small-primary">Build collaboration plan <b>→</b></button></div>
+            <div id="collab-result" class="collab-result"><div class="empty">Your plan will appear here before any execution is authorized.</div></div>
+          </section>
+          <section class="panel run-queue">
+            <div class="section-head"><div><p class="eyebrow">RUN QUEUE</p><h2>Recent work</h2><span class="muted">Click any run to inspect it live.</span></div><button id="workspace-refresh" class="ghost">Refresh</button></div>
+            <div id="workspace-run-list"></div>
+          </section>
+        </div>
+      </section>
       <section id="control-center" class="view-section">
         <div class="page-intro"><p class="eyebrow">CONTROL CENTER</p><h2>Production intelligence at a glance.</h2><p>Deployment identity, runtime health, agents, models, tools, and audit integrity — one operational surface.</p></div>
         <section class="panel control-panel"><div class="control-hero"><div><span id="control-status" class="status-pill">Loading</span><h2 id="control-headline">System telemetry</h2><p id="control-summary" class="muted">Aggregating operational surfaces…</p></div><div class="control-clock"><small>LAST SYNC</small><b id="control-sync">—</b></div></div>
