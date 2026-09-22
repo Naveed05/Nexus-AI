@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+from pathlib import Path
+import sqlite3
 from threading import RLock
 from typing import Any
 
@@ -20,14 +22,34 @@ class CollaborationAuditEvent:
 
 
 class CollaborationAuditLog:
-    """Append-only, hash-chained collaboration events for inspection and replay."""
+    """Durable, append-only, hash-chained collaboration events."""
 
-    def __init__(self, max_events: int = 2048) -> None:
+    def __init__(self, path: str = ":memory:", max_events: int = 2048) -> None:
         if max_events < 1:
             raise ValueError("max_events must be at least 1")
+        self.path = path
         self.max_events = max_events
-        self._events: list[CollaborationAuditEvent] = []
+        if path != ":memory:":
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
+        with self._connect() as conn:
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS collaboration_audit (
+                    sequence INTEGER PRIMARY KEY,
+                    event_type TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    previous_hash TEXT NOT NULL,
+                    event_hash TEXT NOT NULL UNIQUE
+                )"""
+            )
+            conn.commit()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        return conn
 
     @staticmethod
     def _canonical(
@@ -52,6 +74,18 @@ class CollaborationAuditLog:
             default=str,
         )
 
+    @classmethod
+    def _from_row(cls, row: sqlite3.Row) -> CollaborationAuditEvent:
+        return CollaborationAuditEvent(
+            sequence=int(row["sequence"]),
+            event_type=row["event_type"],
+            actor=row["actor"],
+            payload=json.loads(row["payload"]),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            previous_hash=row["previous_hash"],
+            event_hash=row["event_hash"],
+        )
+
     def append(self, event_type: str, actor: str, payload: dict[str, Any]) -> CollaborationAuditEvent:
         event_type = event_type.strip()
         actor = actor.strip()
@@ -59,65 +93,74 @@ class CollaborationAuditLog:
             raise ValueError("event_type and actor cannot be empty")
         if not isinstance(payload, dict):
             raise ValueError("payload must be an object")
-        with self._lock:
-            if len(self._events) >= self.max_events:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT sequence, event_hash FROM collaboration_audit ORDER BY sequence DESC LIMIT 1"
+            ).fetchone()
+            if row is not None and int(row["sequence"]) >= self.max_events:
                 raise ValueError("audit log capacity exceeded")
-            sequence = len(self._events) + 1
+            sequence = int(row["sequence"]) + 1 if row is not None else 1
             created_at = datetime.now(timezone.utc)
-            previous_hash = self._events[-1].event_hash if self._events else "GENESIS"
+            previous_hash = row["event_hash"] if row is not None else "GENESIS"
             canonical = self._canonical(
-                sequence,
-                event_type,
-                actor,
-                payload,
-                created_at.isoformat(),
-                previous_hash,
+                sequence, event_type, actor, payload, created_at.isoformat(), previous_hash
             )
             event_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-            event = CollaborationAuditEvent(
-                sequence,
-                event_type,
-                actor,
-                dict(payload),
-                created_at,
-                previous_hash,
-                event_hash,
+            conn.execute(
+                """INSERT INTO collaboration_audit
+                (sequence, event_type, actor, payload, created_at, previous_hash, event_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    sequence,
+                    event_type,
+                    actor,
+                    json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str),
+                    created_at.isoformat(),
+                    previous_hash,
+                    event_hash,
+                ),
             )
-            self._events.append(event)
-            return event
+            conn.commit()
+            return CollaborationAuditEvent(
+                sequence, event_type, actor, dict(payload), created_at, previous_hash, event_hash
+            )
 
     def list(self, limit: int = 100) -> tuple[CollaborationAuditEvent, ...]:
         if limit < 1:
             raise ValueError("limit must be at least 1")
-        with self._lock:
-            return tuple(self._events[-min(limit, self.max_events):])
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM collaboration_audit ORDER BY sequence DESC LIMIT ?", (min(limit, self.max_events),)
+            ).fetchall()
+        return tuple(self._from_row(row) for row in reversed(rows))
 
     def verify(self) -> tuple[bool, str | None]:
-        with self._lock:
-            previous = "GENESIS"
-            for expected_sequence, event in enumerate(self._events, start=1):
-                if event.sequence != expected_sequence:
-                    return False, f"sequence mismatch at event {event.sequence}"
-                if event.previous_hash != previous:
-                    return False, f"hash-chain mismatch at event {event.sequence}"
-                canonical = self._canonical(
-                    event.sequence,
-                    event.event_type,
-                    event.actor,
-                    event.payload,
-                    event.created_at.isoformat(),
-                    event.previous_hash,
-                )
-                expected_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-                if event.event_hash != expected_hash:
-                    return False, f"event hash mismatch at event {event.sequence}"
-                previous = event.event_hash
-            return True, None
+        events = self.list(limit=self.max_events)
+        previous = "GENESIS"
+        for expected_sequence, event in enumerate(events, start=1):
+            if event.sequence != expected_sequence:
+                return False, f"sequence mismatch at event {event.sequence}"
+            if event.previous_hash != previous:
+                return False, f"hash-chain mismatch at event {event.sequence}"
+            canonical = self._canonical(
+                event.sequence,
+                event.event_type,
+                event.actor,
+                event.payload,
+                event.created_at.isoformat(),
+                event.previous_hash,
+            )
+            expected_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            if event.event_hash != expected_hash:
+                return False, f"event hash mismatch at event {event.sequence}"
+            previous = event.event_hash
+        return True, None
 
     def clear(self) -> None:
         """Test/support hook; production callers should treat the log as append-only."""
-        with self._lock:
-            self._events.clear()
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM collaboration_audit")
+            conn.commit()
 
 
 collaboration_audit = CollaborationAuditLog()

@@ -27,7 +27,7 @@ from nexus.core.scale import build_scale_topology, topology_payload
 from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
 from nexus.core.multi_agent import DelegationRequest, default_agent_registry
 from nexus.core.supervisor import AgentSupervisor
-from nexus.core.collaboration_audit import collaboration_audit
+from nexus.core.collaboration_audit import CollaborationAuditLog
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -133,6 +133,7 @@ research_engine = ResearchEngine()
 agent_runtime = AgentRuntime(settings.run_storage_path,)
 production_runtime = ProductionRuntime(store_path=settings.run_storage_path, engine=engine)
 rate_limiter = SlidingWindowRateLimiter(limit=settings.rate_limit_per_minute)
+collaboration_audit = CollaborationAuditLog(settings.collaboration_audit_storage_path)
 
 
 def _workspace_payload(workspace) -> dict:

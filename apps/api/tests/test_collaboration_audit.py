@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from nexus.core.collaboration_audit import CollaborationAuditLog
 
 
@@ -8,6 +10,15 @@ def test_audit_log_builds_and_verifies_hash_chain():
     assert first.sequence == 1
     assert second.previous_hash == first.event_hash
     assert log.verify() == (True, None)
+
+
+def test_audit_log_persists_across_instances(tmp_path: Path):
+    path = str(tmp_path / "audit.sqlite3")
+    first = CollaborationAuditLog(path)
+    event = first.append("plan_created", "supervisor", {"objective": "demo"})
+    second = CollaborationAuditLog(path)
+    assert second.list() == (event,)
+    assert second.verify() == (True, None)
 
 
 def test_audit_log_is_bounded():
@@ -29,3 +40,14 @@ def test_audit_log_rejects_empty_identity():
         assert "event_type" in str(exc)
     else:
         raise AssertionError("expected empty event type to fail")
+
+
+def test_audit_log_detects_tampering(tmp_path: Path):
+    path = str(tmp_path / "audit.sqlite3")
+    log = CollaborationAuditLog(path)
+    log.append("plan_created", "supervisor", {"objective": "demo"})
+    import sqlite3
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE collaboration_audit SET payload = ? WHERE sequence = 1", ('{"objective":"tampered"}',))
+        conn.commit()
+    assert log.verify()[0] is False

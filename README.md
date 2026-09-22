@@ -584,3 +584,18 @@ Phase 32 hardens the multi-agent layer with an append-only collaboration audit b
 - explicit separation between collaboration coordination and privileged external side effects
 
 Phase 32 preserves the human-approval boundary: auditability does not grant agents additional authority.
+
+
+### 🧾 Durable Collaboration Audit
+
+Phase 33 evolves the Phase 32 collaboration audit into a durable control-plane record:
+
+- SQLite-backed append-only audit persistence
+- hash-chain continuity survives API restarts
+- tamper detection by deterministic event re-hashing
+- configurable audit storage path
+- bounded audit capacity with explicit overflow rejection
+- regression coverage for restart persistence and tamper detection
+- collaboration audit remains observational and does not grant agents additional authority
+
+The collaboration audit database is intentionally separate from task execution state so audit retention and runtime lifecycle can evolve independently.
