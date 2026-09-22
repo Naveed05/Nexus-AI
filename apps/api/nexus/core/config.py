@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     cache_backend: str = "memory"
     object_storage_backend: str = "filesystem"
     queue_backend: str = "sqlite"
+    deployment_mode: str = "single"
+    deployment_region: str = ""
+    instance_id: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
