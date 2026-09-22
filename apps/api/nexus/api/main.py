@@ -29,6 +29,7 @@ from nexus.core.workflow_templates import get_workflow_template, list_workflow_t
 from nexus.core.multi_agent import DelegationRequest, default_agent_registry
 from nexus.core.supervisor import AgentSupervisor
 from nexus.core.collaboration_audit import CollaborationAuditLog
+from nexus.core.control_center import build_control_center_summary
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -234,6 +235,43 @@ def observability_summary() -> dict:
 def metrics() -> Response:
     return Response(service_metrics.prometheus(settings.app_name), media_type="text/plain; version=0.0.4")
 
+
+
+@app.get("/api/v1/control-center/summary")
+def control_center_summary() -> dict:
+    deployment = deployment_payload(_scale_deployment())
+    runtime = production_runtime.health()
+    agents = list_agents()
+    audit_stats = collaboration_audit.stats()
+    audit_valid, audit_error = collaboration_audit.verify()
+    audit = {**audit_stats, "valid": audit_valid, "error": audit_error}
+    models = list_models()
+    tools = []
+    for contract in tool_registry.contracts():
+        snapshot = tool_executor.health(contract["name"])
+        tools.append({
+            **contract,
+            "health": {
+                "healthy": snapshot.healthy,
+                "executions": snapshot.executions,
+                "successes": snapshot.successes,
+                "failures": snapshot.failures,
+                "consecutive_failures": snapshot.consecutive_failures,
+                "last_error": snapshot.last_error,
+                "last_success_at": snapshot.last_success_at.isoformat() if snapshot.last_success_at else None,
+                "disabled_until": snapshot.disabled_until.isoformat() if snapshot.disabled_until else None,
+            },
+        })
+    runs = list_agent_runs()
+    return build_control_center_summary(
+        deployment=deployment,
+        runtime=runtime,
+        agents=agents,
+        audit=audit,
+        models=models,
+        tools=tools,
+        runs=runs,
+    )
 
 
 @app.get("/api/v1/agents")
