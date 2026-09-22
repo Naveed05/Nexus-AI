@@ -391,6 +391,18 @@ The verifier checks observable properties such as:
 
 Research outputs must be backed by retrieved evidence before they can pass the grounding checks.
 
+### 🎛️ Production Intelligence & Control Center
+
+Phase 36 adds a unified operational control surface across the existing production runtime:
+
+- `/api/v1/control-center/summary` aggregates deployment identity, runtime health, agents, models, tools, audit integrity, and recent execution state
+- frontend control-center cards expose live operational status without browser-side credentials
+- execution timeline surfaces recent runs, step progress, and tool usage
+- audit integrity is surfaced as a verified operational signal
+- deployment readiness and scale-contract blockers are visible from the same surface
+- bounded polling keeps the dashboard current without introducing a new client-side dependency
+- focused API and frontend regression coverage protects the control-center contract
+
 ## Engineering principles
 
 NEXUS is being built around several principles:
@@ -468,6 +480,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Collaboration Audit Operations
 [✓] Global Production Scale Contract
 [✓] Phase 35 Deployment Identity Hardening
+[✓] Phase 36 Production Intelligence & Control Center
 ```
 
 ## Technology direction
