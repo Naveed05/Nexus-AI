@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from typing import Any
 
 from nexus.core.scale import ScaleTopology
@@ -14,6 +16,8 @@ class ScaleDeployment:
     topology: ScaleTopology
     ready: bool
     blockers: tuple[str, ...]
+    contract_version: str
+    deployment_fingerprint: str
 
 
 def build_scale_deployment(*, mode: str, region: str, instance_id: str, topology: ScaleTopology) -> ScaleDeployment:
@@ -35,7 +39,23 @@ def build_scale_deployment(*, mode: str, region: str, instance_id: str, topology
             blockers.append("instance identity is required for distributed runtime")
 
     blockers = list(dict.fromkeys(blockers))
-    return ScaleDeployment(mode, region, instance_id, topology, not blockers, tuple(blockers))
+    contract_version = "phase-35.v1"
+    fingerprint_payload = {
+        "contract_version": contract_version,
+        "mode": mode,
+        "region": region,
+        "instance_id": instance_id,
+        "state_backend": topology.state_backend,
+        "queue_backend": topology.queue_backend,
+        "cache_backend": topology.cache_backend,
+        "object_storage_backend": topology.object_storage_backend,
+    }
+    canonical = json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode()
+    fingerprint = hashlib.sha256(canonical).hexdigest()
+    return ScaleDeployment(
+        mode, region, instance_id, topology, not blockers, tuple(blockers),
+        contract_version, fingerprint,
+    )
 
 
 def deployment_payload(deployment: ScaleDeployment) -> dict[str, Any]:
@@ -45,6 +65,8 @@ def deployment_payload(deployment: ScaleDeployment) -> dict[str, Any]:
         "instance_id": deployment.instance_id,
         "ready": deployment.ready,
         "blockers": list(deployment.blockers),
+        "contract_version": deployment.contract_version,
+        "deployment_fingerprint": deployment.deployment_fingerprint,
         "topology": {
             "state_backend": deployment.topology.state_backend,
             "queue_backend": deployment.topology.queue_backend,
