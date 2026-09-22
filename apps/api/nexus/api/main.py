@@ -27,6 +27,7 @@ from nexus.core.scale import build_scale_topology, topology_payload
 from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
 from nexus.core.multi_agent import DelegationRequest, default_agent_registry
 from nexus.core.supervisor import AgentSupervisor
+from nexus.core.collaboration_audit import collaboration_audit
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -217,7 +218,33 @@ def build_collaboration(payload: dict) -> dict:
         result = AgentSupervisor().build_plan(objective, requests)
     except (ValueError, LookupError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"objective": result.plan.objective, "workstreams": [{"workstream_id": str(w.workstream_id), "objective": w.objective, "agent_id": w.agent_id, "dependencies": [str(d) for d in w.dependencies], "status": w.status} for w in result.plan.workstreams], "approval_required": result.approval_required, "rationale": list(result.rationale)}
+    collaboration_audit.append("plan_created", "supervisor", {"objective": result.plan.objective, "workstream_count": len(result.plan.workstreams), "approval_required": result.approval_required})\n    return {"objective": result.plan.objective, "workstreams": [{"workstream_id": str(w.workstream_id), "objective": w.objective, "agent_id": w.agent_id, "dependencies": [str(d) for d in w.dependencies], "status": w.status} for w in result.plan.workstreams], "approval_required": result.approval_required, "rationale": list(result.rationale)}
+
+
+@app.get("/api/v1/agents/audit")
+def collaboration_audit_events(limit: int = 100) -> list[dict]:
+    try:
+        events = collaboration_audit.list(limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return [
+        {
+            "sequence": event.sequence,
+            "event_type": event.event_type,
+            "actor": event.actor,
+            "payload": event.payload,
+            "created_at": event.created_at.isoformat(),
+            "previous_hash": event.previous_hash,
+            "event_hash": event.event_hash,
+        }
+        for event in events
+    ]
+
+
+@app.get("/api/v1/agents/audit/verify")
+def verify_collaboration_audit() -> dict:
+    valid, error = collaboration_audit.verify()
+    return {"valid": valid, "error": error, "event_count": len(collaboration_audit.list(limit=2048))}
 
 
 @app.get("/api/v1/tools")

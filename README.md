@@ -569,3 +569,18 @@ Phase 31 adds a bounded collaboration layer for specialized agents:
 
 Agents can coordinate work, but cannot self-authorize policy changes or external side effects.
 
+
+
+### 🧾 Collaboration Audit & Replay
+
+Phase 32 hardens the multi-agent layer with an append-only collaboration audit boundary:
+
+- hash-chained collaboration events with deterministic canonicalization
+- bounded audit storage with explicit capacity enforcement
+- tamper detection through full-chain verification
+- collaboration-plan events recorded at the API boundary
+- read-only audit inspection and integrity verification endpoints at `/api/v1/agents/audit`
+- focused regression coverage for hash chaining, bounds, and validation
+- explicit separation between collaboration coordination and privileged external side effects
+
+Phase 32 preserves the human-approval boundary: auditability does not grant agents additional authority.
