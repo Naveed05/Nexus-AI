@@ -132,14 +132,56 @@ class CollaborationAuditLog:
                 sequence, event_type, actor, dict(payload), created_at, previous_hash, event_hash
             )
 
-    def list(self, limit: int = 100) -> tuple[CollaborationAuditEvent, ...]:
+    def list(
+        self,
+        limit: int = 100,
+        *,
+        event_type: str | None = None,
+        actor: str | None = None,
+        before_sequence: int | None = None,
+    ) -> tuple[CollaborationAuditEvent, ...]:
+        """Return validated audit events in chronological order within a bounded page."""
         if limit < 1:
             raise ValueError("limit must be at least 1")
+        normalized_event_type = event_type.strip() if event_type is not None else None
+        normalized_actor = actor.strip() if actor is not None else None
+        if event_type is not None and not normalized_event_type:
+            raise ValueError("event_type cannot be empty")
+        if actor is not None and not normalized_actor:
+            raise ValueError("actor cannot be empty")
+        if before_sequence is not None and before_sequence < 1:
+            raise ValueError("before_sequence must be at least 1")
+        clauses: list[str] = []
+        params: list[Any] = []
+        if normalized_event_type is not None:
+            clauses.append("event_type = ?")
+            params.append(normalized_event_type)
+        if normalized_actor is not None:
+            clauses.append("actor = ?")
+            params.append(normalized_actor)
+        if before_sequence is not None:
+            clauses.append("sequence < ?")
+            params.append(before_sequence)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(min(limit, self.max_events))
         with self._lock, self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM collaboration_audit ORDER BY sequence DESC LIMIT ?", (min(limit, self.max_events),)
+                f"SELECT * FROM collaboration_audit{where} ORDER BY sequence DESC LIMIT ?", params
             ).fetchall()
         return tuple(self._from_row(row) for row in reversed(rows))
+
+    def stats(self) -> dict[str, Any]:
+        """Return bounded operational metadata without exposing storage internals."""
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS event_count, MAX(sequence) AS head_sequence, MAX(created_at) AS latest_created_at FROM collaboration_audit"
+            ).fetchone()
+        return {
+            "event_count": int(row["event_count"]),
+            "capacity": self.max_events,
+            "head_sequence": int(row["head_sequence"] or 0),
+            "latest_created_at": row["latest_created_at"],
+        }
 
     def verify(self) -> tuple[bool, str | None]:
         events = self.list(limit=self.max_events)
