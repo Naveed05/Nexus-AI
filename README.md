@@ -403,6 +403,25 @@ Phase 36 adds a unified operational control surface across the existing producti
 - bounded polling keeps the dashboard current without introducing a new client-side dependency
 - focused API and frontend regression coverage protects the control-center contract
 
+### ✨ Phase 37 — Premium Frontend & Experience
+
+Phase 37 transforms the existing frontend into a production-grade NEXUS operator experience without introducing a heavyweight client dependency:
+
+- responsive application shell with persistent navigation and mobile navigation
+- goal-first command surface for starting verified work
+- dedicated Overview, Workspace, Agents, Executions, Knowledge, and Control Center surfaces
+- live runtime telemetry, execution history, agent roster, model catalog, and capability visibility
+- workspace files and persistent memory workflows integrated with the existing APIs
+- verified-result presentation with grounding and tool-call metadata
+- command palette with keyboard navigation and direct surface routing
+- dark/light appearance preference persisted locally
+- polished loading, empty, error, degraded, and success states
+- responsive layouts for desktop, tablet, and mobile
+- no external frontend framework or client-side credentials required
+- frontend contract tests covering the major navigation and interaction surfaces
+
+The design goal is a focused AI work console rather than a generic chat interface: intent, orchestration, execution, evidence, verification, and operational control remain visible throughout the experience.
+
 ## Engineering principles
 
 NEXUS is being built around several principles:
@@ -481,6 +500,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Global Production Scale Contract
 [✓] Phase 35 Deployment Identity Hardening
 [✓] Phase 36 Production Intelligence & Control Center
+[✓] Phase 37 Premium Frontend & Experience
 ```
 
 ## Technology direction
