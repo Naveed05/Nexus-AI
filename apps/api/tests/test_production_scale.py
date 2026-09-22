@@ -29,3 +29,20 @@ def test_horizontal_shared_deployment_is_ready():
     topology = build_scale_topology(state_backend="postgres", queue_backend="redis", cache_backend="redis", object_storage_backend="s3")
     deployment = build_scale_deployment(mode="horizontal", region="ap-south-1", instance_id="api-1", topology=topology)
     assert deployment.ready is True
+
+
+def test_scale_deployment_has_stable_identity():
+    topology = build_scale_topology(state_backend="postgres", queue_backend="redis", cache_backend="redis", object_storage_backend="s3")
+    first = build_scale_deployment(mode="global", region="ap-south-1", instance_id="api-1", topology=topology)
+    second = build_scale_deployment(mode="global", region="ap-south-1", instance_id="api-1", topology=topology)
+    assert first.contract_version == "phase-35.v1"
+    assert len(first.deployment_fingerprint) == 64
+    assert first.deployment_fingerprint == second.deployment_fingerprint
+    assert deployment_payload(first)["deployment_fingerprint"] == first.deployment_fingerprint
+
+
+def test_scale_deployment_identity_changes_with_instance():
+    topology = build_scale_topology(state_backend="postgres", queue_backend="redis", cache_backend="redis", object_storage_backend="s3")
+    first = build_scale_deployment(mode="horizontal", region="ap-south-1", instance_id="api-1", topology=topology)
+    second = build_scale_deployment(mode="horizontal", region="ap-south-1", instance_id="api-2", topology=topology)
+    assert first.deployment_fingerprint != second.deployment_fingerprint
