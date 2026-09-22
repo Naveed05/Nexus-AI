@@ -628,3 +628,17 @@ Phase 34 makes the durable collaboration audit operationally queryable without w
 - regression coverage for filtered queries, pagination, statistics, and API contracts
 
 The audit remains append-only and hash-chained. Querying and operational inspection never grant agents additional authority or mutation access.
+
+
+### 🧭 Phase 35 Deployment Identity Hardening
+
+The global production scale contract now exposes a deterministic deployment identity:
+
+- versioned scale contract (phase-35.v1)
+- SHA-256 deployment fingerprint derived from deployment mode, region, instance identity, and backend topology
+- stable fingerprints for identical deployment configurations
+- distinct fingerprints when distributed instance identity changes
+- fingerprint surfaced through the scale deployment and readiness payloads
+- regression coverage for identity stability and separation
+
+This identity is observational: it does not grant permissions or bypass readiness blockers.
