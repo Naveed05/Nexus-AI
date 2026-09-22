@@ -463,6 +463,11 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Scale & Distributed Infrastructure
 [✓] Advanced Agent Autonomy
 [✓] Multi-Agent Collaboration
+[✓] Collaboration Audit & Replay
+[✓] Durable Collaboration Audit
+[✓] Collaboration Audit Operations
+[✓] Global Production Scale Contract
+[✓] Phase 35 Deployment Identity Hardening
 ```
 
 ## Technology direction
