@@ -51,3 +51,35 @@ def test_audit_log_detects_tampering(tmp_path: Path):
         conn.execute("UPDATE collaboration_audit SET payload = ? WHERE sequence = 1", ('{"objective":"tampered"}',))
         conn.commit()
     assert log.verify()[0] is False
+
+
+def test_audit_log_supports_filtered_cursor_queries(tmp_path: Path):
+    log = CollaborationAuditLog(str(tmp_path / "audit.sqlite3"))
+    log.append("plan_created", "supervisor", {"n": 1})
+    log.append("conflict_resolved", "supervisor", {"n": 2})
+    log.append("plan_created", "reviewer", {"n": 3})
+
+    assert [event.sequence for event in log.list(event_type="plan_created")] == [1, 3]
+    assert [event.sequence for event in log.list(actor="supervisor")] == [1, 2]
+    assert [event.sequence for event in log.list(before_sequence=3)] == [1, 2]
+    assert [event.sequence for event in log.list(limit=1)] == [3]
+
+
+def test_audit_log_rejects_invalid_query_bounds():
+    log = CollaborationAuditLog()
+    try:
+        log.list(before_sequence=0)
+    except ValueError as exc:
+        assert "before_sequence" in str(exc)
+    else:
+        raise AssertionError("expected invalid cursor to fail")
+
+
+def test_audit_log_reports_operational_stats():
+    log = CollaborationAuditLog(max_events=4)
+    log.append("plan_created", "supervisor", {})
+    stats = log.stats()
+    assert stats["event_count"] == 1
+    assert stats["capacity"] == 4
+    assert stats["head_sequence"] == 1
+    assert stats["latest_created_at"]
