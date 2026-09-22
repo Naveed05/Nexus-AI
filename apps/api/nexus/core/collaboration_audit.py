@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import sqlite3
 from threading import RLock
+import tempfile
 from typing import Any
 
 
@@ -29,7 +30,13 @@ class CollaborationAuditLog:
             raise ValueError("max_events must be at least 1")
         self.path = path
         self.max_events = max_events
-        if path != ":memory:":
+        if path == ":memory:":
+            fd, ephemeral_path = tempfile.mkstemp(prefix="nexus-audit-", suffix=".sqlite3")
+            Path(ephemeral_path).unlink(missing_ok=True)
+            import os
+            os.close(fd)
+            self.path = ephemeral_path
+        else:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
         with self._connect() as conn:
