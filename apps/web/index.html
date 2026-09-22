@@ -1,1 +1,122 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="NEXUS AI — verified AI work platform"><title>NEXUS AI</title><link rel="manifest" href="/web/manifest.webmanifest"><meta name="theme-color" content="#070a12"><link rel="stylesheet" href="/web/styles.css"></head><body><div id="app"><header class="topbar"><a class="brand" href="/"><span class="brand-mark">N</span><span>NEXUS AI</span></a><div class="topbar-status"><span class="status-dot"></span><span id="connection-status">Connecting</span></div></header><main class="shell"><section class="hero"><div><p class="eyebrow">AI WORK PLATFORM</p><h1>Give NEXUS a goal.<br><span>Make it prove the result.</span></h1><p class="hero-copy">Plan, route, execute and verify real work from one focused workspace.</p></div><div class="hero-badge"><strong id="model-count">—</strong><span>models available</span></div></section><section class="workspace-grid"><article class="panel task-panel"><div class="panel-heading"><div><p class="eyebrow">EXECUTE</p><h2>What should NEXUS do?</h2></div><span class="kbd">⌘ ↵</span></div><textarea id="task-input" maxlength="20000" placeholder="e.g. Analyze this dataset and explain the three biggest revenue drivers."></textarea><div class="task-options"><input id="context-input" type="text" placeholder="Optional context" maxlength="5000"><select id="risk-input" aria-label="Risk level"><option value="low">Low risk</option><option value="medium">Medium risk</option><option value="high">High risk</option></select></div><button id="execute-btn" class="primary">Run with NEXUS <span>→</span></button><p id="task-error" class="error" role="alert"></p></article><aside class="panel status-panel"><div class="panel-heading"><div><p class="eyebrow">SYSTEM</p><h2>Runtime health</h2></div><span id="health-pill" class="pill">Checking</span></div><div class="metric"><span>Active runs</span><strong id="active-runs">—</strong></div><div class="metric"><span>Capacity</span><strong id="capacity">—</strong></div><div class="metric"><span>Completed</span><strong id="completed-runs">—</strong></div><div class="metric"><span>Failed</span><strong id="failed-runs">—</strong></div></aside></section><section class="panel workspace-panel"><div class="panel-heading"><div><p class="eyebrow">WORKSPACE</p><h2>Context & files</h2></div><button id="new-workspace-btn" class="ghost">New workspace</button></div><div class="workspace-controls"><select id="workspace-select" aria-label="Workspace"><option value="">No workspace selected</option></select><label class="upload"><input id="file-input" type="file"><span>Upload file</span></label></div><p id="workspace-status" class="helper">Create a workspace to attach context to your work.</p><div id="file-list" class="file-list"></div></section><section class="panel product-panel"><div class="panel-heading"><div><p class="eyebrow">PRODUCT</p><h2>Your NEXUS workspace</h2></div><span id="plan-pill" class="pill">Loading</span></div><div class="usage-grid"><div><span>Runs</span><strong id="runs-usage">—</strong></div><div><span>Files</span><strong id="files-usage">—</strong></div><div><span>Resets</span><strong id="reset-date">—</strong></div></div><div class="template-heading"><p class="eyebrow">QUICK START</p><h3>Workflow templates</h3></div><div id="template-grid" class="template-grid"></div></section><section class="panel intelligence-panel"><div class="panel-heading"><div><p class="eyebrow">INTELLIGENCE</p><h2>Models & capabilities</h2></div><span class="pill">Live catalog</span></div><div id="model-grid" class="model-grid"></div><div id="capability-list" class="capability-list"></div></section><section class="panel control-panel" id="control-center-panel"><div class="panel-heading"><div><p class="eyebrow">CONTROL CENTER</p><h2>Production intelligence</h2></div><span id="control-status" class="pill">Loading</span></div><div class="control-grid"><div class="control-card"><span>Active runs</span><strong id="control-run-count">—</strong><small id="control-run-detail">—</small></div><div class="control-card"><span>Agents</span><strong id="control-agent-count">—</strong><small id="control-agent-detail">—</small></div><div class="control-card"><span>Models</span><strong id="control-model-count">—</strong><small id="control-model-detail">—</small></div><div class="control-card"><span>Tools</span><strong id="control-tool-count">—</strong><small id="control-tool-detail">—</small></div></div><div class="control-sections"><div><p class="eyebrow">DEPLOYMENT</p><div id="control-deployment" class="control-list"></div></div><div><p class="eyebrow">AUDIT INTEGRITY</p><div id="control-audit" class="control-list"></div></div></div><div><p class="eyebrow">EXECUTION TIMELINE</p><div id="control-timeline" class="control-timeline"></div></div></section><section class="panel memory-panel"><div class="panel-heading"><div><p class="eyebrow">MEMORY</p><h2>Workspace context</h2></div></div><div class="memory-controls"><input id="memory-input" maxlength="5000" placeholder="Save a useful workspace fact or preference"><button id="save-memory-btn" class="ghost">Remember</button></div><div class="memory-search"><input id="memory-query" maxlength="5000" placeholder="Recall relevant context"><button id="recall-btn" class="ghost">Recall</button></div><div id="memory-list" class="memory-list"></div></section><section class="panel result-panel" id="result-panel" hidden><div class="panel-heading"><div><p class="eyebrow">VERIFIED RESULT</p><h2>Execution output</h2></div><span id="verification-pill" class="pill"></span></div><div id="result-output" class="result-output"></div><div class="result-meta" id="result-meta"></div></section><section class="panel runs-panel"><div class="panel-heading"><div><p class="eyebrow">OBSERVE</p><h2>Recent runs</h2></div><button id="refresh-btn" class="ghost">Refresh</button></div><div id="runs-list" class="runs-list"><div class="empty">Loading runtime history…</div></div></section></main><footer><span>NEXUS AI</span><span>Understand · Plan · Route · Execute · Verify</span></footer></div><script type="module" src="/web/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="NEXUS AI — a verified agentic work platform">
+<meta name="theme-color" content="#080b12"><meta name="color-scheme" content="dark light">
+<title>NEXUS AI — Verified Work Platform</title>
+<link rel="manifest" href="/web/manifest.webmanifest"><link rel="stylesheet" href="/web/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#overview" aria-label="NEXUS AI home"><span class="brand-mark">N</span><span class="brand-copy"><b>NEXUS</b><small>AI WORK PLATFORM</small></span></a>
+    <button class="mobile-close" id="mobile-close" aria-label="Close navigation">×</button>
+    <div class="workspace-switcher">
+      <span class="mini-label">WORKSPACE</span>
+      <select id="workspace-select" aria-label="Current workspace"><option value="">No workspace selected</option></select>
+      <button id="new-workspace-btn" class="switcher-add" title="Create workspace">+</button>
+    </div>
+    <nav class="nav" aria-label="Primary navigation">
+      <a href="#overview" class="nav-item active" data-nav="overview"><span>⌂</span> Overview</a>
+      <a href="#workspace" class="nav-item" data-nav="workspace"><span>✦</span> Workspace</a>
+      <a href="#agents" class="nav-item" data-nav="agents"><span>◈</span> Agents</a>
+      <a href="#runs" class="nav-item" data-nav="runs"><span>↯</span> Executions</a>
+      <a href="#knowledge" class="nav-item" data-nav="knowledge"><span>◉</span> Knowledge</a>
+      <a href="#control-center" class="nav-item" data-nav="control-center"><span>◌</span> Control center</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="nav-item nav-button" id="command-btn"><span>⌘</span> Command palette <kbd>⌘K</kbd></button>
+      <button class="nav-item nav-button" id="theme-btn"><span>◐</span> Appearance <small id="theme-label">Dark</small></button>
+      <div class="sidebar-health"><i id="sidebar-health-dot"></i><div><b id="sidebar-health">Connecting</b><small>Runtime status</small></div></div>
+    </div>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <button class="mobile-menu" id="mobile-menu" aria-label="Open navigation">☰</button>
+      <div class="breadcrumbs"><span>NEXUS</span><i>/</i><strong id="page-title">Overview</strong></div>
+      <div class="top-actions">
+        <button class="icon-button" id="refresh-btn" title="Refresh data" aria-label="Refresh data">↻</button>
+        <button class="icon-button" id="command-top-btn" title="Command palette" aria-label="Command palette">⌘</button>
+        <div class="avatar" title="NEXUS operator">NB</div>
+      </div>
+    </header>
+
+    <main class="content">
+      <section id="overview" class="view-section">
+        <div class="hero-row">
+          <div><p class="eyebrow">VERIFIED AI WORK</p><h1>Turn intent into <span>proven work.</span></h1><p class="hero-sub">NEXUS understands the goal, orchestrates the right capabilities, executes safely, and verifies the result before delivery.</p></div>
+          <div class="hero-status"><span class="pulse"></span><div><b id="connection-status">Connecting</b><small id="last-sync">Syncing live telemetry</small></div></div>
+        </div>
+
+        <section class="command-card">
+          <div class="command-head"><div><span class="command-icon">✦</span><div><b>What should NEXUS do?</b><small>Describe the outcome. NEXUS will plan the work.</small></div></div><span class="shortcut">Ctrl + Enter</span></div>
+          <textarea id="task-input" maxlength="20000" placeholder="e.g. Analyze this dataset, identify the three biggest revenue drivers, and produce a concise executive summary."></textarea>
+          <div class="command-footer"><div class="context-wrap"><input id="context-input" maxlength="5000" placeholder="Add context, constraints, or a reference…"><select id="risk-input" aria-label="Risk level"><option value="low">Low risk</option><option value="medium">Medium risk</option><option value="high">High risk</option></select></div><button id="execute-btn" class="primary"><span>Run with NEXUS</span><b>→</b></button></div>
+          <p id="task-error" class="error" role="alert"></p>
+        </section>
+
+        <div class="metric-grid">
+          <article class="metric-card"><span class="metric-icon">↯</span><div><small>Active executions</small><strong id="active-runs">—</strong><em id="active-detail">Live</em></div></article>
+          <article class="metric-card"><span class="metric-icon">✓</span><div><small>Completed</small><strong id="completed-runs">—</strong><em>Verified runs</em></div></article>
+          <article class="metric-card"><span class="metric-icon">!</span><div><small>Needs attention</small><strong id="failed-runs">—</strong><em>Failed / review</em></div></article>
+          <article class="metric-card"><span class="metric-icon">◈</span><div><small>Models online</small><strong id="model-count">—</strong><em id="capacity">Checking capacity</em></div></article>
+        </div>
+
+        <div class="two-column">
+          <section class="panel">
+            <div class="section-head"><div><p class="eyebrow">QUICK START</p><h2>Start from a workflow</h2></div><span class="muted">Reusable templates</span></div>
+            <div id="template-grid" class="template-grid"></div>
+          </section>
+          <section class="panel">
+            <div class="section-head"><div><p class="eyebrow">INTELLIGENCE</p><h2>Models & capabilities</h2></div><span class="live-badge">LIVE</span></div>
+            <div id="model-grid" class="model-grid"></div><div id="capability-list" class="capability-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="workspace" class="view-section">
+        <div class="page-intro"><p class="eyebrow">WORKSPACE</p><h2>Context that travels with the work.</h2><p>Files and memory give agents the context they need without repeating yourself.</p></div>
+        <div class="two-column">
+          <section class="panel"><div class="section-head"><div><h2>Files</h2><span id="workspace-status" class="muted">Select a workspace.</span></div><label class="upload"><input id="file-input" type="file"><span>＋ Upload</span></label></div><div id="file-list" class="file-list"></div></section>
+          <section class="panel"><div class="section-head"><div><h2>Memory</h2><span class="muted">Persistent workspace context</span></div></div><div class="stack-form"><div class="input-row"><input id="memory-input" maxlength="5000" placeholder="Save a useful fact or preference…"><button id="save-memory-btn" class="ghost">Remember</button></div><div class="input-row"><input id="memory-query" maxlength="5000" placeholder="Recall relevant context…"><button id="recall-btn" class="ghost">Recall</button></div></div><div id="memory-list" class="memory-list"></div></section>
+        </div>
+      </section>
+
+      <section id="agents" class="view-section">
+        <div class="page-intro"><p class="eyebrow">AGENT CENTER</p><h2>Specialists working as one system.</h2><p>Inspect the roles available to NEXUS and the collaboration state exposed by the runtime.</p></div>
+        <section class="panel"><div class="section-head"><div><h2>Agent roster</h2><span class="muted">Live capability surface</span></div><span id="agent-count-badge" class="live-badge">— AGENTS</span></div><div id="agent-grid" class="agent-grid"></div></section>
+        <section class="panel collaboration-panel"><div class="section-head"><div><p class="eyebrow">COLLABORATION</p><h2>Agent handoff</h2></div><span class="muted">Bounded + auditable</span></div><div class="flow"><div><b>Goal</b><span>User intent</span></div><i>→</i><div><b>Plan</b><span>Supervisor</span></div><i>→</i><div><b>Delegate</b><span>Specialists</span></div><i>→</i><div><b>Verify</b><span>Evidence</span></div><i>→</i><div><b>Deliver</b><span>Result</span></div></div></section>
+      </section>
+
+      <section id="runs" class="view-section">
+        <div class="page-intro"><p class="eyebrow">EXECUTION CENTER</p><h2>See work move from intent to result.</h2><p>Every run is observable, traceable, and surfaced with its current state.</p></div>
+        <section class="panel"><div class="section-head"><div><h2>Recent executions</h2><span class="muted">Latest runtime history</span></div><button id="runs-refresh" class="ghost">Refresh</button></div><div id="runs-list" class="runs-list"></div></section>
+        <section id="result-panel" class="panel result-panel" hidden><div class="section-head"><div><p class="eyebrow">VERIFIED RESULT</p><h2>Execution output</h2></div><span id="verification-pill" class="status-pill"></span></div><div id="result-output" class="result-output"></div><div id="result-meta" class="result-meta"></div></section>
+      </section>
+
+      <section id="knowledge" class="view-section">
+        <div class="page-intro"><p class="eyebrow">KNOWLEDGE</p><h2>Build context once. Reuse it everywhere.</h2><p>Your workspace knowledge, memory, and uploaded context stay discoverable to the agent runtime.</p></div>
+        <div class="knowledge-grid"><article class="feature-card"><span>◉</span><b>Workspace files</b><p>Upload reference material and make it available to a workspace.</p></article><article class="feature-card"><span>⌁</span><b>Persistent memory</b><p>Store durable facts and recall relevant context when needed.</p></article><article class="feature-card"><span>⌕</span><b>Grounded execution</b><p>Results expose grounding and verification metadata for review.</p></article></div>
+        <section class="panel"><div class="section-head"><div><h2>Current workspace context</h2><span id="knowledge-summary" class="muted">Loading…</span></div></div><div id="knowledge-detail" class="knowledge-detail"></div></section>
+      </section>
+
+      <section id="control-center" class="view-section">
+        <div class="page-intro"><p class="eyebrow">CONTROL CENTER</p><h2>Production intelligence at a glance.</h2><p>Deployment identity, runtime health, agents, models, tools, and audit integrity — one operational surface.</p></div>
+        <section class="panel control-panel"><div class="control-hero"><div><span id="control-status" class="status-pill">Loading</span><h2 id="control-headline">System telemetry</h2><p id="control-summary" class="muted">Aggregating operational surfaces…</p></div><div class="control-clock"><small>LAST SYNC</small><b id="control-sync">—</b></div></div>
+          <div class="control-grid"><article><small>Active runs</small><strong id="control-run-count">—</strong><span id="control-run-detail">—</span></article><article><small>Agents</small><strong id="control-agent-count">—</strong><span id="control-agent-detail">—</span></article><article><small>Models</small><strong id="control-model-count">—</strong><span id="control-model-detail">—</span></article><article><small>Tools</small><strong id="control-tool-count">—</strong><span id="control-tool-detail">—</span></article></div>
+          <div class="control-sections"><div><p class="eyebrow">DEPLOYMENT</p><div id="control-deployment" class="data-card"></div></div><div><p class="eyebrow">AUDIT INTEGRITY</p><div id="control-audit" class="data-card"></div></div></div>
+          <div><p class="eyebrow">EXECUTION TIMELINE</p><div id="control-timeline" class="timeline"></div></div>
+        </section>
+      </section>
+    </main>
+    <footer><span>NEXUS AI</span><span>Understand · Plan · Route · Execute · Observe · Verify · Deliver</span><span>Production control surface</span></footer>
+  </div>
+</div>
+
+<div class="mobile-scrim" id="mobile-scrim"></div>
+<div class="command-modal" id="command-modal" hidden><div class="command-dialog"><div class="command-search"><span>⌘</span><input id="command-input" placeholder="Jump to a NEXUS surface…" autocomplete="off"><kbd>Esc</kbd></div><div id="command-results"></div></div></div>
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+<script type="module" src="/web/app.js"></script>
+</body></html>
