@@ -218,7 +218,8 @@ def build_collaboration(payload: dict) -> dict:
         result = AgentSupervisor().build_plan(objective, requests)
     except (ValueError, LookupError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    collaboration_audit.append("plan_created", "supervisor", {"objective": result.plan.objective, "workstream_count": len(result.plan.workstreams), "approval_required": result.approval_required})\n    return {"objective": result.plan.objective, "workstreams": [{"workstream_id": str(w.workstream_id), "objective": w.objective, "agent_id": w.agent_id, "dependencies": [str(d) for d in w.dependencies], "status": w.status} for w in result.plan.workstreams], "approval_required": result.approval_required, "rationale": list(result.rationale)}
+    collaboration_audit.append("plan_created", "supervisor", {"objective": result.plan.objective, "workstream_count": len(result.plan.workstreams), "approval_required": result.approval_required})
+    return {"objective": result.plan.objective, "workstreams": [{"workstream_id": str(w.workstream_id), "objective": w.objective, "agent_id": w.agent_id, "dependencies": [str(d) for d in w.dependencies], "status": w.status} for w in result.plan.workstreams], "approval_required": result.approval_required, "rationale": list(result.rationale)}
 
 
 @app.get("/api/v1/agents/audit")
