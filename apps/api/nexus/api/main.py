@@ -24,6 +24,7 @@ from nexus.core.observability import observability
 from nexus.core.metrics import service_metrics
 from nexus.core.rate_limit import RateLimitExceeded, SlidingWindowRateLimiter
 from nexus.core.scale import build_scale_topology, topology_payload
+from nexus.core.production_scale import build_scale_deployment, deployment_payload
 from nexus.core.workflow_templates import get_workflow_template, list_workflow_templates
 from nexus.core.multi_agent import DelegationRequest, default_agent_registry
 from nexus.core.supervisor import AgentSupervisor
@@ -188,11 +189,41 @@ def scale_topology() -> dict:
 
 
 @app.get("/api/v1/ready")
+def _scale_deployment():
+    topology = build_scale_topology(
+        state_backend=settings.state_backend,
+        queue_backend=settings.queue_backend,
+        cache_backend=settings.cache_backend,
+        object_storage_backend=settings.object_storage_backend,
+    )
+    return build_scale_deployment(
+        mode=settings.deployment_mode,
+        region=settings.deployment_region,
+        instance_id=settings.instance_id,
+        topology=topology,
+    )
+
+
+@app.get("/api/v1/scale/deployment")
+def scale_deployment() -> dict:
+    return deployment_payload(_scale_deployment())
+
+
+@app.get("/api/v1/ready")
 def readiness() -> dict:
     runtime = production_runtime.health()
-    topology = build_scale_topology(state_backend=settings.state_backend, queue_backend=settings.queue_backend, cache_backend=settings.cache_backend, object_storage_backend=settings.object_storage_backend)
-    checks = {"runtime": runtime.get("status") == "ready", "frontend": WEB_ROOT.exists(), "scale_contract": True}
-    return {"status": "ready" if all(checks.values()) else "not_ready", "service": "nexus-api", "checks": checks}
+    deployment = _scale_deployment()
+    checks = {
+        "runtime": runtime.get("status") == "ready",
+        "frontend": WEB_ROOT.exists(),
+        "scale_contract": deployment.ready,
+    }
+    return {
+        "status": "ready" if all(checks.values()) else "not_ready",
+        "service": "nexus-api",
+        "checks": checks,
+        "scale": deployment_payload(deployment),
+    }
 
 
 @app.get("/api/v1/observability/summary")
