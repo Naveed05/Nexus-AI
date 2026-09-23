@@ -142,8 +142,6 @@ agent_runtime = AgentRuntime(settings.run_storage_path,)
 production_runtime = ProductionRuntime(store_path=settings.run_storage_path, engine=engine)
 rate_limiter = SlidingWindowRateLimiter(limit=settings.rate_limit_per_minute)
 collaboration_audit = CollaborationAuditLog(settings.collaboration_audit_storage_path)
-job_store = JobStore(settings.job_storage_path)
-job_manager = DurableJobManager(job_store, _execute_durable_job)
 
 
 def _workspace_payload(workspace) -> dict:
@@ -180,6 +178,52 @@ def _build_task(payload: TaskCreate) -> Task:
     if payload.workspace_id is not None: _require_workspace(payload.workspace_id)
     context_parts = [part for part in (payload.context, _workspace_context_text(payload.workspace_id)) if part]
     return Task(**payload.model_dump(exclude={"context"}), context="\n".join(context_parts) or None)
+
+
+def _execute_durable_job(job) -> dict:
+    payload = TaskCreate(
+        objective=job.objective,
+        context=job.context,
+        workspace_id=job.workspace_id,
+        risk_level=job.risk_level,
+    )
+    task = _build_task(payload)
+    run, result = production_runtime.start(
+        task,
+        idempotency_key=f"job:{job.job_id}",
+        budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8),
+    )
+    verification = result.verification
+    artifact = artifact_store.put(
+        result.execution.output.encode("utf-8"),
+        filename="nexus-result.txt",
+        artifact_type="execution-result",
+        task_id=task.task_id,
+        mime_type="text/plain; charset=utf-8",
+        metadata={"verified": str(bool(result.state.verification_passed)), "run_id": str(run.run_id), "job_id": str(job.job_id)},
+    )
+    artifact_registry.register(artifact)
+    job.run_id = run.run_id
+    job.artifact_id = artifact.artifact_id
+    job.checkpoint = {**job.checkpoint, "run_id": str(run.run_id), "artifact_id": str(artifact.artifact_id), "verified": bool(result.state.verification_passed)}
+    return {
+        "run_id": str(run.run_id),
+        "task_id": str(task.task_id),
+        "model": result.model.model_id,
+        "response_id": result.execution.response_id,
+        "output": result.execution.output,
+        "verification_passed": bool(result.state.verification_passed),
+        "verification_checks": dict(verification.checks),
+        "verification_issues": [str(item) for item in verification.issues],
+        "grounding_score": verification.grounding_score,
+        "tool_calls": len(result.execution.tool_calls),
+        "events": [event.event_type.value for event in result.events],
+        "artifact_id": str(artifact.artifact_id),
+    }
+
+
+job_store = JobStore(settings.job_storage_path)
+job_manager = DurableJobManager(job_store, _execute_durable_job)
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
