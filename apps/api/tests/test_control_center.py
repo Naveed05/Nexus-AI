@@ -97,3 +97,25 @@ def test_phase_39_frontend_resilience_and_accessibility_assets() -> None:
         ".workspace-run-row",
     ):
         assert marker in styles.text
+
+
+def test_phase_39_product_controls_are_present() -> None:
+    response = client.get("/")
+    html = response.text
+    for marker in (
+        'id="copy-result-btn"',
+        'id="run-filter"',
+        'id="install-btn"',
+        'mobile-web-app-capable',
+        '/web/icon.svg',
+    ):
+        assert marker in html
+
+    script = client.get("/web/app.js").text
+    for marker in (
+        "navigator.clipboard",
+        "beforeinstallprompt",
+        "serviceWorker.register",
+        'confirm("Cancel this active NEXUS run?")',
+    ):
+        assert marker in script
