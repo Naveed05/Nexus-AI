@@ -38,11 +38,11 @@ async function buildCollabPlan(){const objective=$("collab-objective").value.tri
 function renderArtifactDelivery(artifactId){const download=$("download-artifact-btn"),open=$("open-artifact-btn"),status=$("artifact-status");if(!download)return;if(!artifactId){download.hidden=true;open.hidden=true;status.textContent="No downloadable artifact was produced.";return}const url="/api/v1/artifacts/"+encodeURIComponent(artifactId)+"/download";download.hidden=false;open.hidden=false;download.href=url;download.setAttribute("download","nexus-result.txt");open.onclick=()=>window.open(url,"_blank","noopener");status.textContent="Durable execution artifact · "+artifactId.slice(0,12)+"…"}
 function renderRunResult(result){
   const data=result?.result||result;
-  if(!data||!data.output)return false;
+  $("result-panel").hidden=false;if(!data||!data.output)return false;
   $("result-panel").hidden=false;
   $("result-output").textContent=data.output;
   $("verification-pill").textContent=data.verification_passed?"✓ Verified":"Needs review";
-  $("result-meta").textContent="Run "+(result.run_id||"—")+" · "+(data.model||"runtime")+" · "+(data.tool_calls||0)+" tool calls · grounding "+(data.grounding_score??"—");
+  $("result-meta").textContent="Run "+(result.run_id||"—")+" · "+(data.model||"runtime")+" · "+(data.tool_calls||0)+" tool calls · grounding "+(data.grounding_score??"—");renderArtifactDelivery(data.artifact_id);
   return true;
 }
 function renderRunSnapshot(r){
