@@ -34,7 +34,7 @@ from nexus.core.collaboration_audit import CollaborationAuditLog
 from nexus.core.control_center import build_control_center_summary
 from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
 from nexus.core.jobs import DurableJobManager, JobStore, job_payload
-from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, validate_workflow, workflow_payload, WORKFLOW_TEMPLATES
+from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, validate_workflow, workflow_payload, WORKFLOW_TEMPLATES, WorkflowScheduler
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -229,6 +229,8 @@ job_store = JobStore(settings.job_storage_path)
 job_manager = DurableJobManager(job_store, _execute_durable_job)
 
 workflow_store = WorkflowStore(settings.workflow_storage_path)
+workflow_scheduler = WorkflowScheduler(workflow_store)
+workflow_scheduler.start()
 
 def _sync_workflow(w):
     changed=False
@@ -267,6 +269,7 @@ def create_workflow(payload: WorkflowCreate,x_user_id:str=Header(default="local-
     except WorkflowValidationError as exc: raise HTTPException(status_code=422,detail=str(exc)) from exc
     if payload.workspace_id: _require_workspace(payload.workspace_id)
     w=Workflow(uuid4(),payload.name.strip(),payload.objective,x_user_id.strip() or "local-user",payload.workspace_id,steps=steps,schedule=payload.schedule)
+    if w.schedule: w.status="scheduled"
     workflow_store.save(w); return workflow_payload(_sync_workflow(w))
 
 @app.get("/api/v1/workflows/{workflow_id}")
