@@ -147,3 +147,17 @@ def test_phase_40_runtime_control_uses_production_boundary() -> None:
     assert "/api/v1/runs/{run_id}" in paths
     assert "/api/v1/runs/{run_id}/stream" in paths
     assert "/api/v1/runs/{run_id}/cancel" in paths
+
+
+def test_phase_41_artifact_delivery_contract() -> None:
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    assert "/api/v1/artifacts" in paths
+    assert "/api/v1/artifacts/{artifact_id}/download" in paths
+
+    script = client.get("/web/app.js").text
+    html = client.get("/").text
+    for marker in ("renderArtifactDelivery", "/api/v1/artifacts/", "download-artifact-btn"):
+        assert marker in script or marker in html
+    assert 'id="artifact-status"' in html
