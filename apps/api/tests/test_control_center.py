@@ -62,3 +62,38 @@ def test_agent_workspace_assets_expose_live_control_contract() -> None:
     assert styles.status_code == 200
     assert ".workspace-command-grid" in styles.text
     assert ".run-timeline" in styles.text
+
+
+def test_phase_39_frontend_polish_contract_is_present() -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    html = response.text
+    for marker in (
+        'class="skip-link"',
+        'id="boot-screen"',
+        'id="main-content"',
+        'aria-live="polite"',
+    ):
+        assert marker in html
+
+
+def test_phase_39_frontend_resilience_and_accessibility_assets() -> None:
+    script = client.get("/web/app.js")
+    styles = client.get("/web/styles.css")
+    assert script.status_code == 200
+    for marker in (
+        "Promise.allSettled",
+        "unhandledrejection",
+        "ArrowDown",
+        "setStatusPill",
+    ):
+        assert marker in script.text
+    assert styles.status_code == 200
+    for marker in (
+        ".skip-link",
+        ".boot-screen",
+        "prefers-reduced-motion",
+        "focus-visible",
+        ".workspace-run-row",
+    ):
+        assert marker in styles.text
