@@ -44,26 +44,11 @@ class ExecutionResponse(BaseModel):
 
 class WorkflowStepCreate(BaseModel):
     step_id: str = Field(min_length=1, max_length=80)
-    question: str = Field(min_length=1, max_length=20_000)
-    workspace_id: UUID
-    max_queries: int = Field(default=4, ge=1, le=8)
-    results_per_query: int = Field(default=5, ge=1, le=20)
-
-
-class ResearchResponse(BaseModel):
-    question: str
-    workspace_id: str
-    queries: list[str]
-    evidence_count: int
-    source_count: int
-    document_count: int
-    sources: list[dict]
-    synthesis: dict
-)
     objective: str = Field(min_length=1, max_length=20_000)
     depends_on: list[str] = Field(default_factory=list)
     condition: str | None = Field(default=None, max_length=500)
     risk_level: RiskLevel = RiskLevel.LOW
+
 
 class WorkflowCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -71,6 +56,7 @@ class WorkflowCreate(BaseModel):
     workspace_id: UUID | None = None
     steps: list[WorkflowStepCreate] = Field(min_length=1, max_length=50)
     schedule: dict | None = None
+
 
 class ResearchRequest(BaseModel):
     question: str = Field(min_length=1, max_length=20_000)
