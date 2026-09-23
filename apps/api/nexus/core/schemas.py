@@ -39,6 +39,7 @@ class ExecutionResponse(BaseModel):
     grounding: list[dict]
     tool_calls: int
     events: list[str]
+    artifact_id: str | None = None
 
 
 class ResearchRequest(BaseModel):
