@@ -35,7 +35,7 @@ from nexus.core.control_center import build_control_center_summary
 from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
 from nexus.core.jobs import DurableJobManager, JobStore, job_payload
 from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, validate_workflow, workflow_payload, WORKFLOW_TEMPLATES, WorkflowScheduler
-from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
+from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
 from nexus.core.tools import configure_dataset_workspace, tool_registry
