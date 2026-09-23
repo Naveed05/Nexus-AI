@@ -35,3 +35,7 @@ button:active:not(:disabled),.nav-item:active{transform:translateY(1px)}
 @media(max-width:600px){.run-actions{flex-wrap:wrap;justify-content:flex-end}.detail-grid{grid-template-columns:1fr}.collab-request{grid-template-columns:1fr}.builder-actions{flex-direction:column}.small-primary{min-height:40px}.boot-screen{padding:20px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.view-section{animation:none}.boot-screen,.skip-link,.ghost,.primary,.icon-button,.panel{transition:none}.pulse{box-shadow:none}.workspace-run-row{transition:none}}
 @media(forced-colors:active){.panel,.nav-item,.icon-button,.ghost,.primary{border:1px solid ButtonText}.pulse,.agent-dot,.run-state-dot{forced-color-adjust:auto}}
+
+.compact-filter{width:150px;border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:8px;padding:7px 9px;font-size:9px;outline:0}.compact-filter:focus{border-color:#655bd1;box-shadow:0 0 0 3px rgba(140,124,255,.1)}
+#copy-result-btn{min-width:52px}
+#install-btn:not([hidden]){display:grid}
