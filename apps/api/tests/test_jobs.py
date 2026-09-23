@@ -49,6 +49,8 @@ def test_job_manager_retry_is_bounded() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         manager = DurableJobManager(JobStore(str(Path(tmp) / "jobs.sqlite3")), lambda _: (_ for _ in ()).throw(RuntimeError("boom")), auto_start=False)
         job = manager.submit("will fail", max_retries=1)
+        job.status = JobStatus.FAILED
+        manager.store.save(job)
         failed = manager.retry(job.job_id)
         assert failed.status == JobStatus.RETRYING
         assert failed.retries == 1
