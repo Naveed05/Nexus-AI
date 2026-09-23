@@ -505,7 +505,45 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Phase 39 Production Frontend Polish & Accessibility
 [✓] Phase 40 Full Runtime Integration
 [✓] Phase 41 Artifact & Delivery Center
+[✓] Phase 42 Durable Workflow & Job Orchestration
 ```
+
+
+### ⚡ Phase 42 — Durable Workflow & Job Orchestration
+
+Phase 42 turns one-shot execution into durable background work that can be queued, recovered, retried, observed, and delivered without keeping an HTTP request open.
+
+**Batch 42.1 — Durable job engine**
+- SQLite-backed job registry with explicit lifecycle states: queued, running, paused, retrying, completed, failed, and cancelled
+- persistent job ownership, objective, workspace, retry budget, checkpoint, run, and artifact references
+- interrupted running/retrying jobs are recovered into the durable queue after a worker restart
+
+**Batch 42.2 — Background execution**
+- bounded background worker processes durable jobs independently of the request lifecycle
+- job submission returns 202 Accepted with a durable job identity
+- execution reuses the production runtime, verification, artifact registry, and product quota boundaries
+- completed jobs retain the run and artifact identities for reopening downstream work
+
+**Batch 42.3 — Recovery controls**
+- bounded automatic retry with persisted retry counts and failure checkpoints
+- explicit operator cancellation, pause, resume, and retry APIs
+- deterministic job state transitions and terminal-state protection
+- Server-Sent Events job stream for live lifecycle updates
+
+**Batch 42.4 — Job Center**
+- dedicated frontend Jobs surface for durable workflow history
+- live queue state, retry visibility, completion state, and run linkage
+- primary goal composer now queues durable jobs instead of holding the browser on a synchronous execution request
+- automatic live result reopening when a durable job completes
+
+**Batch 42.5 — Verification & release hardening**
+- persistence/restart recovery tests
+- execution/retry/state-transition tests
+- API/OpenAPI contract coverage
+- frontend job-center and live-stream contract coverage
+- CI and benchmark-gate verification required before phase completion
+
+Phase 42 preserves the existing model, tool, verification, approval, quota, and artifact boundaries: the job layer orchestrates work but does not grant agents new authority.
 
 ### 📦 Phase 41 — Artifact & Delivery Center
 
