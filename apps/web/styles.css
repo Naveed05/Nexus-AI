@@ -39,3 +39,4 @@ button:active:not(:disabled),.nav-item:active{transform:translateY(1px)}
 .compact-filter{width:150px;border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:8px;padding:7px 9px;font-size:9px;outline:0}.compact-filter:focus{border-color:#655bd1;box-shadow:0 0 0 3px rgba(140,124,255,.1)}
 #copy-result-btn{min-width:52px}
 #install-btn:not([hidden]){display:grid}
+.artifact-actions{display:flex;gap:8px;align-items:center;margin-top:10px}.artifact-actions a{display:inline-flex;align-items:center;text-decoration:none}.artifact-actions button,.artifact-actions a{cursor:pointer}.artifact-actions[hidden]{display:none}@media(max-width:600px){.artifact-actions{flex-wrap:wrap}}
