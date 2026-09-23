@@ -53,7 +53,7 @@ class WorkflowStore:
             steps=[{"step_id":s.step_id,"objective":s.objective,"depends_on":s.depends_on,"condition":s.condition,
                     "risk_level":s.risk_level,"status":s.status.value,"job_id":str(s.job_id) if s.job_id else None,
                     "result":s.result,"error":s.error} for s in w.steps]
-            c.execute("INSERT OR REPLACE INTO workflows VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            c.execute("INSERT OR REPLACE INTO workflows VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (str(w.workflow_id),w.name,w.objective,w.owner_id,str(w.workspace_id) if w.workspace_id else None,w.status,
                  json.dumps(steps),w.created_at.isoformat(),w.updated_at.isoformat(),json.dumps(w.schedule) if w.schedule else None,w.version))
             c.commit()
