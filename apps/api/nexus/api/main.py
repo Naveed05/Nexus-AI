@@ -698,14 +698,21 @@ def stream_agent_run(run_id: str):
         last = None
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
+            production_run = None
+            agent_run = None
             try:
-                try:
-                    payload = _run_payload(production_runtime.status(parsed_run_id))
-                except KeyError:
-                    payload = _run_payload(agent_runtime.get(parsed_run_id))
+                production_run = production_runtime.status(parsed_run_id)
             except KeyError:
+                pass
+            try:
+                agent_run = agent_runtime.get(parsed_run_id)
+            except KeyError:
+                pass
+            run = agent_run if agent_run and agent_run.status.value in {"cancelled", "completed", "failed"} else production_run or agent_run
+            if run is None:
                 yield "event: error\ndata: "+json.dumps({"detail": "unknown run"})+"\n\n"
                 return
+            payload = _run_payload(run)
             state = json.dumps(payload, sort_keys=True, default=str)
             if state != last:
                 yield "event: run\ndata: "+state+"\n\n"
