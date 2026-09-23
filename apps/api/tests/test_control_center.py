@@ -119,3 +119,31 @@ def test_phase_39_product_controls_are_present() -> None:
         'confirm("Cancel this active NEXUS run?")',
     ):
         assert marker in script
+
+
+def test_phase_40_runtime_bridge_exposes_live_stream_and_result_contract() -> None:
+    response = client.get("/api/v1/runs/not-a-uuid/stream")
+    assert response.status_code == 422
+
+    health = client.get("/api/v1/production/health")
+    assert health.status_code == 200
+    assert "runtime" in health.json()
+
+    script = client.get("/web/app.js").text
+    for marker in (
+        "/api/v1/runs/",
+        "/stream",
+        "EventSource",
+        "workspace_id:state.workspace",
+        "renderRunResult",
+    ):
+        assert marker in script
+
+
+def test_phase_40_runtime_control_uses_production_boundary() -> None:
+    main_source = client.get("/openapi.json")
+    assert main_source.status_code == 200
+    paths = main_source.json()["paths"]
+    assert "/api/v1/runs/{run_id}" in paths
+    assert "/api/v1/runs/{run_id}/stream" in paths
+    assert "/api/v1/runs/{run_id}/cancel" in paths
