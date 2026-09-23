@@ -40,3 +40,21 @@ button:active:not(:disabled),.nav-item:active{transform:translateY(1px)}
 #copy-result-btn{min-width:52px}
 #install-btn:not([hidden]){display:grid}
 .artifact-actions{display:flex;gap:8px;align-items:center;margin-top:10px}.artifact-actions a{display:inline-flex;align-items:center;text-decoration:none}.artifact-actions button,.artifact-actions a{cursor:pointer}.artifact-actions[hidden]{display:none}@media(max-width:600px){.artifact-actions{flex-wrap:wrap}}
+
+/* Phase 42 — durable workflow jobs */
+.job-list{display:grid;gap:10px}
+.job-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:var(--surface-2)}
+.job-main{min-width:0}
+.job-title{display:flex;align-items:center;gap:10px;min-width:0}
+.job-title b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job-main small{display:block;color:var(--muted);margin-top:6px}
+.job-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:0 0 auto}
+.job-dot.queued,.job-dot.retrying{background:var(--accent)}
+.job-dot.running{background:var(--accent-2);box-shadow:0 0 0 5px color-mix(in srgb,var(--accent-2) 14%,transparent)}
+.job-dot.paused{background:var(--warning)}
+.job-dot.completed{background:var(--accent-2)}
+.job-dot.failed,.job-dot.cancelled{background:var(--danger)}
+.job-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.status-pill.status-warning{border-color:color-mix(in srgb,var(--warning) 45%,var(--line));color:var(--warning)}
+.status-pill.status-danger{border-color:color-mix(in srgb,var(--danger) 45%,var(--line));color:var(--danger)}
+@media (max-width:700px){.job-row{align-items:flex-start;flex-direction:column}.job-actions{width:100%;justify-content:space-between}}
