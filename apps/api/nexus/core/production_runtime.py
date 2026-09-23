@@ -79,11 +79,27 @@ class ProductionRuntime:
 
         try:
             run, result = self._runtime.run_engine(task, self._engine, budget=budget)
+            verification = getattr(result, "verification", None)
+            execution = getattr(result, "execution", None)
+            state = getattr(result, "state", None)
+            run.metadata["result"] = {
+                "model": getattr(getattr(result, "model", None), "model_id", None),
+                "response_id": getattr(execution, "response_id", None),
+                "output": str(getattr(execution, "output", ""))[:50000],
+                "verification_passed": bool(getattr(state, "verification_passed", False)),
+                "verification_checks": list(getattr(verification, "checks", ()) or ()),
+                "verification_issues": [str(item) for item in (getattr(verification, "issues", ()) or ())],
+                "grounding_score": getattr(verification, "grounding_score", None),
+                "tool_calls": len(getattr(execution, "tool_calls", ()) or ()),
+                "events": [getattr(event.event_type, "value", str(event.event_type)) for event in (getattr(result, "events", ()) or ())],
+            }
             if idempotency_key:
                 run.metadata["idempotency_key"] = idempotency_key
-                # Persist the final metadata without changing lifecycle state.
-                self._runtime._persist(run)
+            # Persist the final metadata without changing lifecycle state.
+            self._runtime._persist(run)
             return run, result
+        except Exception:
+            raise
         finally:
             with self._lock:
                 self._active -= 1
@@ -98,7 +114,7 @@ class ProductionRuntime:
     def list_runs(self) -> tuple[AgentRun, ...]:
         return self._runtime.list_runs()
 
-    def health(self) -> dict[str, Any]:
+    def cancel(self, run_id: UUID) -> AgentRun:\n        """Cancel a run through the production runtime control boundary."""\n        return self._runtime.cancel(run_id)\n\n    def health(self) -> dict[str, Any]:
         with self._lock:
             active = self._active
         return {
