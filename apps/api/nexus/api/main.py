@@ -693,7 +693,10 @@ def stream_agent_run(run_id: str):
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             try:
-                payload = _run_payload(production_runtime.status(parsed_run_id))
+                try:
+                    payload = _run_payload(production_runtime.status(parsed_run_id))
+                except KeyError:
+                    payload = _run_payload(agent_runtime.get(parsed_run_id))
             except KeyError:
                 yield "event: error\ndata: "+json.dumps({"detail": "unknown run"})+"\n\n"
                 return
