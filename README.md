@@ -503,7 +503,37 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Phase 37 Premium Frontend & Experience
 [✓] Phase 38 Interactive Agent Workspace
 [✓] Phase 39 Production Frontend Polish & Accessibility
+[✓] Phase 40 Full Runtime Integration
 ```
+
+### ⚡ Phase 40 — Full Runtime Integration
+
+Phase 40 connects the premium frontend directly to the durable production runtime so the operator surface reflects real execution state rather than presentation-only state.
+
+**Batch 40.1 — Runtime contract unification**
+- production runtime becomes the authoritative status/cancellation boundary for UI run inspection
+- task objective and workspace identity persist with each run
+- completed execution result envelopes persist with verification, grounding, tool-call, model, and event metadata
+
+**Batch 40.2 — Live execution bridge**
+- Server-Sent Events stream run state transitions to the Agent Workspace
+- live inspector updates without manual refresh
+- stream closes automatically on terminal run states
+- heartbeat, timeout, and reconnect handling provide resilient operator feedback
+
+**Batch 40.3 — Workspace-aware execution**
+- primary task execution now carries the selected workspace into the production runtime
+- run inspection exposes workspace identity
+- verified execution output can be reopened directly from the runtime inspector
+- durable result state keeps the frontend aligned with backend execution truth
+
+**Batch 40.4 — Verification & release hardening**
+- API contracts cover runtime status, stream, and cancellation surfaces
+- frontend contracts cover EventSource integration and workspace-aware execution
+- production-runtime regression coverage preserves idempotency and persistence behavior
+- full CI and benchmark-gate verification required before phase completion
+
+The integration keeps the existing approval, permission, budget, and verification boundaries intact; the frontend gains visibility and control without gaining authority beyond the backend runtime contract.
 
 ### ✨ Phase 39 — Production Frontend Polish & Accessibility
 
