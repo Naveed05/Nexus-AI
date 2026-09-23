@@ -33,6 +33,7 @@ TERMINAL_JOB_STATES = {
 class DurableJob:
     job_id: UUID
     objective: str
+    owner_id: str = "local-user"
     context: str | None = None
     risk_level: str = "low"
     workspace_id: UUID | None = None
