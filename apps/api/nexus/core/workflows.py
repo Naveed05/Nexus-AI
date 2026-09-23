@@ -111,3 +111,36 @@ WORKFLOW_TEMPLATES={
    {"step_id":"validate","objective":"Validate key findings and assumptions","depends_on":["analyze"],"capabilities":["verification"]},
    {"step_id":"brief","objective":"Produce the final decision-support brief","depends_on":["validate"],"capabilities":["writing"]}]}
 }
+
+class WorkflowScheduler:
+    def __init__(self, store, tick=1.0):
+        from threading import Event, Thread
+        self.store=store; self.tick=max(0.2,tick); self._stop=Event(); self._thread=None
+    def start(self):
+        from threading import Thread
+        if self._thread and self._thread.is_alive(): return
+        self._stop.clear(); self._thread=Thread(target=self._loop,name="nexus-workflow-scheduler",daemon=True); self._thread.start()
+    def stop(self):
+        if self._thread:
+            self._stop.set(); self._thread.join(timeout=2)
+    def _loop(self):
+        import time
+        while not self._stop.is_set():
+            now=datetime.now(timezone.utc)
+            for w in self.store.list(500):
+                s=w.schedule or {}
+                if w.status=="paused" or not s or w.status not in {"scheduled","completed","failed"}: continue
+                raw=s.get("run_at")
+                if not raw: continue
+                try: due=datetime.fromisoformat(raw.replace("Z","+00:00"))
+                except ValueError: continue
+                if due>now: continue
+                for step in w.steps:
+                    step.status=WorkflowStepStatus.PENDING; step.job_id=None; step.result={}; step.error=None
+                w.status="scheduled"
+                interval=s.get("interval_seconds")
+                if interval:
+                    s["run_at"]=(now+__import__("datetime").timedelta(seconds=max(1,int(interval)))).isoformat()
+                else: s["enabled"]=False
+                self.store.save(w)
+            self._stop.wait(self.tick)
