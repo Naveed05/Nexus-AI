@@ -209,7 +209,7 @@ class AgentRuntime:
         self._lock = RLock()
 
     def create_run(self, task: Task, *, budget: RunBudget | None = None) -> AgentRun:
-        run = AgentRun(task_id=task.task_id)
+        run = AgentRun(task_id=task.task_id, metadata={"objective": task.objective, "workspace_id": str(task.workspace_id) if task.workspace_id else None})
         control = ExecutionControl(budget)
         with self._lock:
             self._runs[run.run_id] = run
