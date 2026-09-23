@@ -114,7 +114,11 @@ class ProductionRuntime:
     def list_runs(self) -> tuple[AgentRun, ...]:
         return self._runtime.list_runs()
 
-    def cancel(self, run_id: UUID) -> AgentRun:\n        """Cancel a run through the production runtime control boundary."""\n        return self._runtime.cancel(run_id)\n\n    def health(self) -> dict[str, Any]:
+    def cancel(self, run_id: UUID) -> AgentRun:
+        """Cancel a run through the production runtime control boundary."""
+        return self._runtime.cancel(run_id)
+
+    def health(self) -> dict[str, Any]:
         with self._lock:
             active = self._active
         return {
