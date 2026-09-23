@@ -32,6 +32,7 @@ from nexus.core.multi_agent import DelegationRequest, default_agent_registry
 from nexus.core.supervisor import AgentSupervisor
 from nexus.core.collaboration_audit import CollaborationAuditLog
 from nexus.core.control_center import build_control_center_summary
+from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -39,6 +40,8 @@ from nexus.core.tools import configure_dataset_workspace, tool_registry
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
 
 app = FastAPI(title=settings.app_name, version=settings.service_version)
+artifact_store = LocalArtifactStore(settings.artifact_storage_path)
+artifact_registry = ArtifactRegistry(settings.artifact_registry_path)
 app.middleware("http")(observe_http_request)
 
 @app.middleware("http")
@@ -639,6 +642,48 @@ def create_task(payload: TaskCreate) -> TaskResponse:
     task = _build_task(payload); route = engine.route_task(task)
     return TaskResponse(task_id=str(task.task_id), objective=task.objective, status=task.status, risk_level=task.risk_level, created_at=task.created_at.isoformat(), capabilities=task.capabilities, selected_model=route.model.model_id, workspace_id=str(task.workspace_id) if task.workspace_id else None)
 
+def _artifact_payload(artifact) -> dict:
+    return {"artifact_id": str(artifact.artifact_id), "artifact_type": artifact.artifact_type, "filename": artifact.filename, "task_id": str(artifact.task_id) if artifact.task_id else None, "mime_type": artifact.mime_type, "size_bytes": artifact.size_bytes, "metadata": artifact.metadata, "created_at": artifact.created_at.isoformat()}
+
+
+@app.post("/api/v1/artifacts", status_code=201)
+async def create_artifact(file: UploadFile = File(...), task_id: UUID | None = None) -> dict:
+    filename = Path(file.filename or "").name
+    if not filename:
+        raise HTTPException(status_code=422, detail="filename cannot be empty")
+    payload = await file.read()
+    if len(payload) > settings.max_request_body_bytes:
+        raise HTTPException(status_code=413, detail="artifact exceeds request size limit")
+    artifact = artifact_store.put(payload, filename=filename, task_id=task_id, mime_type=file.content_type, metadata={"source": "user_upload"})
+    artifact_registry.register(artifact)
+    return _artifact_payload(artifact)
+
+
+@app.get("/api/v1/artifacts")
+def list_artifacts(task_id: UUID | None = None, limit: int = 50) -> list[dict]:
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 100")
+    return [_artifact_payload(item) for item in artifact_registry.list(task_id=task_id, limit=limit)]
+
+
+@app.get("/api/v1/artifacts/{artifact_id}")
+def get_artifact(artifact_id: UUID) -> dict:
+    try:
+        return _artifact_payload(artifact_registry.get(artifact_id))
+    except ArtifactNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/artifacts/{artifact_id}/download")
+def download_artifact(artifact_id: UUID) -> Response:
+    try:
+        artifact = artifact_registry.get(artifact_id)
+        payload = artifact_store.get(artifact)
+    except ArtifactNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(content=payload, media_type=artifact.mime_type or "application/octet-stream", headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'})
+
+
 @app.post("/api/v1/tasks/execute", response_model=ExecutionResponse, status_code=200)
 def execute_task(payload: TaskCreate) -> ExecutionResponse:
     task = _build_task(payload)
@@ -655,6 +700,9 @@ def execute_task(payload: TaskCreate) -> ExecutionResponse:
         "tool_calls": len(result.execution.tool_calls),
         "events": [event.event_type.value for event in result.events],
     }
+    artifact = artifact_store.put(result.execution.output.encode("utf-8"), filename="nexus-result.txt", artifact_type="execution-result", task_id=task.task_id, mime_type="text/plain; charset=utf-8", metadata={"verified": str(bool(result.state.verification_passed)), "run_id": str(run.run_id)})
+    artifact_registry.register(artifact)
+    run.metadata["result"]["artifact_id"] = str(artifact.artifact_id)
     agent_runtime._persist(run)
     return ExecutionResponse(
         run_id=str(run.run_id),
