@@ -1,8 +1,10 @@
 from pathlib import Path
 from uuid import UUID
+import json
+import time
 
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.testclient import TestClient
 from fastapi.staticfiles import StaticFiles
 
@@ -642,6 +644,18 @@ def execute_task(payload: TaskCreate) -> ExecutionResponse:
     task = _build_task(payload)
     run, result = agent_runtime.run_engine(task, engine, budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8))
     verification = result.verification
+    run.metadata["result"] = {
+        "model": result.model.model_id,
+        "response_id": result.execution.response_id,
+        "output": str(result.execution.output)[:50000],
+        "verification_passed": bool(result.state.verification_passed),
+        "verification_checks": list(verification.checks),
+        "verification_issues": [str(item) for item in verification.issues],
+        "grounding_score": verification.grounding_score,
+        "tool_calls": len(result.execution.tool_calls),
+        "events": [event.event_type.value for event in result.events],
+    }
+    agent_runtime._persist(run)
     return ExecutionResponse(
         run_id=str(run.run_id),
         task_id=str(task.task_id), model=result.model.model_id, response_id=result.execution.response_id, output=result.execution.output,
@@ -658,10 +672,40 @@ def get_agent_run(run_id: str) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="run_id must be a UUID") from exc
     try:
-        run = agent_runtime.get(parsed_run_id)
+        run = production_runtime.status(parsed_run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _run_payload(run)
+
+
+@app.get("/api/v1/runs/{run_id}/stream")
+def stream_agent_run(run_id: str):
+    try:
+        parsed_run_id = UUID(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="run_id must be a UUID") from exc
+
+    def events():
+        last = None
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            try:
+                payload = _run_payload(production_runtime.status(parsed_run_id))
+            except KeyError:
+                yield "event: error\ndata: "+json.dumps({"detail": "unknown run"})+"\n\n"
+                return
+            state = json.dumps(payload, sort_keys=True, default=str)
+            if state != last:
+                yield "event: run\ndata: "+state+"\n\n"
+                last = state
+                if payload["status"] in {"completed", "failed", "cancelled"}:
+                    return
+            else:
+                yield ": heartbeat\n\n"
+            time.sleep(0.5)
+        yield "event: timeout\ndata: "+json.dumps({"run_id": run_id})+"\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/v1/runs")
@@ -713,7 +757,7 @@ def cancel_agent_run(run_id: str) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="run_id must be a UUID") from exc
     try:
-        run = agent_runtime.cancel(parsed_run_id)
+        run = production_runtime.cancel(parsed_run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
