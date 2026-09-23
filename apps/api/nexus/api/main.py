@@ -34,6 +34,7 @@ from nexus.core.collaboration_audit import CollaborationAuditLog
 from nexus.core.control_center import build_control_center_summary
 from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
 from nexus.core.jobs import DurableJobManager, JobStore, job_payload
+from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, validate_workflow, workflow_payload, WORKFLOW_TEMPLATES
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -226,6 +227,76 @@ def _execute_durable_job(job) -> dict:
 
 job_store = JobStore(settings.job_storage_path)
 job_manager = DurableJobManager(job_store, _execute_durable_job)
+
+workflow_store = WorkflowStore(settings.workflow_storage_path)
+
+def _sync_workflow(w):
+    changed=False
+    for s in w.steps:
+        if not s.job_id: continue
+        job=job_manager.get(s.job_id)
+        if job.status.value=="completed" and s.status==WorkflowStepStatus.RUNNING:
+            s.status=WorkflowStepStatus.COMPLETED; s.result=job.result or {}; changed=True
+        elif job.status.value=="failed" and s.status==WorkflowStepStatus.RUNNING:
+            s.status=WorkflowStepStatus.FAILED; s.error=job.error; changed=True
+    for s in w.steps:
+        if s.status!=WorkflowStepStatus.PENDING: continue
+        deps=[next(x for x in w.steps if x.step_id==d) for d in s.depends_on]
+        if any(x.status==WorkflowStepStatus.FAILED for x in deps): s.status=WorkflowStepStatus.SKIPPED; s.error="Dependency failed"; changed=True; continue
+        if any(x.status!=WorkflowStepStatus.COMPLETED for x in deps): continue
+        j=job_manager.submit(s.objective,owner_id=w.owner_id,risk_level=s.risk_level,workspace_id=w.workspace_id)
+        s.job_id=j.job_id; s.status=WorkflowStepStatus.RUNNING; changed=True
+    if all(s.status in {WorkflowStepStatus.COMPLETED,WorkflowStepStatus.SKIPPED} for s in w.steps): w.status="completed"
+    elif any(s.status==WorkflowStepStatus.FAILED for s in w.steps): w.status="failed"
+    elif any(s.status==WorkflowStepStatus.RUNNING for s in w.steps): w.status="running"
+    if changed: workflow_store.save(w)
+    return w
+
+@app.get("/api/v1/workflows/templates")
+def workflow_templates():
+    return [{"template_id":k,**{x:y for x,y in v.items() if x!="steps"},"steps":v["steps"]} for k,v in WORKFLOW_TEMPLATES.items()]
+
+@app.get("/api/v1/workflows")
+def list_workflows(limit:int=100):
+    return [workflow_payload(_sync_workflow(w)) for w in workflow_store.list(limit)]
+
+@app.post("/api/v1/workflows",status_code=201)
+def create_workflow(payload: WorkflowCreate,x_user_id:str=Header(default="local-user",alias="X-User-Id")):
+    steps=[WorkflowStep(s.step_id,s.objective,s.depends_on,s.condition,s.risk_level.value) for s in payload.steps]
+    try: validate_workflow(steps)
+    except WorkflowValidationError as exc: raise HTTPException(status_code=422,detail=str(exc)) from exc
+    if payload.workspace_id: _require_workspace(payload.workspace_id)
+    w=Workflow(uuid4(),payload.name.strip(),payload.objective,x_user_id.strip() or "local-user",payload.workspace_id,steps=steps,schedule=payload.schedule)
+    workflow_store.save(w); return workflow_payload(_sync_workflow(w))
+
+@app.get("/api/v1/workflows/{workflow_id}")
+def get_workflow(workflow_id:UUID):
+    w=workflow_store.get(workflow_id)
+    if not w: raise HTTPException(status_code=404,detail="unknown workflow")
+    return workflow_payload(_sync_workflow(w))
+
+@app.post("/api/v1/workflows/{workflow_id}/pause")
+def pause_workflow(workflow_id:UUID):
+    w=workflow_store.get(workflow_id)
+    if not w: raise HTTPException(status_code=404,detail="unknown workflow")
+    w.status="paused"; workflow_store.save(w)
+    for s in w.steps:
+        if s.job_id:
+            try: job_manager.pause(s.job_id)
+            except Exception: pass
+    return workflow_payload(w)
+
+@app.post("/api/v1/workflows/{workflow_id}/resume")
+def resume_workflow(workflow_id:UUID):
+    w=workflow_store.get(workflow_id)
+    if not w: raise HTTPException(status_code=404,detail="unknown workflow")
+    w.status="running"
+    for s in w.steps:
+        if s.job_id:
+            try: job_manager.resume(s.job_id)
+            except Exception: pass
+    workflow_store.save(w); return workflow_payload(_sync_workflow(w))
+
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
