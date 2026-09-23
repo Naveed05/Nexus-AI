@@ -504,7 +504,36 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Phase 38 Interactive Agent Workspace
 [✓] Phase 39 Production Frontend Polish & Accessibility
 [✓] Phase 40 Full Runtime Integration
+[✓] Phase 41 Artifact & Delivery Center
 ```
+
+### 📦 Phase 41 — Artifact & Delivery Center
+
+Phase 41 turns NEXUS execution outputs into durable, first-class deliverables instead of transient response text.
+
+**Batch 41.1 — Durable artifact registry**
+- SQLite-backed artifact metadata registry
+- filesystem payload storage behind the existing artifact abstraction
+- task-linked artifact provenance
+- bounded artifact listing and deterministic metadata retrieval
+
+**Batch 41.2 — Delivery API**
+- artifact creation, metadata, listing, and download endpoints
+- safe filename handling and request-size enforcement
+- MIME-aware downloads
+- artifact handles returned from verified execution responses
+
+**Batch 41.3 — Execution-to-artifact pipeline**
+- completed execution output is persisted as a durable execution-result artifact
+- run metadata records the artifact identity
+- artifact delivery remains separate from model text generation
+- existing verification and approval boundaries remain authoritative
+
+**Batch 41.4 — Premium delivery UX**
+- verified-result surface exposes durable artifact availability
+- one-click download and open controls
+- live-run inspection restores artifact delivery controls
+- regression coverage protects API, registry, and frontend contracts
 
 ### ⚡ Phase 40 — Full Runtime Integration
 
