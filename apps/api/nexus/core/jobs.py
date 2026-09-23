@@ -124,7 +124,7 @@ class JobStore:
                 (job_id, objective, owner_id, context, risk_level, workspace_id, status,
                  created_at, started_at, finished_at, retries, max_retries, run_id,
                  artifact_id, error, result, checkpoint, version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     str(job.job_id), job.objective, job.owner_id, job.context, job.risk_level,
                     str(job.workspace_id) if job.workspace_id else None,
