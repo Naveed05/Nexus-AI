@@ -203,6 +203,8 @@ def _execute_durable_job(job) -> dict:
         metadata={"verified": str(bool(result.state.verification_passed)), "run_id": str(run.run_id), "job_id": str(job.job_id)},
     )
     artifact_registry.register(artifact)
+    run.metadata.setdefault("result", {})["artifact_id"] = str(artifact.artifact_id)
+    agent_runtime._persist(run)
     job.run_id = run.run_id
     job.artifact_id = artifact.artifact_id
     job.checkpoint = {**job.checkpoint, "run_id": str(run.run_id), "artifact_id": str(artifact.artifact_id), "verified": bool(result.state.verification_passed)}
@@ -345,6 +347,7 @@ def job_summary() -> dict:
 @app.post("/api/v1/jobs", status_code=202)
 def create_job(payload: TaskCreate, x_user_id: str = Header(default="local-user", alias="X-User-Id")) -> dict:
     user_id = x_user_id.strip() or "local-user"
+    _build_task(payload)
     try:
         product_catalog.consume_run(user_id)
     except RuntimeError as exc:
