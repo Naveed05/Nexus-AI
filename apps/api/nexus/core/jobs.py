@@ -174,6 +174,7 @@ class JobStore:
         return DurableJob(
             job_id=UUID(row["job_id"]),
             objective=row["objective"],
+            owner_id=row["owner_id"],
             context=row["context"],
             risk_level=row["risk_level"],
             workspace_id=UUID(row["workspace_id"]) if row["workspace_id"] else None,
@@ -234,6 +235,7 @@ class DurableJobManager:
         self,
         objective: str,
         *,
+        owner_id: str = "local-user",
         context: str | None = None,
         risk_level: str = "low",
         workspace_id: UUID | None = None,
@@ -242,6 +244,7 @@ class DurableJobManager:
         job = DurableJob(
             job_id=uuid4(),
             objective=objective,
+            owner_id=owner_id,
             context=context,
             risk_level=risk_level,
             workspace_id=workspace_id,
@@ -372,6 +375,7 @@ def job_payload(job: DurableJob) -> dict[str, Any]:
     return {
         "job_id": str(job.job_id),
         "objective": job.objective,
+        "owner_id": job.owner_id,
         "context": job.context,
         "risk_level": job.risk_level,
         "workspace_id": str(job.workspace_id) if job.workspace_id else None,
