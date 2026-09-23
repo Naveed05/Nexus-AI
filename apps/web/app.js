@@ -46,7 +46,7 @@ function renderRunResult(result){
 }
 function renderRunSnapshot(r){
   const status=r.status||"unknown",active=["created","running"].includes(status);
-  $("live-run-title").textContent=r.metadata?.objective?esc(r.metadata.objective).slice(0,72):"Run "+r.run_id.slice(0,12);
+  $("live-run-title").textContent=r.metadata?.objective?String(r.metadata.objective).slice(0,72):"Run "+r.run_id.slice(0,12);
   $("live-run-subtitle").textContent=active?"Live execution · connected to runtime stream":"Execution finished";
   setStatusPill("live-run-status",status,status==="failed"||status==="cancelled"?"danger":active?"ok":status==="completed"?"ok":"neutral");
   $("cancel-run-btn").disabled=!active;$("open-run-result").disabled=!r.metadata?.result;
@@ -58,7 +58,7 @@ function renderRunSnapshot(r){
   $("run-inspector-output").textContent=r.error?"Error: "+r.error:JSON.stringify(r.metadata?.result||r.metadata||{},null,2);
   const events=Array.isArray(r.metadata?.result?.events)?r.metadata.result.events:(Array.isArray(r.metadata?.events)?r.metadata.events:[]);
   $("run-timeline").innerHTML=(events.length?events:steps?Array.from({length:Math.min(steps,8)},(_,i)=>"step_"+(i+1)):[status]).map((e,i)=>'<div class="run-event '+(i<steps?"done":"")+'"><span></span><div><b>'+esc(String(e).replaceAll("_"," "))+'</b><small>'+((i<steps)?"Completed":active?"Current state":"Runtime state")+'</small></div></div>').join("");
-  if(r.metadata?.result)renderRunResult(r.metadata);
+  if(r.metadata?.result)renderRunResult(r.metadata.result);
 }
 async function inspectRun(runId){
   if(!runId)return;
