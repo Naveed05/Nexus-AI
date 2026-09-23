@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     file_storage_path: str = ".nexus/files"
     knowledge_index_path: str = ".nexus/knowledge/index.json"
     run_storage_path: str = ".nexus/runs.sqlite3"
+    artifact_storage_path: str = ".nexus/artifacts"
+    artifact_registry_path: str = ".nexus/artifacts.sqlite3"
     collaboration_audit_storage_path: str = ".nexus/collaboration_audit.sqlite3"
     log_level: str = "INFO"
     request_metrics_max_samples: int = 1000
