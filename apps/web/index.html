@@ -8,6 +8,8 @@
 <link rel="manifest" href="/web/manifest.webmanifest"><link rel="stylesheet" href="/web/styles.css">
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<div id="boot-screen" class="boot-screen" role="status" aria-live="polite"><div class="boot-mark">N</div><b>Loading NEXUS</b><span>Connecting to the work runtime…</span></div>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="#overview" aria-label="NEXUS AI home"><span class="brand-mark">N</span><span class="brand-copy"><b>NEXUS</b><small>AI WORK PLATFORM</small></span></a>
@@ -29,7 +31,7 @@
     <div class="sidebar-bottom">
       <button class="nav-item nav-button" id="command-btn"><span>⌘</span> Command palette <kbd>⌘K</kbd></button>
       <button class="nav-item nav-button" id="theme-btn"><span>◐</span> Appearance <small id="theme-label">Dark</small></button>
-      <div class="sidebar-health"><i id="sidebar-health-dot"></i><div><b id="sidebar-health">Connecting</b><small>Runtime status</small></div></div>
+      <div class="sidebar-health"><i id="sidebar-health-dot"></i><div><b id="sidebar-health" role="status" aria-live="polite">Connecting</b><small>Runtime status</small></div></div>
     </div>
   </aside>
 
@@ -44,11 +46,11 @@
       </div>
     </header>
 
-    <main class="content">
+    <main id="main-content" class="content" tabindex="-1">
       <section id="overview" class="view-section">
         <div class="hero-row">
           <div><p class="eyebrow">VERIFIED AI WORK</p><h1>Turn intent into <span>proven work.</span></h1><p class="hero-sub">NEXUS understands the goal, orchestrates the right capabilities, executes safely, and verifies the result before delivery.</p></div>
-          <div class="hero-status"><span class="pulse"></span><div><b id="connection-status">Connecting</b><small id="last-sync">Syncing live telemetry</small></div></div>
+          <div class="hero-status"><span class="pulse"></span><div><b id="connection-status" role="status" aria-live="polite">Connecting</b><small id="last-sync">Syncing live telemetry</small></div></div>
         </div>
 
         <section class="command-card">
@@ -94,7 +96,7 @@
       <section id="runs" class="view-section">
         <div class="page-intro"><p class="eyebrow">EXECUTION CENTER</p><h2>See work move from intent to result.</h2><p>Every run is observable, traceable, and surfaced with its current state.</p></div>
         <section class="panel"><div class="section-head"><div><h2>Recent executions</h2><span class="muted">Latest runtime history</span></div><button id="runs-refresh" class="ghost">Refresh</button></div><div id="runs-list" class="runs-list"></div></section>
-        <section id="result-panel" class="panel result-panel" hidden><div class="section-head"><div><p class="eyebrow">VERIFIED RESULT</p><h2>Execution output</h2></div><span id="verification-pill" class="status-pill"></span></div><div id="result-output" class="result-output"></div><div id="result-meta" class="result-meta"></div></section>
+        <section id="result-panel" class="panel result-panel" hidden><div class="section-head"><div><p class="eyebrow">VERIFIED RESULT</p><h2>Execution output</h2></div><span id="verification-pill" class="status-pill"></span></div><div id="result-output" class="result-output" aria-live="polite"></div><div id="result-meta" class="result-meta"></div></section>
       </section>
 
       <section id="knowledge" class="view-section">
@@ -133,7 +135,7 @@
       </section>
       <section id="control-center" class="view-section">
         <div class="page-intro"><p class="eyebrow">CONTROL CENTER</p><h2>Production intelligence at a glance.</h2><p>Deployment identity, runtime health, agents, models, tools, and audit integrity — one operational surface.</p></div>
-        <section class="panel control-panel"><div class="control-hero"><div><span id="control-status" class="status-pill">Loading</span><h2 id="control-headline">System telemetry</h2><p id="control-summary" class="muted">Aggregating operational surfaces…</p></div><div class="control-clock"><small>LAST SYNC</small><b id="control-sync">—</b></div></div>
+        <section class="panel control-panel"><div class="control-hero"><div><span id="control-status" class="status-pill" role="status" aria-live="polite">Loading</span><h2 id="control-headline">System telemetry</h2><p id="control-summary" class="muted">Aggregating operational surfaces…</p></div><div class="control-clock"><small>LAST SYNC</small><b id="control-sync">—</b></div></div>
           <div class="control-grid"><article><small>Active runs</small><strong id="control-run-count">—</strong><span id="control-run-detail">—</span></article><article><small>Agents</small><strong id="control-agent-count">—</strong><span id="control-agent-detail">—</span></article><article><small>Models</small><strong id="control-model-count">—</strong><span id="control-model-detail">—</span></article><article><small>Tools</small><strong id="control-tool-count">—</strong><span id="control-tool-detail">—</span></article></div>
           <div class="control-sections"><div><p class="eyebrow">DEPLOYMENT</p><div id="control-deployment" class="data-card"></div></div><div><p class="eyebrow">AUDIT INTEGRITY</p><div id="control-audit" class="data-card"></div></div></div>
           <div><p class="eyebrow">EXECUTION TIMELINE</p><div id="control-timeline" class="timeline"></div></div>
@@ -146,6 +148,6 @@
 
 <div class="mobile-scrim" id="mobile-scrim"></div>
 <div class="command-modal" id="command-modal" hidden><div class="command-dialog"><div class="command-search"><span>⌘</span><input id="command-input" placeholder="Jump to a NEXUS surface…" autocomplete="off"><kbd>Esc</kbd></div><div id="command-results"></div></div></div>
-<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+<div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
 <script type="module" src="/web/app.js"></script>
 </body></html>
