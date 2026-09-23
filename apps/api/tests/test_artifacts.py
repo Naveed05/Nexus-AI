@@ -98,3 +98,23 @@ def test_agent_state_add_artifact_is_idempotent():
     assert state.artifacts == [str(artifact_id)]
     with pytest.raises(ValueError, match="artifact_id"):
         state.add_artifact("")
+
+
+def test_artifact_registry_persists_metadata(tmp_path):
+    from nexus.core.artifacts import ArtifactRegistry
+    registry = ArtifactRegistry(tmp_path / "artifacts.sqlite3")
+    artifact = Artifact(filename="result.txt", storage_key="abc.txt", size_bytes=4, metadata={"run_id": "run-1"})
+    registry.register(artifact)
+    assert registry.get(artifact.artifact_id).metadata == {"run_id": "run-1"}
+    assert registry.list() == (artifact,)
+
+
+def test_artifact_registry_filters_by_task(tmp_path):
+    from nexus.core.artifacts import ArtifactRegistry
+    registry = ArtifactRegistry(tmp_path / "artifacts.sqlite3")
+    first = uuid4()
+    a = Artifact(filename="a.txt", storage_key="a.txt", task_id=first)
+    b = Artifact(filename="b.txt", storage_key="b.txt")
+    registry.register(a)
+    registry.register(b)
+    assert registry.list(task_id=first) == (a,)
