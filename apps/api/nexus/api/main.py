@@ -33,6 +33,7 @@ from nexus.core.supervisor import AgentSupervisor
 from nexus.core.collaboration_audit import CollaborationAuditLog
 from nexus.core.control_center import build_control_center_summary
 from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
+from nexus.core.jobs import DurableJobManager, JobStore, job_payload
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -141,6 +142,8 @@ agent_runtime = AgentRuntime(settings.run_storage_path,)
 production_runtime = ProductionRuntime(store_path=settings.run_storage_path, engine=engine)
 rate_limiter = SlidingWindowRateLimiter(limit=settings.rate_limit_per_minute)
 collaboration_audit = CollaborationAuditLog(settings.collaboration_audit_storage_path)
+job_store = JobStore(settings.job_storage_path)
+job_manager = DurableJobManager(job_store, _execute_durable_job)
 
 
 def _workspace_payload(workspace) -> dict:
@@ -268,6 +271,7 @@ def control_center_summary() -> dict:
             },
         })
     runs = list_agent_runs()
+    runtime["jobs"] = job_manager.stats()
     return build_control_center_summary(
         deployment=deployment,
         runtime=runtime,
@@ -278,6 +282,107 @@ def control_center_summary() -> dict:
         runs=runs,
     )
 
+
+
+
+@app.get("/api/v1/jobs")
+def list_jobs(limit: int = 100) -> list[dict]:
+    try:
+        return [job_payload(job) for job in job_manager.list(limit=limit)]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/jobs/summary")
+def job_summary() -> dict:
+    return job_manager.stats()
+
+
+@app.post("/api/v1/jobs", status_code=202)
+def create_job(payload: TaskCreate, x_user_id: str = Header(default="local-user", alias="X-User-Id")) -> dict:
+    user_id = x_user_id.strip() or "local-user"
+    try:
+        product_catalog.consume_run(user_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    job = job_manager.submit(
+        payload.objective,
+        owner_id=user_id,
+        context=payload.context,
+        risk_level=payload.risk_level.value,
+        workspace_id=payload.workspace_id,
+        max_retries=3,
+    )
+    return job_payload(job)
+
+
+@app.get("/api/v1/jobs/{job_id}")
+def get_job(job_id: UUID) -> dict:
+    try:
+        return job_payload(job_manager.get(job_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/jobs/{job_id}/cancel")
+def cancel_job(job_id: UUID) -> dict:
+    try:
+        return job_payload(job_manager.cancel(job_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/jobs/{job_id}/pause")
+def pause_job(job_id: UUID) -> dict:
+    try:
+        return job_payload(job_manager.pause(job_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/jobs/{job_id}/resume")
+def resume_job(job_id: UUID) -> dict:
+    try:
+        return job_payload(job_manager.resume(job_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/jobs/{job_id}/retry")
+def retry_job(job_id: UUID) -> dict:
+    try:
+        return job_payload(job_manager.retry(job_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/jobs/{job_id}/stream")
+def stream_job(job_id: UUID):
+    def events():
+        last = None
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            try:
+                job = job_manager.get(job_id)
+            except KeyError:
+                yield "event: error\\ndata: " + json.dumps({"detail": "unknown job"}) + "\\n\\n"
+                return
+            payload = job_payload(job)
+            state = json.dumps(payload, sort_keys=True)
+            if state != last:
+                yield "event: job\\ndata: " + state + "\\n\\n"
+                last = state
+                if job.terminal:
+                    return
+            else:
+                yield ": heartbeat\\n\\n"
+            time.sleep(0.5)
+        yield "event: timeout\\ndata: " + json.dumps({"job_id": str(job_id)}) + "\\n\\n"
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 @app.get("/api/v1/agents")
 def list_agents() -> list[dict]:
