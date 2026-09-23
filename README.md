@@ -507,106 +507,34 @@ The next major engineering focus is deployment, observability, scale hardening, 
 
 ### ✨ Phase 39 — Production Frontend Polish & Accessibility
 
-Phase 39 hardens the NEXUS web experience from a premium interface into a resilient operator product surface:
+Phase 39 is delivered as four coordinated frontend batches:
 
-- accessible skip navigation, focus-visible treatment, live status announcements, and reduced-motion support
-- boot/loading state that resolves after the initial frontend data surfaces settle
-- clearer healthy, degraded, offline, and unavailable status semantics
-- resilient frontend error and unhandled-rejection recovery messaging
-- keyboard navigation for the command palette
-- polished interactive run-queue states and responsive Agent Workspace layouts
-- improved mobile collaboration-builder ergonomics
-- frontend regression contracts covering accessibility, resilience, and visual-state hooks
+**Batch 39.1 — Experience foundation**
+- accessible application shell, skip navigation, live runtime status, boot state, focus-visible states
+- reduced-motion and forced-colors support
+- clear healthy/degraded/offline/unavailable presentation
+
+**Batch 39.2 — Operator interactions**
+- live Agent Workspace controls
+- execution filtering
+- verified-result copy action
+- safer run cancellation confirmation
+- keyboard command-palette navigation
+- improved responsive collaboration controls
+
+**Batch 39.3 — Installable/resilient web app**
+- PWA install metadata and operator-facing install affordance
+- service worker for static shell caching and graceful offline shell recovery
+- dedicated NEXUS application icon
+- API traffic intentionally bypasses offline caching so stale backend state is not presented as live truth
+
+**Batch 39.4 — Verification & release hardening**
+- frontend accessibility and resilience regression contracts
+- PWA/service-worker/icon serving checks
+- product-control regression coverage
+- CI verification for the complete backend/frontend contract
 
 The phase remains presentation and operator-experience focused: it does not expand agent authority or bypass existing backend approval boundaries.
-
-
-## Technology direction
-
-**Backend**
-- Python
-- FastAPI
-- Pydantic
-- pytest
-
-**AI / ML**
-- OpenAI models
-- Hugging Face ecosystem
-- scikit-learn
-- Polars / Pandas
-- PyTorch-oriented integrations
-
-**Data / Retrieval**
-- DuckDB direction
-- PostgreSQL / pgvector direction
-- hybrid retrieval
-- embeddings
-- durable vector indexing
-
-**Infrastructure direction**
-- Docker
-- GitHub Actions
-- Redis
-- object storage
-- OpenTelemetry
-- production cloud deployment
-
-## Repository structure
-
-```text
-apps/api/nexus/
-├── api/          # HTTP API
-├── core/
-│   ├── engine.py
-│   ├── planner.py
-│   ├── router.py
-│   ├── executor.py
-│   ├── tools.py
-│   ├── permissions.py
-│   ├── sandbox.py
-│   ├── verification.py
-│   ├── evaluation.py
-│   ├── advanced_execution.py
-│   ├── frontier_workflows.py
-│   ├── data_engine.py
-│   ├── data_pipeline.py
-│   ├── datasets.py
-│   ├── dataset_workspace.py
-│   ├── workspaces.py
-│   ├── files.py
-│   ├── documents.py
-│   ├── retrieval.py
-│   ├── knowledge.py
-│   ├── research.py
-│   ├── memory.py
-│   └── multimodal.py
-└── tests/        # automated regression coverage
-```
-
-## Quality bar
-
-The goal is to make NEXUS more than an impressive demo. Every major subsystem is expected to earn its place through:
-
-- automated tests
-- deterministic behavior where possible
-- explicit contracts
-- failure handling
-- permission boundaries
-- evidence tracking
-- regression evaluation
-- CI validation
-- observable execution
-
-## Long-term vision
-
-NEXUS is intended to become a general AI work platform where a user can state a goal naturally and receive a verified, reproducible result — whether the work involves research, data, code, documents, analysis, or multimodal information.
-
-> **Don't just ask AI for an answer. Give it a goal, let it do the work, and make it prove the result.**
-
-## License
-
-TBD during the productization phase.
-
 
 ### 🤝 Multi-Agent Collaboration
 
