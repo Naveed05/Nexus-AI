@@ -742,3 +742,9 @@ Phase 38 turns the premium frontend into an operator workspace for active agent 
 
 The workspace remains an operator surface: it exposes execution state and prepares bounded collaboration plans without granting the browser additional agent authority.
 
+
+
+### Phase 43 — Workflow Automation & Scheduling
+NEXUS now supports durable workflow definitions on top of Phase 42 jobs. Workflows persist as dependency graphs with validation, sequential/parallel-ready step dependencies, step state, results, recovery, reusable templates, pause/resume controls, and persisted one-time or recurring schedules. The Workflow Center exposes templates and live workflow state through the product UI.
+
+Roadmap: [✓] Phase 43 Workflow Automation & Scheduling
