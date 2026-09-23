@@ -4,6 +4,8 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="NEXUS AI — a verified agentic work platform">
 <meta name="theme-color" content="#080b12"><meta name="color-scheme" content="dark light">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="NEXUS AI">
+<link rel="icon" href="/web/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/web/icon.svg">
 <title>NEXUS AI — Verified Work Platform</title>
 <link rel="manifest" href="/web/manifest.webmanifest"><link rel="stylesheet" href="/web/styles.css">
 </head>
@@ -95,7 +97,7 @@
 
       <section id="runs" class="view-section">
         <div class="page-intro"><p class="eyebrow">EXECUTION CENTER</p><h2>See work move from intent to result.</h2><p>Every run is observable, traceable, and surfaced with its current state.</p></div>
-        <section class="panel"><div class="section-head"><div><h2>Recent executions</h2><span class="muted">Latest runtime history</span></div><button id="runs-refresh" class="ghost">Refresh</button></div><div id="runs-list" class="runs-list"></div></section>
+        <section class="panel"><div class="section-head"><div><h2>Recent executions</h2><span class="muted">Latest runtime history</span></div><div class="run-actions"><input id="run-filter" class="compact-filter" maxlength="120" placeholder="Filter runs…" aria-label="Filter runs"><button id="runs-refresh" class="ghost">Refresh</button></div></div><div id="runs-list" class="runs-list"></div></section>
         <section id="result-panel" class="panel result-panel" hidden><div class="section-head"><div><p class="eyebrow">VERIFIED RESULT</p><h2>Execution output</h2></div><span id="verification-pill" class="status-pill"></span></div><div id="result-output" class="result-output" aria-live="polite"></div><div id="result-meta" class="result-meta"></div></section>
       </section>
 
