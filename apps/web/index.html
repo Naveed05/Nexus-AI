@@ -26,6 +26,7 @@
       <a href="#workspace" class="nav-item" data-nav="workspace"><span>✦</span> Workspace</a>
       <a href="#agents" class="nav-item" data-nav="agents"><span>◈</span> Agents</a>
       <a href="#agent-workspace" class="nav-item" data-nav="agent-workspace"><span>⌁</span> Agent workspace</a>
+      <a href="#jobs" class="nav-item" data-nav="jobs"><span>◫</span> Jobs</a>
       <a href="#runs" class="nav-item" data-nav="runs"><span>↯</span> Executions</a>
       <a href="#knowledge" class="nav-item" data-nav="knowledge"><span>◉</span> Knowledge</a>
       <a href="#control-center" class="nav-item" data-nav="control-center"><span>◌</span> Control center</a>
@@ -134,6 +135,14 @@
             <div id="workspace-run-list"></div>
           </section>
         </div>
+      </section>
+
+      <section id="jobs" class="view-section">
+        <div class="page-intro"><p class="eyebrow">JOB CENTER</p><h2>Durable work that survives the request.</h2><p>Queue long-running goals, watch their lifecycle, recover failures, and reopen the artifacts they produce.</p></div>
+        <section class="panel">
+          <div class="section-head"><div><h2>Workflow jobs</h2><span id="job-summary" class="muted">Loading durable queue…</span></div><div class="run-actions"><button id="jobs-refresh" class="ghost">Refresh</button></div></div>
+          <div id="job-list" class="job-list"><div class="empty">No durable jobs yet.</div></div>
+        </section>
       </section>
       <section id="control-center" class="view-section">
         <div class="page-intro"><p class="eyebrow">CONTROL CENTER</p><h2>Production intelligence at a glance.</h2><p>Deployment identity, runtime health, agents, models, tools, and audit integrity — one operational surface.</p></div>
