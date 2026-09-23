@@ -116,12 +116,12 @@ class JobStore:
             job.version += 1
             conn.execute(
                 """INSERT OR REPLACE INTO jobs
-                (job_id, objective, context, risk_level, workspace_id, status,
+                (job_id, objective, owner_id, context, risk_level, workspace_id, status,
                  created_at, started_at, finished_at, retries, max_retries, run_id,
                  artifact_id, error, result, checkpoint, version)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    str(job.job_id), job.objective, job.context, job.risk_level,
+                    str(job.job_id), job.objective, job.owner_id, job.context, job.risk_level,
                     str(job.workspace_id) if job.workspace_id else None,
                     job.status.value, self._dt(job.created_at), self._dt(job.started_at),
                     self._dt(job.finished_at), job.retries, job.max_retries,
