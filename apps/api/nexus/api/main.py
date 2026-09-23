@@ -673,8 +673,11 @@ def get_agent_run(run_id: str) -> dict:
         raise HTTPException(status_code=422, detail="run_id must be a UUID") from exc
     try:
         run = production_runtime.status(parsed_run_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except KeyError:
+        try:
+            run = agent_runtime.get(parsed_run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _run_payload(run)
 
 
@@ -757,7 +760,10 @@ def cancel_agent_run(run_id: str) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="run_id must be a UUID") from exc
     try:
-        run = production_runtime.cancel(parsed_run_id)
+        try:
+            run = production_runtime.cancel(parsed_run_id)
+        except KeyError:
+            run = agent_runtime.cancel(parsed_run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
