@@ -43,7 +43,7 @@ class ExecutionResponse(BaseModel):
 
 
 class WorkflowStepCreate(BaseModel):
-    step_id: str = Field(min_length=1, max_length=80, pattern=r'^[a-zA-Z0-9_-]+
+    step_id: str = Field(min_length=1, max_length=80)
     question: str = Field(min_length=1, max_length=20_000)
     workspace_id: UUID
     max_queries: int = Field(default=4, ge=1, le=8)
