@@ -710,7 +710,7 @@ def execute_task(payload: TaskCreate) -> ExecutionResponse:
         verification_passed=result.state.verification_passed, verification_checks=verification.checks, verification_issues=list(verification.issues),
         grounding_score=verification.grounding_score,
         grounding=[{"citation": item.citation, "claim": item.claim, "overlap_score": item.overlap_score, "supported": item.supported} for item in verification.grounding],
-        tool_calls=len(result.execution.tool_calls), events=[event.event_type.value for event in result.events],
+        tool_calls=len(result.execution.tool_calls), events=[event.event_type.value for event in result.events], artifact_id=str(artifact.artifact_id),
     )
 
 @app.get("/api/v1/runs/{run_id}")
