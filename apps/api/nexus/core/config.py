@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     run_storage_path: str = ".nexus/runs.sqlite3"
     artifact_storage_path: str = ".nexus/artifacts"
     artifact_registry_path: str = ".nexus/artifacts.sqlite3"
+    job_storage_path: str = ".nexus/jobs.sqlite3"
     collaboration_audit_storage_path: str = ".nexus/collaboration_audit.sqlite3"
     log_level: str = "INFO"
     request_metrics_max_samples: int = 1000
