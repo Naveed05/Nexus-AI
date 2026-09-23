@@ -80,6 +80,7 @@ class JobStore:
                 """CREATE TABLE IF NOT EXISTS jobs (
                     job_id TEXT PRIMARY KEY,
                     objective TEXT NOT NULL,
+                    owner_id TEXT NOT NULL DEFAULT 'local-user',
                     context TEXT,
                     risk_level TEXT NOT NULL,
                     workspace_id TEXT,
@@ -97,6 +98,9 @@ class JobStore:
                     version INTEGER NOT NULL
                 )"""
             )
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+            if "owner_id" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'local-user'")
             conn.commit()
 
     def _connect(self) -> sqlite3.Connection:
