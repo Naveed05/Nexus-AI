@@ -161,3 +161,31 @@ def test_phase_41_artifact_delivery_contract() -> None:
     for marker in ("renderArtifactDelivery", "/api/v1/artifacts/", "download-artifact-btn"):
         assert marker in script or marker in html
     assert 'id="artifact-status"' in html
+
+
+def test_phase_42_durable_job_api_contract_is_present() -> None:
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    for path in (
+        "/api/v1/jobs",
+        "/api/v1/jobs/summary",
+        "/api/v1/jobs/{job_id}",
+        "/api/v1/jobs/{job_id}/cancel",
+        "/api/v1/jobs/{job_id}/pause",
+        "/api/v1/jobs/{job_id}/resume",
+        "/api/v1/jobs/{job_id}/retry",
+        "/api/v1/jobs/{job_id}/stream",
+    ):
+        assert path in paths
+
+
+def test_phase_42_job_center_frontend_contract() -> None:
+    html = client.get("/").text
+    script = client.get("/web/app.js").text
+    styles = client.get("/web/styles.css").text
+    for marker in ('href="#jobs"', 'id="jobs"', 'id="job-list"', 'id="job-summary"', 'id="jobs-refresh"'):
+        assert marker in html
+    for marker in ("/api/v1/jobs", "EventSource", "inspectJob", "loadJobs"):
+        assert marker in script
+    assert ".job-row" in styles
