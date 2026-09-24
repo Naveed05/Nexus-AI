@@ -167,6 +167,42 @@ def validate_workflow(steps:list[WorkflowStep]):
     return True
 
 
+def evaluate_condition(condition:str|None, context:dict[str,Any]|None=None)->bool:
+    """Evaluate a deliberately small, deterministic workflow condition language.
+
+    Supported forms are: omitted/blank (true), "true", "false", and
+    dotted key equality such as "verification.passed == true" or
+    "run.status == 'completed'". No Python expressions are evaluated.
+    """
+    if condition is None or not condition.strip():
+        return True
+    raw=condition.strip()
+    if raw.lower() in {"true","always"}:
+        return True
+    if raw.lower() in {"false","never"}:
+        return False
+    if "==" not in raw:
+        return False
+    key,expected=[x.strip() for x in raw.split("==",1)]
+    if not key or not expected or not key.replace("_","").replace(".","").isalnum():
+        return False
+    value:Any=context or {}
+    for part in key.split("."):
+        if not isinstance(value,dict) or part not in value:
+            return False
+        value=value[part]
+    if expected.lower() in {"true","false"}:
+        wanted=expected.lower()=="true"
+    elif (len(expected)>=2 and expected[0]==expected[-1] and expected[0] in {"'","\""}):
+        wanted=expected[1:-1]
+    else:
+        try:
+            wanted=float(expected) if "." in expected else int(expected)
+        except ValueError:
+            wanted=expected
+    return value==wanted
+
+
 def ready_steps(w:Workflow):
     by_id={s.step_id:s for s in w.steps}
     ready=[]
