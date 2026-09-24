@@ -275,6 +275,19 @@ def _sync_workflow(w):
             event_detail = "workflow step failed"
             event_step_id = step.step_id
 
+    by_id = {step.step_id: step for step in w.steps}
+    for step in w.steps:
+        if step.status != WorkflowStepStatus.PENDING:
+            continue
+        dependencies = [by_id[dependency_id] for dependency_id in step.depends_on]
+        if any(dependency.status in {WorkflowStepStatus.FAILED, WorkflowStepStatus.SKIPPED} for dependency in dependencies):
+            step.status = WorkflowStepStatus.SKIPPED
+            step.error = "Dependency failed or was skipped"
+            changed = True
+            event_type = "workflow.step.skipped"
+            event_detail = "workflow step blocked by a failed dependency"
+            event_step_id = step.step_id
+
     context = _workflow_condition_context(w)
     for step in ready_steps(w):
         if step.condition and not evaluate_condition(step.condition, context):
