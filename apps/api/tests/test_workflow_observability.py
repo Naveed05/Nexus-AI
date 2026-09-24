@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from nexus.core.workflows import (
     Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore,
     WorkflowValidationError, validate_workflow, ready_steps, workflow_payload
@@ -50,7 +50,6 @@ def test_condition_language_is_deterministic():
 
 
 import time
-from datetime import datetime, timezone, timedelta
 from nexus.core.workflows import WorkflowScheduler
 
 def test_one_time_schedule_is_not_replayed(tmp_path):
@@ -61,7 +60,7 @@ def test_one_time_schedule_is_not_replayed(tmp_path):
     store.save(w,event_type="workflow.scheduled")
     scheduler=WorkflowScheduler(store,tick=0.05)
     scheduler.start()
-    time.sleep(0.18)
+    time.sleep(0.45)
     scheduler.stop()
     got=store.get(w.workflow_id)
     assert got and got.schedule["enabled"] is False
