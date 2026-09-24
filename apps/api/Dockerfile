@@ -10,6 +10,7 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY apps/api ./apps/api
+COPY apps/web ./apps/web
 COPY README.md ./README.md
 
 RUN useradd --create-home --uid 10001 nexus && \

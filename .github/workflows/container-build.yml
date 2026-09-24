@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "apps/api/**"
+      - "apps/web/**"
       - "requirements.txt"
       - "docker-compose.yml"
       - ".dockerignore"
@@ -13,6 +14,7 @@ on:
     branches: [main]
     paths:
       - "apps/api/**"
+      - "apps/web/**"
       - "requirements.txt"
       - "docker-compose.yml"
       - ".dockerignore"
@@ -30,3 +32,17 @@ jobs:
 
       - name: Inspect image
         run: docker image inspect nexus-ai:test
+
+      - name: Run container smoke test
+        run: |
+          docker run -d --name nexus-ai-smoke -p 8000:8000 nexus-ai:test
+          trap 'docker logs nexus-ai-smoke || true; docker rm -f nexus-ai-smoke || true' EXIT
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/v1/ready >/tmp/nexus-ready.json; then
+              cat /tmp/nexus-ready.json
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "NEXUS container did not become ready"
+          exit 1
