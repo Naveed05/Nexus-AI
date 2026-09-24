@@ -22,13 +22,35 @@ async function recallMemory(){const id=state.workspace,q=$("memory-query").value
 async function uploadFile(){const id=state.workspace,file=$("file-input").files[0];if(!id||!file)return;$("workspace-status").textContent="Uploading "+file.name+"…";const data=new FormData();data.append("file",file);try{const r=await fetch("/api/v1/workspaces/"+id+"/files",{method:"POST",body:data});if(!r.ok)throw new Error(await r.text());$("file-input").value="";await loadFiles();toast("File uploaded")}catch(e){$("workspace-status").textContent="Upload failed.";toast("Upload failed","error")}}
 
 
+async function workflowCommand(id,action,stepId=null){
+ try{
+  const payload={action,idempotency_key:crypto.randomUUID()};
+  if(stepId)payload.step_id=stepId;
+  await api.post("/api/v1/workflows/"+encodeURIComponent(id)+"/commands",payload);
+  await loadWorkflows();
+  toast("Workflow "+action.replace("_"," ")+" applied");
+ }catch(e){toast("Workflow command failed","error")}
+}
 async function loadWorkflows(){
  try{
-  const [items,templates]=await Promise.all([api.get("/api/v1/workflows"),api.get("/api/v1/workflows/templates")]);
+  const [items,templates,metrics]=await Promise.all([api.get("/api/v1/workflows"),api.get("/api/v1/workflows/templates"),api.get("/api/v1/workflows/metrics")]);
   $("workflow-summary").textContent=items.length+" workflow(s)";
+  $("workflow-metric-total").textContent=metrics.workflow_count;
+  $("workflow-metric-active").textContent=metrics.active_workflow_count+" active";
+  $("workflow-metric-completed").textContent=metrics.status_counts.completed;
+  $("workflow-metric-completion-rate").textContent=(Number(metrics.completion_rate)*100).toFixed(1)+"% terminal completion";
+  $("workflow-metric-failed").textContent=metrics.status_counts.failed;
+  $("workflow-metric-failure-rate").textContent=(Number(metrics.failure_rate)*100).toFixed(1)+"% terminal failure";
+  $("workflow-metric-running").textContent=metrics.step_status_counts.running;
+  $("workflow-metric-retry").textContent=metrics.retryable_failed_steps+" failed steps";
   $("workflow-templates").innerHTML=templates.map(t=>'<div class="template-card"><h4>'+esc(t.name)+'</h4><p>'+esc(t.description)+'</p><button data-wft="'+esc(t.template_id)+'">Use template</button></div>').join("");
-  $("workflow-list").innerHTML=items.length?items.map(w=>'<article class="job-row"><div class="job-main"><div class="job-title"><span class="job-dot '+esc(w.status)+'"></span><b>'+esc(w.name)+'</b></div><small>'+esc(w.status)+' · '+w.steps.filter(s=>s.status==="completed").length+'/'+w.steps.length+' steps</small></div><div class="job-actions"><button class="ghost" data-wf-open="'+esc(w.workflow_id)+'">Open</button></div></article>').join(""):'<div class="empty">No workflows yet.</div>';
-  document.querySelectorAll("[data-wf-open]").forEach(b=>b.onclick=async()=>{const w=await api.get("/api/v1/workflows/"+b.dataset.wfOpen);toast(w.name+" · "+w.status);});
+  $("workflow-list").innerHTML=items.length?items.map(w=>{
+   const terminal=["completed","failed","cancelled"].includes(w.status);
+   const actions=w.status==="draft"||w.status==="scheduled"?'<button class="ghost" data-wfc="start">Start</button>':w.status==="running"?'<button class="ghost" data-wfc="pause">Pause</button><button class="ghost" data-wfc="cancel">Cancel</button>':w.status==="paused"?'<button class="ghost" data-wfc="resume">Resume</button>':w.status==="failed"?'<button class="ghost" data-wfc="retry">Retry</button>':'';
+   return '<article class="job-row"><div class="job-main"><div class="job-title"><span class="job-dot '+esc(w.status)+'"></span><b>'+esc(w.name)+'</b></div><small>'+esc(w.status)+' · '+w.steps.filter(s=>s.status==="completed").length+'/'+w.steps.length+' steps · '+w.event_count+' events</small></div><div class="job-actions">'+actions+'<button class="ghost" data-wf-open="'+esc(w.workflow_id)+'">Inspect</button></div></article>';
+  }).join(""):'<div class="empty">No workflows yet.</div>';
+  document.querySelectorAll("[data-wf-open]").forEach(b=>b.onclick=async()=>{const w=await api.get("/api/v1/workflows/"+b.dataset.wfOpen);const h=await api.get("/api/v1/workflows/"+b.dataset.wfOpen+"/health");toast(w.name+" · "+h.status+(h.needs_operator?" · operator attention":""));});
+  document.querySelectorAll("[data-wfc]").forEach(b=>b.onclick=()=>workflowCommand(b.closest(".job-row").querySelector("[data-wf-open]").dataset.wfOpen,b.dataset.wfc));
   document.querySelectorAll("[data-wft]").forEach(b=>b.onclick=async()=>{const t=templates.find(x=>x.template_id===b.dataset.wft);if(!t)return;const payload={name:t.name,objective:t.description,steps:t.steps.map(s=>({step_id:s.step_id,objective:s.objective,depends_on:s.depends_on||[],risk_level:"low"}))};await api.post("/api/v1/workflows",payload);await loadWorkflows();toast("Workflow created");});
  }catch(e){$("workflow-summary").textContent="Unavailable";$("workflow-list").innerHTML='<div class="empty">Workflow service unavailable.</div>'}
 }
