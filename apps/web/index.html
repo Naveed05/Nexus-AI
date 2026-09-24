@@ -25,6 +25,7 @@
       <a href="#overview" class="nav-item active" data-nav="overview"><span>⌂</span> Overview</a>
       <a href="#workspace" class="nav-item" data-nav="workspace"><span>✦</span> Workspace</a>
       <a href="#agents" class="nav-item" data-nav="agents"><span>◈</span> Agents</a>
+      <a href="#agent-orchestration" class="nav-item" data-nav="agent-orchestration"><span>◎</span> Orchestration</a>
       <a href="#agent-workspace" class="nav-item" data-nav="agent-workspace"><span>⌁</span> Agent workspace</a>
       <a href="#jobs" class="nav-item" data-nav="jobs"><span>◫</span> Jobs</a>
       <a href="#runs" class="nav-item" data-nav="runs"><span>↯</span> Executions</a>
@@ -144,6 +145,14 @@
           <div id="job-list" class="job-list"><div class="empty">No durable jobs yet.</div></div>
         </section>
       </section>
+      <section id="agent-orchestration" class="view-section">
+        <div class="page-intro"><p class="eyebrow">MULTI-AGENT ORCHESTRATION</p><h2>Coordinate specialist work as a durable graph.</h2><p>Bounded dispatch, explicit dependencies, provenance, recovery, and operator controls.</p></div>
+        <section class="panel">
+          <div class="section-head"><div><h2>Orchestration health</h2><span id="agent-wf-summary" class="muted">Loading…</span></div><button id="agent-wf-refresh" class="ghost">Refresh</button></div>
+          <div class="control-grid"><article><small>Workflows</small><strong id="agent-wf-total">—</strong><span>durable</span></article><article><small>Active</small><strong id="agent-wf-active">—</strong><span>running / ready</span></article><article><small>Completed</small><strong id="agent-wf-completed">—</strong><span>terminal success</span></article><article><small>Failed</small><strong id="agent-wf-failed">—</strong><span>needs review</span></article></div>
+          <div id="agent-wf-list" class="job-list"><div class="empty">Loading orchestration state…</div></div>
+        </section>
+      </section>
       <section id="control-center" class="view-section">
         <div class="page-intro"><p class="eyebrow">CONTROL CENTER</p><h2>Production intelligence at a glance.</h2><p>Deployment identity, runtime health, agents, models, tools, and audit integrity — one operational surface.</p></div>
         <section class="panel control-panel"><div class="control-hero"><div><span id="control-status" class="status-pill" role="status" aria-live="polite">Loading</span><h2 id="control-headline">System telemetry</h2><p id="control-summary" class="muted">Aggregating operational surfaces…</p></div><div class="control-clock"><small>LAST SYNC</small><b id="control-sync">—</b></div></div>
@@ -160,5 +169,5 @@
 <div class="mobile-scrim" id="mobile-scrim"></div>
 <div class="command-modal" id="command-modal" hidden><div class="command-dialog"><div class="command-search"><span>⌘</span><input id="command-input" placeholder="Jump to a NEXUS surface…" autocomplete="off"><kbd>Esc</kbd></div><div id="command-results"></div></div></div>
 <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
-<script type="module" src="/web/app.js"></script>
+<script type="module" src="/web/app.js"></script><script type="module" src="/web/agent-workflows.js"></script>
 </body></html>

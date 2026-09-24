@@ -825,3 +825,41 @@ Phase 45 turns the durable workflow foundation into an operator-grade control pl
 - API control/metrics/health contract coverage
 - frontend workflow control and analytics contract coverage
 - full CI and benchmark-gate verification required before phase completion
+
+
+### 🤝 Phase 46 — Advanced Multi-Agent Workflow Orchestration
+
+Phase 46 extends the existing bounded collaboration layer into a durable, dependency-aware multi-agent workflow control plane.
+
+**Batch 46.1 — Durable agent workflow foundation**
+- SQLite-backed agent workflow and event persistence
+- explicit workflow and work-item lifecycle states
+- dependency graph validation with cycle protection
+- bounded workflow size and parallelism
+
+**Batch 46.2 — Deterministic multi-agent scheduling**
+- dependency-aware ready-item selection
+- bounded parallel dispatch waves
+- per-item attempts and immutable assignment provenance
+- deterministic workflow health and operator-attention signals
+
+**Batch 46.3 — Handoffs, recovery & lifecycle control**
+- explicit input/output artifact references
+- provenance carried across specialist work items
+- completion/failure/retry lifecycle APIs
+- pause/resume/cancel boundaries and terminal-state protection
+
+**Batch 46.4 — Production control-plane APIs & analytics**
+- durable agent-workflow creation and inspection APIs
+- health and event-history endpoints
+- dispatch, completion, failure, retry, pause, resume and cancel controls
+- aggregate workflow/item metrics for the Control Center
+
+**Batch 46.5 — Verification & release hardening**
+- dependency/cycle regression coverage
+- bounded parallelism and recovery tests
+- persistence and event-journal verification
+- terminal-state protection and metrics coverage
+- full CI and benchmark-gate verification required before phase completion
+
+The orchestration layer schedules only declared work, preserves existing approval/permission/verification boundaries, and does not grant agents autonomous policy authority.
