@@ -132,8 +132,11 @@ def test_executor_runs_function_tool_and_returns_final_output() -> None:
     assert result.tool_calls[0].success is True
     assert len(client.responses.calls) == 2
 
+    first_input = client.responses.calls[0]["input"]
+    assert first_input[0] == {"role": "user", "content": "Calculate 25 times 4"}
+
     second_input = client.responses.calls[1]["input"]
-    assert any(item["type"] == "function_call_output" for item in second_input if isinstance(item, dict))
+    assert any(item.get("type") == "function_call_output" for item in second_input if isinstance(item, dict))
 
 
 def test_executor_preserves_search_evidence_for_verification() -> None:

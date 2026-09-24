@@ -239,7 +239,7 @@ class ModelExecutor:
         tools = self._registry.openai_tools() if allowed_tools is None else [
             self._registry.get(name).as_openai_tool() for name in allowed_tools
         ]
-        input_items: list[Any] = [task.objective]
+        input_items: list[Any] = [{"role": "user", "content": task.objective}]
         if task.context:
             input_items.append({"role": "user", "content": task.context})
         tool_calls: list[ToolCallRecord] = []

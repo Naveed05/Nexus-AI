@@ -100,7 +100,7 @@
       <section id="workspace" class="view-section">
         <div class="page-intro"><p class="eyebrow">WORKSPACE</p><h2>Context that travels with the work.</h2><p>Files and memory give agents the context they need without repeating yourself.</p></div>
         <div class="two-column">
-          <section class="panel"><div class="section-head"><div><h2>Files</h2><span id="workspace-status" class="muted">Select a workspace.</span></div><label class="upload"><input id="file-input" type="file"><span>＋ Upload</span></label></div><div id="file-list" class="file-list"></div></section>
+          <section class="panel"><div class="section-head"><div><h2>Files</h2><span id="workspace-status" class="muted">Select a workspace.</span></div><label class="upload" title="Select a workspace before uploading"><input id="file-input" type="file" accept=".csv,.json,.parquet,.txt,.md,.pdf,.doc,.docx"><span>＋ Upload</span></label></div><div id="file-list" class="file-list"></div></section>
           <section class="panel"><div class="section-head"><div><h2>Memory</h2><span class="muted">Persistent workspace context</span></div></div><div class="stack-form"><div class="input-row"><input id="memory-input" maxlength="5000" placeholder="Save a useful fact or preference…"><button id="save-memory-btn" class="ghost">Remember</button></div><div class="input-row"><input id="memory-query" maxlength="5000" placeholder="Recall relevant context…"><button id="recall-btn" class="ghost">Recall</button></div></div><div id="memory-list" class="memory-list"></div></section>
         </div>
       </section>
