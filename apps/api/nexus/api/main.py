@@ -34,7 +34,7 @@ from nexus.core.collaboration_audit import CollaborationAuditLog
 from nexus.core.control_center import build_control_center_summary
 from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
 from nexus.core.jobs import DurableJobManager, JobStore, job_payload
-from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, validate_workflow, workflow_payload, WORKFLOW_TEMPLATES, WorkflowScheduler, evaluate_condition, ready_steps
+from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, validate_workflow, workflow_payload, WORKFLOW_TEMPLATES, WorkflowScheduler, evaluate_condition, ready_steps, evaluate_condition, ready_steps
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -231,6 +231,20 @@ job_manager = DurableJobManager(job_store, _execute_durable_job)
 workflow_store = WorkflowStore(settings.workflow_storage_path)
 workflow_scheduler = WorkflowScheduler(workflow_store)
 workflow_scheduler.start()
+
+def _workflow_condition_context(w) -> dict:
+    return {
+        "workflow": {"status": w.status, "objective": w.objective},
+        "steps": {
+            step.step_id: {
+                "status": step.status.value,
+                "result": step.result,
+                "error": step.error,
+            }
+            for step in w.steps
+        },
+    }
+
 
 def _workflow_condition_context(w) -> dict:
     return {
