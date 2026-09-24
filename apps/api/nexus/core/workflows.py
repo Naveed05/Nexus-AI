@@ -55,6 +55,9 @@ class Workflow:
     updated_at: datetime=field(default_factory=lambda:datetime.now(timezone.utc))
     schedule: dict[str,Any]|None=None
     version: int=0
+    event_count: int=0
+    last_event_sequence: int=0
+    last_event_at: str|None=None
 
 
 class WorkflowStore:
@@ -97,18 +100,30 @@ class WorkflowStore:
                 (str(w.workflow_id),w.name,w.objective,w.owner_id,str(w.workspace_id) if w.workspace_id else None,w.status,
                  json.dumps(steps),w.created_at.isoformat(),w.updated_at.isoformat(),json.dumps(w.schedule) if w.schedule else None,w.version))
             self._record_event(c,w,event_type,detail or event_type,step_id)
+            row=c.execute("SELECT COUNT(*) AS count, MAX(sequence) AS sequence, MAX(created_at) AS created_at FROM workflow_events WHERE workflow_id=?",(str(w.workflow_id),)).fetchone()
+            w.event_count=int(row["count"] or 0); w.last_event_sequence=int(row["sequence"] or 0); w.last_event_at=row["created_at"]
             c.commit()
         return w
 
     def get(self,wid):
         with self._lock,self._connect() as c:
             r=c.execute("SELECT * FROM workflows WHERE workflow_id=?",(str(wid),)).fetchone()
-        return self._row(r) if r else None
+        if not r:
+            return None
+        w=self._row(r)
+        summary=self.event_summary(w.workflow_id)
+        w.event_count=summary["count"]; w.last_event_sequence=summary["last_sequence"]; w.last_event_at=summary["last_event_at"]
+        return w
 
     def list(self,limit=100):
         with self._lock,self._connect() as c:
             rows=c.execute("SELECT * FROM workflows ORDER BY updated_at DESC LIMIT ?",(max(1,min(500,limit)),)).fetchall()
-        return [self._row(r) for r in rows]
+        result=[]
+        for r in rows:
+            w=self._row(r); summary=self.event_summary(w.workflow_id)
+            w.event_count=summary["count"]; w.last_event_sequence=summary["last_sequence"]; w.last_event_at=summary["last_event_at"]
+            result.append(w)
+        return result
 
     def events(self,wid,limit=50):
         with self._lock,self._connect() as c:
@@ -218,7 +233,9 @@ def ready_steps(w:Workflow):
 
 
 def workflow_payload(w:Workflow,store:WorkflowStore|None=None):
-    summary=store.event_summary(w.workflow_id) if store else {"count":0,"last_sequence":0,"last_event_at":None}
+    summary={"count":w.event_count,"last_sequence":w.last_event_sequence,"last_event_at":w.last_event_at}
+    if store and summary["count"]==0:
+        summary=store.event_summary(w.workflow_id)
     next_run_at=(w.schedule or {}).get("run_at")
     return {"workflow_id":str(w.workflow_id),"name":w.name,"objective":w.objective,"owner_id":w.owner_id,
       "workspace_id":str(w.workspace_id) if w.workspace_id else None,"status":w.status,
