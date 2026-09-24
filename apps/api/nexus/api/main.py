@@ -37,6 +37,7 @@ from nexus.core.jobs import DurableJobManager, JobStore, job_payload
 from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, WorkflowControlError, WorkflowControlPlane, validate_workflow, workflow_payload, workflow_metrics, workflow_health, WORKFLOW_TEMPLATES, WorkflowScheduler, evaluate_condition, ready_steps
 from nexus.core.distributed_workers import WorkerCoordinator, worker_payload
 from nexus.core.agent_workflows import AgentWorkflowStore, AgentWorkflowOrchestrator, AgentWorkItem, AgentWorkflowValidationError, AgentWorkflowOrchestrationError, agent_workflow_payload
+from nexus.core.evaluation_intelligence import EvaluationIntelligenceStore, compare_reports, trend_summary, telemetry_event
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate, AgentWorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -237,6 +238,7 @@ workflow_scheduler.start()
 agent_workflow_store = AgentWorkflowStore(settings.workflow_storage_path.replace("workflows.sqlite3", "agent_workflows.sqlite3"))
 agent_orchestrator = AgentWorkflowOrchestrator(agent_workflow_store)
 worker_coordinator = WorkerCoordinator(settings.job_storage_path.replace("jobs.sqlite3", "workers.sqlite3"))
+evaluation_store = EvaluationIntelligenceStore(settings.job_storage_path.replace("jobs.sqlite3", "evaluation.sqlite3"))
 
 def _workflow_condition_context(w) -> dict:
     return {
@@ -1508,3 +1510,81 @@ def search_workspace(workspace_id: UUID, payload: dict) -> dict:
     except ValueError as exc: raise HTTPException(status_code=422, detail="document_id must be a UUID") from exc
     if parsed_document_id is not None and parsed_document_id not in workspace_registry.context(workspace_id).document_ids: raise HTTPException(status_code=404, detail="Document does not belong to the requested workspace")
     return knowledge_engine.search(query, workspace_id=workspace_id, top_k=top_k, document_id=parsed_document_id).as_dict()
+
+
+@app.post("/api/v1/evaluations/runs", status_code=201)
+def create_evaluation_run(payload: dict) -> dict:
+    suite_name = str(payload.get("suite_name", "")).strip()
+    suite_version = str(payload.get("suite_version", "")).strip()
+    report = payload.get("report")
+    if not suite_name or not suite_version or not isinstance(report, dict):
+        raise HTTPException(status_code=422, detail="suite_name, suite_version, and report object are required")
+    try:
+        run = evaluation_store.save_run(suite_name, suite_version, report, payload.get("metadata") or {}, payload.get("run_id"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"run_id": run.run_id, "suite_name": run.suite_name, "suite_version": run.suite_version,
+            "report": run.report, "metadata": run.metadata, "created_at": run.created_at}
+
+
+@app.get("/api/v1/evaluations/runs")
+def list_evaluation_runs(suite_name: str | None = None, limit: int = 100) -> list[dict]:
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return [{"run_id": r.run_id, "suite_name": r.suite_name, "suite_version": r.suite_version,
+             "report": r.report, "metadata": r.metadata, "created_at": r.created_at}
+            for r in evaluation_store.list_runs(suite_name, limit)]
+
+
+@app.get("/api/v1/evaluations/runs/{run_id}")
+def get_evaluation_run(run_id: str) -> dict:
+    run = evaluation_store.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="unknown evaluation run")
+    return {"run_id": run.run_id, "suite_name": run.suite_name, "suite_version": run.suite_version,
+            "report": run.report, "metadata": run.metadata, "created_at": run.created_at}
+
+
+@app.get("/api/v1/evaluations/runs/{run_id}/compare/{baseline_run_id}")
+def compare_evaluation_runs(run_id: str, baseline_run_id: str) -> dict:
+    current = evaluation_store.get_run(run_id)
+    baseline = evaluation_store.get_run(baseline_run_id)
+    if current is None or baseline is None:
+        raise HTTPException(status_code=404, detail="unknown evaluation run")
+    if (current.suite_name, current.suite_version) != (baseline.suite_name, baseline.suite_version):
+        raise HTTPException(status_code=409, detail="evaluation suites do not match")
+    return compare_reports(baseline.report, current.report)
+
+
+@app.get("/api/v1/evaluations/trends")
+def evaluation_trends(suite_name: str | None = None, limit: int = 50) -> dict:
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
+    return trend_summary(evaluation_store.list_runs(suite_name, limit))
+
+
+@app.post("/api/v1/evaluations/telemetry", status_code=201)
+def record_evaluation_telemetry(payload: dict) -> dict:
+    try:
+        event = telemetry_event(
+            str(payload.get("component_type", "")),
+            str(payload.get("component_id", "")),
+            run_id=str(payload["run_id"]) if payload.get("run_id") else None,
+            success=bool(payload.get("success", True)),
+            latency_ms=float(payload.get("latency_ms", 0)),
+            tokens=int(payload.get("tokens", 0)),
+            cost_usd=float(payload.get("cost_usd", 0)),
+            quality_score=float(payload["quality_score"]) if payload.get("quality_score") is not None else None,
+            metadata=payload.get("metadata") or {},
+        )
+        evaluation_store.save_telemetry(event)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"event_id": event.event_id, "created_at": event.created_at}
+
+
+@app.get("/api/v1/evaluations/metrics")
+def evaluation_component_metrics(component_type: str | None = None, limit: int = 100) -> list[dict]:
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return evaluation_store.component_metrics(component_type, limit)

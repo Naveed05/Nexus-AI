@@ -898,3 +898,38 @@ Phase 47 extends durable jobs into a production-oriented worker plane with expli
 - full CI, container build, and benchmark-gate verification required before phase completion
 
 Workers do not bypass NEXUS approval, permission, verification, quota, or runtime controls; the worker plane only provides durable execution ownership and recovery.
+
+
+### 🧪 Phase 48 — Production Evaluation & Intelligence
+
+Phase 48 turns the existing evaluation and benchmark foundation into a durable production intelligence plane for quality, regression, drift, and observable component performance.
+
+**Batch 48.1 — Durable evaluation runs**
+- SQLite-backed evaluation history bound to suite/version identities
+- machine-readable report persistence and deterministic run inspection
+- bounded list/get APIs for evaluation history
+
+**Batch 48.2 — Model, agent & tool telemetry**
+- observable component telemetry for models, agents, and tools
+- success rate, latency, token usage, cost, and optional quality signals
+- aggregate component metrics for operational analysis
+- telemetry rejects invalid negative resource measurements
+
+**Batch 48.3 — Regression & drift intelligence**
+- persisted-run comparisons with pass/check/grounding deltas
+- failed and recovered case diagnostics
+- recent evaluation trend history
+- deterministic drift signal for material quality movement
+
+**Batch 48.4 — Evaluation Control Center**
+- dedicated frontend Evaluation surface
+- latest pass rate, check score, grounding, and drift visibility
+- evaluation run history and component telemetry summaries
+- thin operator UI over the authoritative evaluation API
+
+**Batch 48.5 — Verification & release hardening**
+- persistence, comparison, telemetry, and API regression coverage
+- frontend contract surface added to the production shell
+- full CI, benchmark-gate, and container verification required before phase completion
+
+Evaluation intelligence remains evidence-based and observable: it records quality signals and operational measurements without exposing or relying on hidden model reasoning, and it does not bypass existing approval, permission, quota, verification, or worker controls.
