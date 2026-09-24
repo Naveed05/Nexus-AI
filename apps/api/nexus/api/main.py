@@ -200,7 +200,7 @@ def _execute_durable_job(job) -> dict:
         idempotency_key=f"job:{job.job_id}",
         budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8),
         user_id=job.owner_id,
-        use_byok=True,
+        use_byok=bool(byok_provider_manager.configured(job.owner_id)),
     )
     verification = result.verification
     artifact = artifact_store.put(
@@ -1074,7 +1074,11 @@ def list_byok_credentials(x_nexus_user_id: str | None = Header(default=None)) ->
     user_id = _byok_user(x_nexus_user_id)
     return {
         "providers": [
-            {"provider": provider, "configured": provider in byok_provider_manager.configured(user_id)}
+            {
+                "provider": provider,
+                "configured": provider in byok_provider_manager.configured(user_id),
+                "server_configured": provider == "openai" and bool(settings.openai_api_key),
+            }
             for provider in sorted(SUPPORTED_PROVIDERS)
         ]
     }
