@@ -817,6 +817,7 @@ Phase 45 turns the durable workflow foundation into an operator-grade control pl
 - frontend controls remain thin clients over the authoritative backend control plane
 
 **Batch 45.5 — Verification & release hardening**
+- Phase 45 v3 release verification reruns the complete suite after the latest command-transition compatibility fix.
 - control-command persistence and idempotency regression coverage
 - invalid-transition and recovery-path coverage
 - API control/metrics/health contract coverage
