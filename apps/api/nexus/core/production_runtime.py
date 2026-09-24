@@ -59,6 +59,8 @@ class ProductionRuntime:
         *,
         idempotency_key: str | None = None,
         budget: RunBudget | None = None,
+        user_id: str | None = None,
+        use_byok: bool = False,
     ) -> tuple[AgentRun, Any]:
         """Execute one production run, rejecting duplicate or overloaded starts."""
         if idempotency_key is not None and not idempotency_key.strip():
@@ -78,7 +80,16 @@ class ProductionRuntime:
             self._active += 1
 
         try:
-            run, result = self._runtime.run_engine(task, self._engine, budget=budget)
+            run, result = self._runtime.run(
+                task,
+                lambda current_task, control: self._engine.run(
+                    current_task,
+                    control=control,
+                    user_id=user_id,
+                    use_byok=use_byok,
+                ),
+                budget=budget,
+            )
             verification = getattr(result, "verification", None)
             execution = getattr(result, "execution", None)
             state = getattr(result, "state", None)
