@@ -246,6 +246,44 @@ def workflow_payload(w:Workflow,store:WorkflowStore|None=None):
       "risk_level":s.risk_level,"status":s.status.value,"job_id":str(s.job_id) if s.job_id else None,"result":s.result,"error":s.error} for s in w.steps]}
 
 
+def workflow_metrics(workflows:list[Workflow]) -> dict[str,Any]:
+    counts={status:0 for status in ("draft","scheduled","running","paused","completed","failed","cancelled")}
+    step_counts={status.value:0 for status in WorkflowStepStatus}
+    for w in workflows:
+        counts[w.status]=counts.get(w.status,0)+1
+        for s in w.steps:
+            step_counts[s.status.value]=step_counts.get(s.status.value,0)+1
+    total=len(workflows)
+    terminal=counts["completed"]+counts["failed"]+counts["cancelled"]
+    return {
+        "workflow_count": total,
+        "status_counts": counts,
+        "step_status_counts": step_counts,
+        "terminal_workflow_count": terminal,
+        "active_workflow_count": max(0,total-terminal),
+        "failure_rate": (counts["failed"]/terminal) if terminal else 0.0,
+        "completion_rate": (counts["completed"]/terminal) if terminal else 0.0,
+        "retryable_failed_steps": step_counts["failed"],
+    }
+
+
+def workflow_health(w:Workflow) -> dict[str,Any]:
+    blocked=[s.step_id for s in w.steps if s.status==WorkflowStepStatus.PENDING and any(
+        next((d for d in w.steps if d.step_id==dep),s).status in {WorkflowStepStatus.FAILED,WorkflowStepStatus.SKIPPED}
+        for dep in s.depends_on)]
+    running=[s.step_id for s in w.steps if s.status==WorkflowStepStatus.RUNNING]
+    failed=[s.step_id for s in w.steps if s.status==WorkflowStepStatus.FAILED]
+    return {
+        "workflow_id":str(w.workflow_id),
+        "status":w.status,
+        "blocked_steps":blocked,
+        "running_steps":running,
+        "failed_steps":failed,
+        "healthy": not failed and not blocked,
+        "needs_operator": w.status in {"failed","paused"} or bool(failed),
+    }
+
+
 WORKFLOW_TEMPLATES={
  "research-report":{"name":"Research → Verify → Report","description":"Research a question, verify the evidence, then produce a report.","steps":[
    {"step_id":"research","objective":"Research the requested topic and gather evidence","capabilities":["research"]},
