@@ -367,35 +367,6 @@ def create_workflow(payload: WorkflowCreate, x_user_id: str = Header(default="lo
     return workflow_payload(_sync_workflow(w), workflow_store)
 
 
-@app.get("/api/v1/workflows/{workflow_id}")
-def get_workflow(workflow_id: UUID):
-    w = workflow_store.get(workflow_id)
-    if not w:
-        raise HTTPException(status_code=404, detail="unknown workflow")
-    return workflow_payload(_sync_workflow(w), workflow_store)
-
-
-@app.get("/api/v1/workflows/{workflow_id}/events")
-def workflow_events(workflow_id: UUID, limit: int = 50) -> list[dict]:
-    if not workflow_store.get(workflow_id):
-        raise HTTPException(status_code=404, detail="unknown workflow")
-    if limit < 1 or limit > 200:
-        raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
-    return [
-        {
-            "sequence": event.sequence,
-            "event_id": str(event.event_id),
-            "workflow_id": str(event.workflow_id),
-            "event_type": event.event_type,
-            "status": event.status,
-            "step_id": event.step_id,
-            "detail": event.detail,
-            "created_at": event.created_at.isoformat(),
-        }
-        for event in workflow_store.events(workflow_id, limit)
-    ]
-
-
 @app.get("/api/v1/workflows/metrics")
 def workflow_metrics_summary(limit: int = 500) -> dict:
     if limit < 1 or limit > 500:
@@ -479,6 +450,36 @@ def execute_workflow_command(workflow_id: UUID, payload: dict) -> dict:
             "created_at": command.created_at.isoformat(),
         },
     }
+
+
+
+@app.get("/api/v1/workflows/{workflow_id}")
+def get_workflow(workflow_id: UUID):
+    w = workflow_store.get(workflow_id)
+    if not w:
+        raise HTTPException(status_code=404, detail="unknown workflow")
+    return workflow_payload(_sync_workflow(w), workflow_store)
+
+
+@app.get("/api/v1/workflows/{workflow_id}/events")
+def workflow_events(workflow_id: UUID, limit: int = 50) -> list[dict]:
+    if not workflow_store.get(workflow_id):
+        raise HTTPException(status_code=404, detail="unknown workflow")
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
+    return [
+        {
+            "sequence": event.sequence,
+            "event_id": str(event.event_id),
+            "workflow_id": str(event.workflow_id),
+            "event_type": event.event_type,
+            "status": event.status,
+            "step_id": event.step_id,
+            "detail": event.detail,
+            "created_at": event.created_at.isoformat(),
+        }
+        for event in workflow_store.events(workflow_id, limit)
+    ]
 
 
 @app.post("/api/v1/workflows/{workflow_id}/pause")
