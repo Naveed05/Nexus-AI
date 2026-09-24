@@ -34,7 +34,7 @@ from nexus.core.collaboration_audit import CollaborationAuditLog
 from nexus.core.control_center import build_control_center_summary
 from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
 from nexus.core.jobs import DurableJobManager, JobStore, job_payload
-from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, validate_workflow, workflow_payload, WORKFLOW_TEMPLATES, WorkflowScheduler, evaluate_condition, ready_steps, evaluate_condition, ready_steps
+from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, validate_workflow, workflow_payload, WORKFLOW_TEMPLATES, WorkflowScheduler, evaluate_condition, ready_steps
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -231,20 +231,6 @@ job_manager = DurableJobManager(job_store, _execute_durable_job)
 workflow_store = WorkflowStore(settings.workflow_storage_path)
 workflow_scheduler = WorkflowScheduler(workflow_store)
 workflow_scheduler.start()
-
-def _workflow_condition_context(w) -> dict:
-    return {
-        "workflow": {"status": w.status, "objective": w.objective},
-        "steps": {
-            step.step_id: {
-                "status": step.status.value,
-                "result": step.result,
-                "error": step.error,
-            }
-            for step in w.steps
-        },
-    }
-
 
 def _workflow_condition_context(w) -> dict:
     return {
@@ -1216,3 +1202,82 @@ def research(payload: ResearchRequest) -> ResearchResponse:
         evidence_count=body["evidence_count"], source_count=synthesis["source_count"],
         document_count=synthesis["document_count"], sources=body["sources"], synthesis=synthesis,
     )
+
+@app.post("/api/v1/datasets", status_code=201)
+async def upload_dataset(file: UploadFile = File(...)) -> dict:
+    filename = Path(file.filename or "").name; suffix = Path(filename).suffix.lower().lstrip(".")
+    if suffix not in {"csv", "parquet", "json"}: raise HTTPException(status_code=415, detail="Supported dataset formats: csv, parquet, json")
+    try: dataset = dataset_workspace.register(await file.read(), filename=filename, file_format=suffix, metadata={"content_type": file.content_type or "application/octet-stream"})
+    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"dataset_id": str(dataset.dataset_id), "filename": dataset.filename, "file_format": dataset.file_format, "size_bytes": dataset.size_bytes, "artifact_id": str(dataset.artifact_id) if dataset.artifact_id else None, "metadata": dataset.metadata}
+
+@app.post("/api/v1/workspaces", status_code=201)
+def create_workspace(payload: dict) -> dict:
+    name = str(payload.get("name", "Workspace")); owner_id = payload.get("owner_id"); metadata = payload.get("metadata")
+    if metadata is not None and not isinstance(metadata, dict): raise HTTPException(status_code=422, detail="metadata must be an object")
+    try: workspace = workspace_registry.create(name=name, owner_id=owner_id, metadata=metadata)
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _workspace_payload(workspace)
+
+@app.get("/api/v1/workspaces")
+def list_workspaces() -> list[dict]: return [_workspace_payload(workspace) for workspace in workspace_registry.list()]
+
+@app.get("/api/v1/workspaces/{workspace_id}")
+def get_workspace(workspace_id: UUID) -> dict: return _workspace_payload(_require_workspace(workspace_id))
+
+@app.post("/api/v1/workspaces/{workspace_id}/files", status_code=201)
+async def upload_workspace_file(workspace_id: UUID, file: UploadFile = File(...), x_user_id: str = Header(default="local-user", alias="X-User-Id")) -> dict:
+    _require_workspace(workspace_id); filename = Path(file.filename or "").name
+    if not filename: raise HTTPException(status_code=422, detail="filename cannot be empty")
+    user_id = x_user_id.strip() or "local-user"
+    plan = next(item for item in product_catalog.plans() if item.plan_id == product_catalog.profile(user_id).plan_id)
+    payload_bytes = await file.read()
+    if len(payload_bytes) > plan.max_file_bytes:
+        raise HTTPException(status_code=413, detail="file exceeds the active product plan limit")
+    try:
+        product_catalog.consume_file(user_id)
+        file_ref = file_store.put(payload_bytes, filename=filename, workspace_id=workspace_id, mime_type=file.content_type); file_registry.register(file_ref); workspace_registry.context(workspace_id).add_file(file_ref.file_id)
+    except (TypeError, ValueError) as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _file_payload(file_ref)
+
+@app.get("/api/v1/workspaces/{workspace_id}/files")
+def list_workspace_files(workspace_id: UUID) -> list[dict]:
+    _require_workspace(workspace_id); return [_file_payload(f) for f in file_registry.list(workspace_id=workspace_id)]
+
+@app.get("/api/v1/workspaces/{workspace_id}/files/{file_id}")
+def download_workspace_file(workspace_id: UUID, file_id: UUID) -> Response:
+    _require_workspace(workspace_id)
+    try: file_ref = file_registry.get(file_id, workspace_id=workspace_id); data = file_store.get(file_ref)
+    except NexusFileNotFoundError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(content=data, media_type=file_ref.mime_type or "application/octet-stream", headers={"Content-Disposition": f'attachment; filename="{file_ref.filename}"'})
+
+@app.delete("/api/v1/workspaces/{workspace_id}/files/{file_id}", status_code=204)
+def delete_workspace_file(workspace_id: UUID, file_id: UUID) -> Response:
+    _require_workspace(workspace_id)
+    try: file_ref = file_registry.get(file_id, workspace_id=workspace_id)
+    except NexusFileNotFoundError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    file_store.delete(file_ref); file_registry.remove(file_id, workspace_id=workspace_id); workspace_registry.context(workspace_id).remove_file(file_id); return Response(status_code=204)
+
+@app.post("/api/v1/workspaces/{workspace_id}/documents", status_code=201)
+async def upload_workspace_document(workspace_id: UUID, file: UploadFile = File(...)) -> dict:
+    _require_workspace(workspace_id); filename = Path(file.filename or "").name
+    if not filename: raise HTTPException(status_code=422, detail="filename cannot be empty")
+    try:
+        document, chunk_count = knowledge_engine.ingest(await file.read(), filename=filename, workspace_id=workspace_id, metadata={"content_type": file.content_type or "application/octet-stream"}); workspace_registry.context(workspace_id).add_document(document.document_id)
+    except DocumentParseError as exc: raise HTTPException(status_code=415, detail=str(exc)) from exc
+    return {"document_id": str(document.document_id), "workspace_id": str(workspace_id), "filename": document.filename, "file_format": document.file_format, "size_bytes": document.size_bytes, "artifact_id": str(document.artifact_id) if document.artifact_id else None, "chunk_count": chunk_count, "metadata": document.metadata}
+
+@app.get("/api/v1/workspaces/{workspace_id}/documents")
+def list_workspace_documents(workspace_id: UUID) -> list[dict]:
+    _require_workspace(workspace_id); return [{"document_id": str(document_id)} for document_id in workspace_registry.context(workspace_id).document_ids]
+
+@app.post("/api/v1/workspaces/{workspace_id}/search")
+def search_workspace(workspace_id: UUID, payload: dict) -> dict:
+    _require_workspace(workspace_id); query = str(payload.get("query", "")).strip()
+    try: top_k = max(1, min(int(payload.get("top_k", 5)), 20))
+    except (TypeError, ValueError) as exc: raise HTTPException(status_code=422, detail="top_k must be an integer") from exc
+    document_id = payload.get("document_id")
+    try: parsed_document_id = UUID(str(document_id)) if document_id else None
+    except ValueError as exc: raise HTTPException(status_code=422, detail="document_id must be a UUID") from exc
+    if parsed_document_id is not None and parsed_document_id not in workspace_registry.context(workspace_id).document_ids: raise HTTPException(status_code=404, detail="Document does not belong to the requested workspace")
+    return knowledge_engine.search(query, workspace_id=workspace_id, top_k=top_k, document_id=parsed_document_id).as_dict()
