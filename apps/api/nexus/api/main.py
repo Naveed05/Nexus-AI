@@ -39,6 +39,7 @@ from nexus.core.distributed_workers import WorkerCoordinator, worker_payload
 from nexus.core.agent_workflows import AgentWorkflowStore, AgentWorkflowOrchestrator, AgentWorkItem, AgentWorkflowValidationError, AgentWorkflowOrchestrationError, agent_workflow_payload
 from nexus.core.evaluation_intelligence import EvaluationIntelligenceStore, compare_reports, trend_summary, telemetry_event
 from nexus.core.governance import GovernanceStore, GovernanceError, governance_payload
+from nexus.core.production_release import build_release_manifest, readiness_payload as production_readiness_payload, release_payload
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate, AgentWorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -693,21 +694,24 @@ def scale_deployment() -> dict:
     return deployment_payload(_scale_deployment())
 
 
+@app.get("/api/v1/production/release")
+def production_release() -> dict:
+    return release_payload(build_release_manifest(settings))
+
+
 @app.get("/api/v1/ready")
 def readiness() -> dict:
     runtime = production_runtime.health()
     deployment = _scale_deployment()
-    checks = {
-        "runtime": runtime.get("status") == "ready",
-        "frontend": WEB_ROOT.exists(),
-        "scale_contract": deployment.ready,
-    }
-    return {
-        "status": "ready" if all(checks.values()) else "not_ready",
-        "service": "nexus-api",
-        "checks": checks,
-        "scale": deployment_payload(deployment),
-    }
+    manifest = build_release_manifest(settings)
+    return production_readiness_payload(
+        manifest=manifest,
+        runtime_ready=runtime.get("status") == "ready",
+        frontend_ready=WEB_ROOT.exists(),
+        scale_ready=deployment.ready,
+        runtime=runtime,
+        scale=deployment_payload(deployment),
+    )
 
 
 @app.get("/api/v1/observability/summary")
