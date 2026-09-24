@@ -105,18 +105,29 @@ class NexusEngine:
         task: Task,
         model: ModelSpec,
         allowed_tools: tuple[str, ...],
+        *,
+        user_id: str | None = None,
+        use_byok: bool = False,
     ) -> ExecutionResult:
         """Call both current executors and older test/custom executors safely."""
         execute = self._executor.execute
         try:
             signature = inspect.signature(execute)
-            accepts_allowed_tools = "allowed_tools" in signature.parameters
+            parameters = signature.parameters
+            accepts_allowed_tools = "allowed_tools" in parameters
+            accepts_user_id = "user_id" in parameters
+            accepts_use_byok = "use_byok" in parameters
         except (TypeError, ValueError):
-            accepts_allowed_tools = True
+            accepts_allowed_tools = accepts_user_id = accepts_use_byok = True
 
+        kwargs = {}
         if accepts_allowed_tools:
-            return execute(task, model, allowed_tools=allowed_tools)
-        return execute(task, model)
+            kwargs["allowed_tools"] = allowed_tools
+        if accepts_user_id:
+            kwargs["user_id"] = user_id
+        if accepts_use_byok:
+            kwargs["use_byok"] = use_byok
+        return execute(task, model, **kwargs)
 
     def _run_with_recovery(
         self,
@@ -126,6 +137,9 @@ class NexusEngine:
         events: list[ExecutionEvent],
         allowed_tools: tuple[str, ...],
         control: ExecutionControl | None = None,
+        *,
+        user_id: str | None = None,
+        use_byok: bool = False,
     ) -> ExecutionResult:
         last_error: Exception | None = None
 
@@ -220,7 +234,14 @@ class NexusEngine:
             }
         )
 
-    def run(self, task: Task, control: ExecutionControl | None = None) -> EngineResult:
+    def run(
+        self,
+        task: Task,
+        control: ExecutionControl | None = None,
+        *,
+        user_id: str | None = None,
+        use_byok: bool = False,
+    ) -> EngineResult:
         task = self._resolve_workspace_context(task)
         task.status = TaskStatus.PLANNING
         route = self.route_task(task)
@@ -351,6 +372,8 @@ class NexusEngine:
                     events,
                     allowed_tools=allowed_tools,
                     control=control,
+                    user_id=user_id,
+                    use_byok=use_byok,
                 )
             except Exception as exc:
                 step.status = StepStatus.FAILED

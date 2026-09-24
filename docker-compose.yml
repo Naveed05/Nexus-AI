@@ -6,7 +6,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      ENVIRONMENT: production
+      ENVIRONMENT: ${NEXUS_ENV:-development}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       SERVICE_VERSION: "0.1.0"
       LOG_LEVEL: INFO
       REQUEST_METRICS_MAX_SAMPLES: "1000"

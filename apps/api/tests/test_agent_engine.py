@@ -76,7 +76,7 @@ def test_engine_routes_without_executing() -> None:
 
     route = engine.route_task(task)
 
-    assert route.model.model_id == "gpt-6-astra"
+    assert route.model.model_id == "gpt-5.6-sol"
     assert route.decision.model == route.model
     assert route.decision.score == 95.0
 

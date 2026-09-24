@@ -199,6 +199,8 @@ def _execute_durable_job(job) -> dict:
         task,
         idempotency_key=f"job:{job.job_id}",
         budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8),
+        user_id=job.owner_id,
+        use_byok=True,
     )
     verification = result.verification
     artifact = artifact_store.put(

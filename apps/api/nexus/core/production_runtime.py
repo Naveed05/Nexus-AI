@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 from threading import RLock
 from typing import Any
 from uuid import UUID
@@ -59,6 +60,8 @@ class ProductionRuntime:
         *,
         idempotency_key: str | None = None,
         budget: RunBudget | None = None,
+        user_id: str | None = None,
+        use_byok: bool = False,
     ) -> tuple[AgentRun, Any]:
         """Execute one production run, rejecting duplicate or overloaded starts."""
         if idempotency_key is not None and not idempotency_key.strip():
@@ -78,7 +81,26 @@ class ProductionRuntime:
             self._active += 1
 
         try:
-            run, result = self._runtime.run_engine(task, self._engine, budget=budget)
+            try:
+                engine_parameters = inspect.signature(self._engine.run).parameters
+                accepts_user_id = "user_id" in engine_parameters
+                accepts_use_byok = "use_byok" in engine_parameters
+            except (TypeError, ValueError):
+                accepts_user_id = accepts_use_byok = True
+
+            def execute(current_task, control):
+                kwargs = {"control": control}
+                if accepts_user_id:
+                    kwargs["user_id"] = user_id
+                if accepts_use_byok:
+                    kwargs["use_byok"] = use_byok
+                return self._engine.run(current_task, **kwargs)
+
+            run, result = self._runtime.run(
+                task,
+                execute,
+                budget=budget,
+            )
             verification = getattr(result, "verification", None)
             execution = getattr(result, "execution", None)
             state = getattr(result, "state", None)
