@@ -452,6 +452,21 @@ def execute_workflow_command(workflow_id: UUID, payload: dict) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except WorkflowControlError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if action in {"pause", "resume", "cancel"}:
+        for step in w.steps:
+            if not step.job_id:
+                continue
+            try:
+                if action == "pause":
+                    job_manager.pause(step.job_id)
+                elif action == "resume":
+                    job_manager.resume(step.job_id)
+                else:
+                    job_manager.cancel(step.job_id)
+            except Exception:
+                pass
+
     return {
         "workflow": workflow_payload(_sync_workflow(w), workflow_store),
         "command": {
