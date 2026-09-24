@@ -390,7 +390,7 @@ class WorkflowControlPlane:
                         s.result={}
                 w.status="running"
             elif action=="restart":
-                if w.status not in {"completed","failed","cancelled","paused"}:
+                if w.status not in {"running","completed","failed","cancelled","paused"}:
                     raise WorkflowControlError(f"cannot restart workflow from {w.status}")
                 for s in w.steps:
                     s.status=WorkflowStepStatus.PENDING
