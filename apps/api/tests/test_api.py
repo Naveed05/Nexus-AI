@@ -364,3 +364,53 @@ def test_scale_topology_endpoint_is_explicit():
     assert payload["horizontal_scaling_ready"] is False
     assert payload["state_backend"] == "sqlite"
     assert payload["blockers"]
+
+
+def test_workflow_control_plane_api_contract():
+    created = client.post("/api/v1/workflows", json={
+        "name": "API control test",
+        "objective": "Exercise workflow controls",
+        "steps": [{"step_id": "a", "objective": "Do A"}],
+    })
+    assert created.status_code == 201
+    workflow_id = created.json()["workflow_id"]
+
+    started = client.post(
+        f"/api/v1/workflows/{workflow_id}/commands",
+        json={"action": "start", "idempotency_key": "api-control-start"},
+    )
+    assert started.status_code == 200
+    assert started.json()["workflow"]["status"] == "running"
+
+    replay = client.post(
+        f"/api/v1/workflows/{workflow_id}/commands",
+        json={"action": "start", "idempotency_key": "api-control-start"},
+    )
+    assert replay.status_code == 200
+    assert replay.json()["command"]["command_id"] == started.json()["command"]["command_id"]
+
+    metrics = client.get("/api/v1/workflows/metrics")
+    assert metrics.status_code == 200
+    assert "workflow_count" in metrics.json()
+
+    health = client.get(f"/api/v1/workflows/{workflow_id}/health")
+    assert health.status_code == 200
+    assert health.json()["workflow_id"] == workflow_id
+
+    history = client.get(f"/api/v1/workflows/{workflow_id}/commands")
+    assert history.status_code == 200
+    assert len(history.json()) == 1
+
+
+def test_workflow_control_rejects_invalid_transition():
+    created = client.post("/api/v1/workflows", json={
+        "name": "API transition test",
+        "objective": "Exercise transition validation",
+        "steps": [{"step_id": "a", "objective": "Do A"}],
+    })
+    workflow_id = created.json()["workflow_id"]
+    response = client.post(
+        f"/api/v1/workflows/{workflow_id}/commands",
+        json={"action": "resume", "idempotency_key": "bad-resume"},
+    )
+    assert response.status_code == 422
