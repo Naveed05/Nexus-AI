@@ -1620,7 +1620,8 @@ def issue_governance_token(payload: dict) -> dict:
         token, secret = governance_store.issue_token(str(payload.get("principal_id", "")), payload.get("expires_at"))
     except (GovernanceError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    governance_store.audit(str(payload.get("tenant_id", "system")), token.principal_id, "token.issue", "access-token", "allow", {"token_id": token.token_id})
+    principal = governance_store.get_principal(token.principal_id)
+    governance_store.audit(principal.tenant_id if principal else "system", token.principal_id, "token.issue", "access-token", "allow", {"token_id": token.token_id})
     return {"token_id": token.token_id, "principal_id": token.principal_id, "token": secret, "created_at": token.created_at, "expires_at": token.expires_at}
 
 
