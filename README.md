@@ -506,6 +506,8 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Phase 40 Full Runtime Integration
 [✓] Phase 41 Artifact & Delivery Center
 [✓] Phase 42 Durable Workflow & Job Orchestration
+[✓] Phase 43 Workflow Automation & Scheduling
+[✓] Phase 44 Workflow Reliability & Observability
 ```
 
 
@@ -748,3 +750,32 @@ The workspace remains an operator surface: it exposes execution state and prepar
 NEXUS now supports durable workflow definitions on top of Phase 42 jobs. Workflows persist as dependency graphs with validation, sequential/parallel-ready step dependencies, step state, results, recovery, reusable templates, pause/resume controls, and persisted one-time or recurring schedules. The Workflow Center exposes templates and live workflow state through the product UI.
 
 Roadmap: [✓] Phase 43 Workflow Automation & Scheduling
+
+
+### ⚙️ Phase 44 — Workflow Reliability & Observability
+
+Phase 44 hardens the durable workflow layer with an append-only event journal, deterministic readiness and condition evaluation, idempotent scheduling, and operator-facing observability metadata.
+
+**Batch 44.1 — Durable workflow event journal**
+- SQLite-backed append-only workflow event history
+- monotonic event sequence and immutable event identifiers
+- step-aware lifecycle events for creation, scheduling, execution, completion, and failure
+- bounded event retrieval and summary metadata
+
+**Batch 44.2 — Deterministic execution policy**
+- explicit dependency readiness helper for sequential and parallel-ready workflows
+- intentionally small condition language with no dynamic code execution
+- safe handling of missing context and malformed conditions
+- regression coverage for dependency and condition behavior
+
+**Batch 44.3 — Schedule reliability**
+- one-time schedules become disabled after firing and cannot replay on every scheduler tick
+- recurring schedules retain an explicit enabled state and compute the next run from the current execution time
+- scheduled transitions emit durable events
+- restart-safe scheduler behavior remains bounded by the existing workflow store
+
+**Batch 44.4 — Operator observability & release hardening**
+- workflow payloads expose event count, latest event sequence/time, and next scheduled run
+- focused regression coverage for event persistence, readiness, condition safety, and schedule idempotency
+- existing model, tool, verification, approval, quota, and job boundaries remain unchanged
+- CI and benchmark-gate verification required before phase completion
