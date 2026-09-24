@@ -16,7 +16,8 @@ def test_rbac_is_tenant_scoped_and_audited(tmp_path):
     assert not store.authorize(viewer, "execute", "tenant-b")
 
     events = store.audit_events("tenant-a")
-    assert any(event["decision"] == "deny" for event in events)
+    denied_cross_tenant = store.audit_events("tenant-b")
+    assert any(event["decision"] == "deny" for event in denied_cross_tenant)
 
 
 def test_token_is_one_time_secret_and_revocable(tmp_path):
