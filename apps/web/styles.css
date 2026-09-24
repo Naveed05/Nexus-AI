@@ -59,6 +59,8 @@ button:active:not(:disabled),.nav-item:active{transform:translateY(1px)}
 .status-pill.status-danger{border-color:color-mix(in srgb,var(--danger) 45%,var(--line));color:var(--danger)}
 @media (max-width:700px){.job-row{align-items:flex-start;flex-direction:column}.job-actions{width:100%;justify-content:space-between}}
 
+
+.file-kind{display:block;margin-top:3px;font-size:8px;color:var(--accent-2);font-weight:650}.light .file-kind{color:#087f68}
 /* Phase 52 — product UX, onboarding, and readable light-first interface. */
 html:not(.light) .app-shell{--panel-glass:rgba(13,17,26,.9)}
 .nav{overflow:auto;min-height:0;padding-right:2px}
