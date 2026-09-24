@@ -383,10 +383,11 @@ class WorkflowControlPlane:
                 if w.status!="failed":
                     raise WorkflowControlError(f"cannot retry workflow from {w.status}")
                 for s in w.steps:
-                    if s.status==WorkflowStepStatus.FAILED:
+                    if s.status in {WorkflowStepStatus.FAILED, WorkflowStepStatus.SKIPPED}:
                         s.status=WorkflowStepStatus.PENDING
                         s.job_id=None
                         s.error=None
+                        s.result={}
                 w.status="running"
             elif action=="restart":
                 if w.status not in {"completed","failed","cancelled","paused"}:
