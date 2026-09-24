@@ -38,3 +38,13 @@ def test_workflow_payload_exposes_delivery_observability(tmp_path):
     assert p["event_count"]==1
     assert p["last_event_sequence"]==1
     assert p["last_event_at"]
+
+from nexus.core.workflows import evaluate_condition
+
+def test_condition_language_is_deterministic():
+    assert evaluate_condition(None,{})
+    assert evaluate_condition("verification.passed == true",{"verification":{"passed":True}})
+    assert evaluate_condition("run.status == 'completed'",{"run":{"status":"completed"}})
+    assert not evaluate_condition("verification.passed == true",{"verification":{"passed":False}})
+    assert not evaluate_condition("__import__('os').system('x') == 0",{})
+
