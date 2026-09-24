@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     job_storage_path: str = ".nexus/jobs.sqlite3"
     workflow_storage_path: str = ".nexus/workflows.sqlite3"
     collaboration_audit_storage_path: str = ".nexus/collaboration_audit.sqlite3"
+    backup_storage_path: str = ".nexus/backups"
     log_level: str = "INFO"
     request_metrics_max_samples: int = 1000
     service_version: str = "0.1.0"
