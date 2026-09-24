@@ -26,6 +26,7 @@
       <a href="#workspace" class="nav-item" data-nav="workspace"><span>✦</span> Workspace</a>
       <a href="#agents" class="nav-item" data-nav="agents"><span>◈</span> Agents</a>
       <a href="#agent-orchestration" class="nav-item" data-nav="agent-orchestration"><span>◎</span> Orchestration</a>
+      <a href="#workers" class="nav-item" data-nav="workers"><span>◉</span> Workers</a>
       <a href="#agent-workspace" class="nav-item" data-nav="agent-workspace"><span>⌁</span> Agent workspace</a>
       <a href="#jobs" class="nav-item" data-nav="jobs"><span>◫</span> Jobs</a>
       <a href="#runs" class="nav-item" data-nav="runs"><span>↯</span> Executions</a>
@@ -153,6 +154,12 @@
           <div id="agent-wf-list" class="job-list"><div class="empty">Loading orchestration state…</div></div>
         </section>
       </section>
+      <section id="workers" class="view-section">
+        <div class="page-intro"><p class="eyebrow">DISTRIBUTED EXECUTION</p><h2>Worker fleet</h2><p>Inspect durable execution capacity, leases, and worker health.</p></div>
+        <section class="panel"><div class="section-head"><div><h2>Fleet health</h2><span id="worker-summary" class="muted">Loading…</span></div><button id="worker-refresh" class="ghost">Refresh</button></div>
+        <div class="control-grid"><article><small>Workers</small><strong id="worker-total">—</strong><span>registered</span></article><article><small>Online</small><strong id="worker-online">—</strong><span>accepting work</span></article><article><small>Busy</small><strong id="worker-busy">—</strong><span>leased jobs</span></article><article><small>Idle</small><strong id="worker-idle">—</strong><span>capacity</span></article></div>
+        <div id="worker-list" class="job-list"><div class="empty">Loading worker fleet…</div></div></section>
+      </section>
       <section id="control-center" class="view-section">
         <div class="page-intro"><p class="eyebrow">CONTROL CENTER</p><h2>Production intelligence at a glance.</h2><p>Deployment identity, runtime health, agents, models, tools, and audit integrity — one operational surface.</p></div>
         <section class="panel control-panel"><div class="control-hero"><div><span id="control-status" class="status-pill" role="status" aria-live="polite">Loading</span><h2 id="control-headline">System telemetry</h2><p id="control-summary" class="muted">Aggregating operational surfaces…</p></div><div class="control-clock"><small>LAST SYNC</small><b id="control-sync">—</b></div></div>
@@ -169,5 +176,5 @@
 <div class="mobile-scrim" id="mobile-scrim"></div>
 <div class="command-modal" id="command-modal" hidden><div class="command-dialog"><div class="command-search"><span>⌘</span><input id="command-input" placeholder="Jump to a NEXUS surface…" autocomplete="off"><kbd>Esc</kbd></div><div id="command-results"></div></div></div>
 <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
-<script type="module" src="/web/app.js"></script><script type="module" src="/web/agent-workflows.js"></script>
+<script type="module" src="/web/app.js"></script><script type="module" src="/web/workers.js"></script><script type="module" src="/web/agent-workflows.js"></script>
 </body></html>
