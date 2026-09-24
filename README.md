@@ -508,7 +508,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Phase 42 Durable Workflow & Job Orchestration
 [✓] Phase 43 Workflow Automation & Scheduling
 [✓] Phase 44 Workflow Reliability & Observability
-[ ] Phase 45 Production Workflow Intelligence & Control Plane
+[✓] Phase 45 Production Workflow Intelligence & Control Plane
 ```
 
 
@@ -817,7 +817,9 @@ Phase 45 turns the durable workflow foundation into an operator-grade control pl
 - frontend controls remain thin clients over the authoritative backend control plane
 
 **Batch 45.5 — Verification & release hardening**
-- Phase 45 v4 release verification covers the route-ordering fix for workflow metrics plus the complete regression and benchmark gates.
+- full API regression suite passed
+- workflow control, recovery, analytics, and frontend contract coverage passed
+- benchmark-gate integration passed on the final release verification run
 - control-command persistence and idempotency regression coverage
 - invalid-transition and recovery-path coverage
 - API control/metrics/health contract coverage
