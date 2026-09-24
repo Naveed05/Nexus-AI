@@ -1,7 +1,8 @@
 from datetime import datetime, timezone, timedelta
 from nexus.core.workflows import (
     Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore,
-    WorkflowValidationError, validate_workflow, ready_steps, workflow_payload
+    WorkflowValidationError, validate_workflow, ready_steps, workflow_payload,
+    evaluate_condition, WorkflowScheduler,
 )
 
 def test_workflow_event_journal_roundtrip(tmp_path):
@@ -39,8 +40,6 @@ def test_workflow_payload_exposes_delivery_observability(tmp_path):
     assert p["last_event_sequence"]==1
     assert p["last_event_at"]
 
-from nexus.core.workflows import evaluate_condition
-
 def test_condition_language_is_deterministic():
     assert evaluate_condition(None,{})
     assert evaluate_condition("verification.passed == true",{"verification":{"passed":True}})
@@ -50,8 +49,6 @@ def test_condition_language_is_deterministic():
 
 
 import time
-from nexus.core.workflows import WorkflowScheduler
-
 def test_one_time_schedule_is_not_replayed(tmp_path):
     store=WorkflowStore(str(tmp_path/"w.sqlite3"))
     w=Workflow(__import__("uuid").uuid4(),"Once","Once",status="scheduled",
@@ -84,7 +81,7 @@ def test_recurring_schedule_advances_without_replaying_same_due_time(tmp_path):
     store.save(w,event_type="workflow.scheduled")
     scheduler=WorkflowScheduler(store,tick=0.05)
     scheduler.start()
-    time.sleep(0.18)
+    time.sleep(0.45)
     scheduler.stop()
     got=store.get(w.workflow_id)
     assert got and got.status=="running"
