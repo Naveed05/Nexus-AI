@@ -191,7 +191,7 @@ class AgentWorkflowOrchestrator:
         w=self.store.get(wid)
         if not w: raise KeyError("unknown agent workflow")
         if w.status in {AgentWorkflowStatus.PAUSED,AgentWorkflowStatus.CANCELLED,AgentWorkflowStatus.COMPLETED,AgentWorkflowStatus.FAILED}:
-            raise AgentWorkflowOrchestrationError(f"cannot dispatch from {w.status.value}")
+            raise AgentWorkflowOrchestrationError(f"cannot dispatch from terminal state {w.status.value}")
         if w.status==AgentWorkflowStatus.DRAFT:w.status=AgentWorkflowStatus.READY
         active=sum(i.status==WorkItemStatus.RUNNING for i in w.items)
         slots=max(0,w.max_parallel-active)
