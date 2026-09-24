@@ -305,10 +305,11 @@ class WorkflowScheduler:
                     step.job_id=None
                     step.result={}
                     step.error=None
-                w.status="scheduled"
+                w.status="running"
                 interval=s.get("interval_seconds")
                 if interval:
-                    s["run_at"]=(now+__import__("datetime").timedelta(seconds=max(1,int(interval)))).isoformat()\n                    s["enabled"]=True
+                    s["run_at"]=(now+__import__("datetime").timedelta(seconds=max(1,int(interval)))).isoformat()
+                    s["enabled"]=True
                 else:
                     s["enabled"]=False
                 self.store.save(w,event_type="workflow.scheduled",detail="schedule became due")
