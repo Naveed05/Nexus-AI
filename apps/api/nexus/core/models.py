@@ -143,10 +143,10 @@ class ModelRegistry:
         self.register(
             ModelSpec(
                 key="astra",
-                model_id="gpt-6-astra",
+                model_id="gpt-5.6-sol",
                 provider="openai",
                 tier="flagship",
-                description="Hardest end-to-end reasoning, coding, research, and agentic work.",
+                description="Flagship reasoning, coding, research, and agentic work.",
                 capabilities=frozenset({"reasoning", "coding", "research", "agentic", "multimodal", "tools"}),
                 reasoning_levels=frozenset({"low", "medium", "high", "xhigh", "max"}),
                 context_window=1_050_000,
