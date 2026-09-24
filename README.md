@@ -1006,3 +1006,38 @@ Phase 50 consolidates the production boundary into a deterministic release-readi
 - full API tests, benchmark gate, and container verification required before phase completion
 
 Phase 50 does not claim external infrastructure is present when it is not configured. Production readiness remains an observable contract, while the existing single-instance/distributed migration boundary remains explicit.
+
+
+### 🛡️ Phase 51 — Operational Resilience & Disaster Recovery
+
+Phase 51 adds a verified recovery boundary around NEXUS's durable control-plane state without pretending that an external backup provider is configured.
+
+**Batch 51.1 — Durable-state inventory**
+- explicit inventory of runtime, job, workflow, worker, evaluation, governance, artifact-registry, and collaboration-audit stores
+- configurable backup root
+- missing optional stores are handled without failing an otherwise valid snapshot
+
+**Batch 51.2 — Integrity-verified snapshots**
+- SQLite quick-check before and after copying each store
+- SHA-256 checksums and immutable backup manifests
+- deterministic backup identifiers when supplied by operators
+- source databases remain untouched during backup
+
+**Batch 51.3 — Recovery verification**
+- checksum, size, manifest, and SQLite integrity verification
+- tamper detection with fail-closed verification
+- bounded verified-backup discovery
+- no database contents are returned by the resilience APIs
+
+**Batch 51.4 — Resilience control plane**
+- GET /api/v1/resilience/backups for bounded verified snapshot inventory
+- POST /api/v1/resilience/backups for an explicit snapshot operation
+- POST /api/v1/resilience/backups/{backup_id}/verify for integrity verification
+- backup storage remains configurable through backup_storage_path
+
+**Batch 51.5 — Verification & release hardening**
+- backup creation, corruption, checksum-tampering, and persistence regression coverage
+- API validation coverage
+- full API regression, benchmark gate, and container verification required before phase completion
+
+Phase 51 provides a recovery artifact and integrity boundary; it does not claim automatic off-site replication or restore-over-production semantics that are not configured.
