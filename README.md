@@ -508,6 +508,7 @@ The next major engineering focus is deployment, observability, scale hardening, 
 [✓] Phase 42 Durable Workflow & Job Orchestration
 [✓] Phase 43 Workflow Automation & Scheduling
 [✓] Phase 44 Workflow Reliability & Observability
+[ ] Phase 45 Production Workflow Intelligence & Control Plane
 ```
 
 
@@ -783,3 +784,41 @@ Phase 44 hardens the durable workflow layer with an append-only event journal, d
 - focused regression coverage for event persistence, readiness, condition safety, and schedule idempotency
 - existing model, tool, verification, approval, quota, and job boundaries remain unchanged
 - CI and benchmark-gate verification required before phase completion
+
+
+### 🧠 Phase 45 — Production Workflow Intelligence & Control Plane
+
+Phase 45 turns the durable workflow foundation into an operator-grade control plane with idempotent commands, recovery intelligence, workflow health, operational analytics, and first-class frontend controls.
+
+**Batch 45.1 — Workflow control plane**
+- durable idempotent workflow commands for start, pause, resume, cancel, retry, restart, step retry, and step skip
+- explicit lifecycle transition validation and terminal-state protection
+- durable command history for operator auditability
+- workflow commands propagate pause/resume/cancel to attached durable jobs without expanding agent authority
+
+**Batch 45.2 — Workflow intelligence & recovery**
+- deterministic workflow health classification for blocked, running, and failed steps
+- bounded recovery of failed and skipped descendants during workflow retry
+- workflow health endpoint and operator-attention signal
+- recovery remains bounded by existing dependency, verification, permission, quota, and job contracts
+
+**Batch 45.3 — Workflow analytics**
+- aggregate workflow and step-state metrics
+- completion/failure rates over the current workflow set
+- active/terminal workflow counts
+- failed-step recovery visibility
+- bounded metrics endpoint suitable for the Control Center
+
+**Batch 45.4 — Workflow Control Center UX**
+- workflow metrics dashboard
+- operator start/pause/resume/cancel/retry controls
+- workflow health inspection
+- event-count and lifecycle visibility
+- frontend controls remain thin clients over the authoritative backend control plane
+
+**Batch 45.5 — Verification & release hardening**
+- control-command persistence and idempotency regression coverage
+- invalid-transition and recovery-path coverage
+- API control/metrics/health contract coverage
+- frontend workflow control and analytics contract coverage
+- full CI and benchmark-gate verification required before phase completion
