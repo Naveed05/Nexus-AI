@@ -35,6 +35,7 @@ from nexus.core.control_center import build_control_center_summary
 from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
 from nexus.core.jobs import DurableJobManager, JobStore, job_payload
 from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, WorkflowControlError, WorkflowControlPlane, validate_workflow, workflow_payload, workflow_metrics, workflow_health, WORKFLOW_TEMPLATES, WorkflowScheduler, evaluate_condition, ready_steps
+from nexus.core.distributed_workers import WorkerCoordinator, worker_payload
 from nexus.core.agent_workflows import AgentWorkflowStore, AgentWorkflowOrchestrator, AgentWorkItem, AgentWorkflowValidationError, AgentWorkflowOrchestrationError, agent_workflow_payload
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate, AgentWorkflowCreate
 from nexus.core.task import Task
@@ -235,6 +236,7 @@ workflow_scheduler = WorkflowScheduler(workflow_store)
 workflow_scheduler.start()
 agent_workflow_store = AgentWorkflowStore(settings.workflow_storage_path.replace("workflows.sqlite3", "agent_workflows.sqlite3"))
 agent_orchestrator = AgentWorkflowOrchestrator(agent_workflow_store)
+worker_coordinator = WorkerCoordinator(settings.job_storage_path.replace("jobs.sqlite3", "workers.sqlite3"))
 
 def _workflow_condition_context(w) -> dict:
     return {
@@ -607,6 +609,49 @@ def cancel_agent_workflow(workflow_id: UUID):
     except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
     except AgentWorkflowOrchestrationError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
     return agent_workflow_payload(w)
+
+@app.get("/api/v1/workers")
+def list_workers(limit: int = 100):
+    try: return [worker_payload(w) for w in worker_coordinator.list(limit)]
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.get("/api/v1/workers/metrics")
+def worker_metrics():
+    return worker_coordinator.metrics()
+
+@app.post("/api/v1/workers", status_code=201)
+def register_worker(payload: dict):
+    try: w=worker_coordinator.register(str(payload.get("name","")),payload.get("capabilities",[]))
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return worker_payload(w)
+
+@app.post("/api/v1/workers/{worker_id}/heartbeat")
+def worker_heartbeat(worker_id: UUID):
+    try: w=worker_coordinator.heartbeat(worker_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return worker_payload(w)
+
+@app.post("/api/v1/workers/{worker_id}/drain")
+def worker_drain(worker_id: UUID):
+    try: w=worker_coordinator.drain(worker_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return worker_payload(w)
+
+@app.post("/api/v1/workers/{worker_id}/claim/{job_id}")
+def worker_claim(worker_id: UUID, job_id: UUID):
+    try: return worker_coordinator.claim(worker_id,job_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+@app.post("/api/v1/workers/leases/{lease_id}/release")
+def worker_release(lease_id: UUID):
+    try: return worker_coordinator.release(lease_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@app.post("/api/v1/workers/recover-stale")
+def worker_recover_stale():
+    return {"recovered_leases":worker_coordinator.recover_stale()}
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
