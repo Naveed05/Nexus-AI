@@ -8,8 +8,14 @@ from threading import RLock
 from typing import Any
 from uuid import UUID, uuid4
 
+
 class WorkflowStepStatus(str, Enum):
-    PENDING="pending"; RUNNING="running"; COMPLETED="completed"; FAILED="failed"; SKIPPED="skipped"
+    PENDING="pending"
+    RUNNING="running"
+    COMPLETED="completed"
+    FAILED="failed"
+    SKIPPED="skipped"
+
 
 @dataclass
 class WorkflowStep:
@@ -22,6 +28,19 @@ class WorkflowStep:
     job_id: UUID|None=None
     result: dict[str,Any]=field(default_factory=dict)
     error: str|None=None
+
+
+@dataclass(frozen=True)
+class WorkflowEvent:
+    sequence: int
+    event_id: UUID
+    workflow_id: UUID
+    event_type: str
+    status: str
+    step_id: str|None
+    detail: str
+    created_at: datetime
+
 
 @dataclass
 class Workflow:
@@ -37,65 +56,142 @@ class Workflow:
     schedule: dict[str,Any]|None=None
     version: int=0
 
+
 class WorkflowStore:
     def __init__(self,path=".nexus/workflows.sqlite3"):
-        self.path=path; self._lock=RLock()
-        if path!=":memory:": Path(path).parent.mkdir(parents=True,exist_ok=True)
+        self.path=path
+        self._lock=RLock()
+        if path!=":memory:":
+            Path(path).parent.mkdir(parents=True,exist_ok=True)
         with self._connect() as c:
             c.execute("""CREATE TABLE IF NOT EXISTS workflows(
                 workflow_id TEXT PRIMARY KEY,name TEXT NOT NULL,objective TEXT NOT NULL,owner_id TEXT NOT NULL,
                 workspace_id TEXT,status TEXT NOT NULL,steps TEXT NOT NULL,created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,schedule TEXT,version INTEGER NOT NULL)"""); c.commit()
-    def _connect(self): c=sqlite3.connect(self.path,timeout=10); c.row_factory=sqlite3.Row; return c
-    def save(self,w):
+                updated_at TEXT NOT NULL,schedule TEXT,version INTEGER NOT NULL)""")
+            c.execute("""CREATE TABLE IF NOT EXISTS workflow_events(
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL UNIQUE,workflow_id TEXT NOT NULL,event_type TEXT NOT NULL,
+                status TEXT NOT NULL,step_id TEXT,detail TEXT NOT NULL,created_at TEXT NOT NULL)""")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_workflow_events_workflow ON workflow_events(workflow_id,sequence)")
+            c.commit()
+
+    def _connect(self):
+        c=sqlite3.connect(self.path,timeout=10)
+        c.row_factory=sqlite3.Row
+        return c
+
+    def _record_event(self,c,w,event_type,detail,step_id=None):
+        c.execute(
+            "INSERT INTO workflow_events(event_id,workflow_id,event_type,status,step_id,detail,created_at) VALUES(?,?,?,?,?,?,?)",
+            (str(uuid4()),str(w.workflow_id),event_type,w.status,step_id,detail,datetime.now(timezone.utc).isoformat())
+        )
+
+    def save(self,w,event_type="workflow.updated",detail=None,step_id=None):
         with self._lock,self._connect() as c:
-            w.updated_at=datetime.now(timezone.utc); w.version+=1
+            w.updated_at=datetime.now(timezone.utc)
+            w.version+=1
             steps=[{"step_id":s.step_id,"objective":s.objective,"depends_on":s.depends_on,"condition":s.condition,
                     "risk_level":s.risk_level,"status":s.status.value,"job_id":str(s.job_id) if s.job_id else None,
                     "result":s.result,"error":s.error} for s in w.steps]
             c.execute("INSERT OR REPLACE INTO workflows VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (str(w.workflow_id),w.name,w.objective,w.owner_id,str(w.workspace_id) if w.workspace_id else None,w.status,
                  json.dumps(steps),w.created_at.isoformat(),w.updated_at.isoformat(),json.dumps(w.schedule) if w.schedule else None,w.version))
+            self._record_event(c,w,event_type,detail or event_type,step_id)
             c.commit()
         return w
+
     def get(self,wid):
-        with self._lock,self._connect() as c: r=c.execute("SELECT * FROM workflows WHERE workflow_id=?",(str(wid),)).fetchone()
+        with self._lock,self._connect() as c:
+            r=c.execute("SELECT * FROM workflows WHERE workflow_id=?",(str(wid),)).fetchone()
         return self._row(r) if r else None
+
     def list(self,limit=100):
-        with self._lock,self._connect() as c: rows=c.execute("SELECT * FROM workflows ORDER BY updated_at DESC LIMIT ?",(max(1,min(500,limit)),)).fetchall()
+        with self._lock,self._connect() as c:
+            rows=c.execute("SELECT * FROM workflows ORDER BY updated_at DESC LIMIT ?",(max(1,min(500,limit)),)).fetchall()
         return [self._row(r) for r in rows]
+
+    def events(self,wid,limit=50):
+        with self._lock,self._connect() as c:
+            rows=c.execute("SELECT * FROM workflow_events WHERE workflow_id=? ORDER BY sequence DESC LIMIT ?",
+                           (str(wid),max(1,min(200,limit)))).fetchall()
+        return [WorkflowEvent(int(r["sequence"]),UUID(r["event_id"]),UUID(r["workflow_id"]),r["event_type"],
+                              r["status"],r["step_id"],r["detail"],datetime.fromisoformat(r["created_at"])) for r in rows]
+
+    def event_summary(self,wid):
+        with self._lock,self._connect() as c:
+            r=c.execute("SELECT COUNT(*) AS count, MAX(sequence) AS sequence, MAX(created_at) AS created_at "
+                        "FROM workflow_events WHERE workflow_id=?",(str(wid),)).fetchone()
+        return {"count":int(r["count"] or 0),"last_sequence":int(r["sequence"] or 0),
+                "last_event_at":r["created_at"]}
+
     @staticmethod
     def _row(r):
-        return Workflow(UUID(r["workflow_id"]),r["name"],r["objective"],r["owner_id"],UUID(r["workspace_id"]) if r["workspace_id"] else None,
-            r["status"],[WorkflowStep(x["step_id"],x["objective"],x.get("depends_on",[]),x.get("condition"),x.get("risk_level","low"),
-            WorkflowStepStatus(x.get("status","pending")),UUID(x["job_id"]) if x.get("job_id") else None,x.get("result",{}),x.get("error")) for x in json.loads(r["steps"])],
-            datetime.fromisoformat(r["created_at"]),datetime.fromisoformat(r["updated_at"]),json.loads(r["schedule"]) if r["schedule"] else None,r["version"])
+        return Workflow(UUID(r["workflow_id"]),r["name"],r["objective"],r["owner_id"],
+            UUID(r["workspace_id"]) if r["workspace_id"] else None,r["status"],
+            [WorkflowStep(x["step_id"],x["objective"],x.get("depends_on",[]),x.get("condition"),
+                x.get("risk_level","low"),WorkflowStepStatus(x.get("status","pending")),
+                UUID(x["job_id"]) if x.get("job_id") else None,x.get("result",{}),x.get("error"))
+             for x in json.loads(r["steps"])],
+            datetime.fromisoformat(r["created_at"]),datetime.fromisoformat(r["updated_at"]),
+            json.loads(r["schedule"]) if r["schedule"] else None,r["version"])
 
-class WorkflowValidationError(ValueError): pass
+
+class WorkflowValidationError(ValueError):
+    pass
+
+
 def validate_workflow(steps:list[WorkflowStep]):
     ids=[s.step_id for s in steps]
-    if len(ids)!=len(set(ids)): raise WorkflowValidationError("step_id values must be unique")
+    if len(ids)!=len(set(ids)):
+        raise WorkflowValidationError("step_id values must be unique")
     known=set(ids)
     for s in steps:
         missing=set(s.depends_on)-known
-        if missing: raise WorkflowValidationError(f"{s.step_id} depends on unknown steps: {sorted(missing)}")
-    visiting=set(); visited=set()
+        if missing:
+            raise WorkflowValidationError(f"{s.step_id} depends on unknown steps: {sorted(missing)}")
+    visiting=set()
+    visited=set()
     graph={s.step_id:s.depends_on for s in steps}
     def visit(n):
-        if n in visiting: raise WorkflowValidationError("workflow contains a dependency cycle")
-        if n in visited:return
+        if n in visiting:
+            raise WorkflowValidationError("workflow contains a dependency cycle")
+        if n in visited:
+            return
         visiting.add(n)
-        for d in graph[n]: visit(d)
-        visiting.remove(n); visited.add(n)
-    for n in ids: visit(n)
+        for d in graph[n]:
+            visit(d)
+        visiting.remove(n)
+        visited.add(n)
+    for n in ids:
+        visit(n)
     return True
 
-def workflow_payload(w:Workflow):
+
+def ready_steps(w:Workflow):
+    by_id={s.step_id:s for s in w.steps}
+    ready=[]
+    for s in w.steps:
+        if s.status!=WorkflowStepStatus.PENDING:
+            continue
+        deps=[by_id[d] for d in s.depends_on]
+        if any(d.status in {WorkflowStepStatus.FAILED,WorkflowStepStatus.SKIPPED} for d in deps):
+            continue
+        if all(d.status==WorkflowStepStatus.COMPLETED for d in deps):
+            ready.append(s)
+    return ready
+
+
+def workflow_payload(w:Workflow,store:WorkflowStore|None=None):
+    summary=store.event_summary(w.workflow_id) if store else {"count":0,"last_sequence":0,"last_event_at":None}
+    next_run_at=(w.schedule or {}).get("run_at")
     return {"workflow_id":str(w.workflow_id),"name":w.name,"objective":w.objective,"owner_id":w.owner_id,
       "workspace_id":str(w.workspace_id) if w.workspace_id else None,"status":w.status,
       "created_at":w.created_at.isoformat(),"updated_at":w.updated_at.isoformat(),"version":w.version,
-      "schedule":w.schedule,"steps":[{"step_id":s.step_id,"objective":s.objective,"depends_on":s.depends_on,"condition":s.condition,
+      "schedule":w.schedule,"next_run_at":next_run_at,
+      "event_count":summary["count"],"last_event_sequence":summary["last_sequence"],"last_event_at":summary["last_event_at"],
+      "steps":[{"step_id":s.step_id,"objective":s.objective,"depends_on":s.depends_on,"condition":s.condition,
       "risk_level":s.risk_level,"status":s.status.value,"job_id":str(s.job_id) if s.job_id else None,"result":s.result,"error":s.error} for s in w.steps]}
+
 
 WORKFLOW_TEMPLATES={
  "research-report":{"name":"Research → Verify → Report","description":"Research a question, verify the evidence, then produce a report.","steps":[
@@ -112,35 +208,55 @@ WORKFLOW_TEMPLATES={
    {"step_id":"brief","objective":"Produce the final decision-support brief","depends_on":["validate"],"capabilities":["writing"]}]}
 }
 
+
 class WorkflowScheduler:
     def __init__(self, store, tick=1.0):
-        from threading import Event, Thread
-        self.store=store; self.tick=max(0.2,tick); self._stop=Event(); self._thread=None
+        from threading import Event
+        self.store=store
+        self.tick=max(0.2,tick)
+        self._stop=Event()
+        self._thread=None
+
     def start(self):
         from threading import Thread
-        if self._thread and self._thread.is_alive(): return
-        self._stop.clear(); self._thread=Thread(target=self._loop,name="nexus-workflow-scheduler",daemon=True); self._thread.start()
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread=Thread(target=self._loop,name="nexus-workflow-scheduler",daemon=True)
+        self._thread.start()
+
     def stop(self):
         if self._thread:
-            self._stop.set(); self._thread.join(timeout=2)
+            self._stop.set()
+            self._thread.join(timeout=2)
+
     def _loop(self):
         import time
         while not self._stop.is_set():
             now=datetime.now(timezone.utc)
             for w in self.store.list(500):
                 s=w.schedule or {}
-                if w.status=="paused" or not s or w.status not in {"scheduled","completed","failed"}: continue
+                if w.status=="paused" or not s or w.status not in {"scheduled","completed","failed"}:
+                    continue
                 raw=s.get("run_at")
-                if not raw: continue
-                try: due=datetime.fromisoformat(raw.replace("Z","+00:00"))
-                except ValueError: continue
-                if due>now: continue
+                if not raw:
+                    continue
+                try:
+                    due=datetime.fromisoformat(raw.replace("Z","+00:00"))
+                except ValueError:
+                    continue
+                if due>now:
+                    continue
                 for step in w.steps:
-                    step.status=WorkflowStepStatus.PENDING; step.job_id=None; step.result={}; step.error=None
+                    step.status=WorkflowStepStatus.PENDING
+                    step.job_id=None
+                    step.result={}
+                    step.error=None
                 w.status="scheduled"
                 interval=s.get("interval_seconds")
                 if interval:
                     s["run_at"]=(now+__import__("datetime").timedelta(seconds=max(1,int(interval)))).isoformat()
-                else: s["enabled"]=False
-                self.store.save(w)
+                else:
+                    s["enabled"]=False
+                self.store.save(w,event_type="workflow.scheduled",detail="schedule became due")
             self._stop.wait(self.tick)
