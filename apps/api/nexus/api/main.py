@@ -1074,7 +1074,11 @@ def list_byok_credentials(x_nexus_user_id: str | None = Header(default=None)) ->
     user_id = _byok_user(x_nexus_user_id)
     return {
         "providers": [
-            {"provider": provider, "configured": provider in byok_provider_manager.configured(user_id)}
+            {
+                "provider": provider,
+                "configured": provider in byok_provider_manager.configured(user_id),
+                "server_configured": provider == "openai" and bool(settings.openai_api_key),
+            }
             for provider in sorted(SUPPORTED_PROVIDERS)
         ]
     }
