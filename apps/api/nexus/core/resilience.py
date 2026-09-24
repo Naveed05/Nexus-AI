@@ -135,10 +135,10 @@ def verify_backup(path: str | Path) -> BackupManifest:
         snapshot = Path(item.snapshot)
         if not snapshot.is_file():
             raise BackupError(f"backup snapshot is missing: {snapshot}")
-        if snapshot.stat().st_size != item.size_bytes:
-            raise BackupError(f"backup size mismatch: {snapshot}")
         if _sha256(snapshot) != item.sha256:
             raise BackupError(f"backup checksum mismatch: {snapshot}")
+        if snapshot.stat().st_size != item.size_bytes:
+            raise BackupError(f"backup size mismatch: {snapshot}")
         _validate_sqlite(snapshot)
 
     return BackupManifest(
