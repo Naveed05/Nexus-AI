@@ -112,10 +112,10 @@ class GovernanceStore:
     def authenticate(self, presented: str) -> Principal | None:
         if not presented.startswith("nxs_"):
             return None
-        try:
-            _, token_id, raw = presented.split("_", 2)
-        except ValueError:
+        body = presented[4:]
+        if len(body) < 18 or body[16] != "_":
             return None
+        token_id, raw = body[:16], body[17:]
         with sqlite3.connect(self.path) as db:
             row = db.execute(
                 """SELECT t.token_hash,p.principal_id,p.tenant_id,p.role,p.created_at,p.active,t.expires_at
