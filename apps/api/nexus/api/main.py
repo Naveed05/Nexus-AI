@@ -38,6 +38,7 @@ from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, Wor
 from nexus.core.distributed_workers import WorkerCoordinator, worker_payload
 from nexus.core.agent_workflows import AgentWorkflowStore, AgentWorkflowOrchestrator, AgentWorkItem, AgentWorkflowValidationError, AgentWorkflowOrchestrationError, agent_workflow_payload
 from nexus.core.evaluation_intelligence import EvaluationIntelligenceStore, compare_reports, trend_summary, telemetry_event
+from nexus.core.governance import GovernanceStore, GovernanceError, governance_payload
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate, AgentWorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -239,6 +240,7 @@ agent_workflow_store = AgentWorkflowStore(settings.workflow_storage_path.replace
 agent_orchestrator = AgentWorkflowOrchestrator(agent_workflow_store)
 worker_coordinator = WorkerCoordinator(settings.job_storage_path.replace("jobs.sqlite3", "workers.sqlite3"))
 evaluation_store = EvaluationIntelligenceStore(settings.job_storage_path.replace("jobs.sqlite3", "evaluation.sqlite3"))
+governance_store = GovernanceStore(settings.job_storage_path.replace("jobs.sqlite3", "governance.sqlite3"))
 
 def _workflow_condition_context(w) -> dict:
     return {
@@ -1588,3 +1590,61 @@ def evaluation_component_metrics(component_type: str | None = None, limit: int =
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
     return evaluation_store.component_metrics(component_type, limit)
+
+
+@app.post("/api/v1/governance/principals", status_code=201)
+def create_governance_principal(payload: dict) -> dict:
+    try:
+        principal = governance_store.upsert_principal(
+            str(payload.get("principal_id", "")),
+            str(payload.get("tenant_id", "")),
+            str(payload.get("role", "viewer")),
+        )
+    except GovernanceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    governance_store.audit(principal.tenant_id, principal.principal_id, "principal.upsert", "principal", "allow", {"role": principal.role})
+    return governance_payload(principal)
+
+
+@app.get("/api/v1/governance/principals/{principal_id}")
+def get_governance_principal(principal_id: str) -> dict:
+    principal = governance_store.get_principal(principal_id)
+    if principal is None:
+        raise HTTPException(status_code=404, detail="unknown principal")
+    return governance_payload(principal)
+
+
+@app.post("/api/v1/governance/tokens", status_code=201)
+def issue_governance_token(payload: dict) -> dict:
+    try:
+        token, secret = governance_store.issue_token(str(payload.get("principal_id", "")), payload.get("expires_at"))
+    except (GovernanceError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    governance_store.audit(str(payload.get("tenant_id", "system")), token.principal_id, "token.issue", "access-token", "allow", {"token_id": token.token_id})
+    return {"token_id": token.token_id, "principal_id": token.principal_id, "token": secret, "created_at": token.created_at, "expires_at": token.expires_at}
+
+
+@app.post("/api/v1/governance/tokens/{token_id}/revoke")
+def revoke_governance_token(token_id: str) -> dict:
+    return {"token_id": token_id, "revoked": governance_store.revoke_token(token_id)}
+
+
+@app.post("/api/v1/governance/authorize")
+def authorize_governance_action(payload: dict) -> dict:
+    principal = governance_store.get_principal(str(payload.get("principal_id", "")))
+    if principal is None:
+        raise HTTPException(status_code=404, detail="unknown principal")
+    tenant_id = str(payload.get("tenant_id", "")).strip()
+    permission = str(payload.get("permission", "")).strip()
+    if not tenant_id or not permission:
+        raise HTTPException(status_code=422, detail="tenant_id and permission are required")
+    return {"allowed": governance_store.authorize(principal, permission, tenant_id), "principal": governance_payload(principal)}
+
+
+@app.get("/api/v1/governance/audit")
+def governance_audit(tenant_id: str, limit: int = 100) -> list[dict]:
+    if not tenant_id.strip():
+        raise HTTPException(status_code=422, detail="tenant_id is required")
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return governance_store.audit_events(tenant_id, limit)
