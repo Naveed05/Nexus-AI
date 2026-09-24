@@ -933,3 +933,39 @@ Phase 48 turns the existing evaluation and benchmark foundation into a durable p
 - full CI, benchmark-gate, and container verification required before phase completion
 
 Evaluation intelligence remains evidence-based and observable: it records quality signals and operational measurements without exposing or relying on hidden model reasoning, and it does not bypass existing approval, permission, quota, verification, or worker controls.
+
+
+### 🔐 Phase 49 — Enterprise Security & Governance
+
+Phase 49 establishes a durable governance boundary for enterprise identity, tenant isolation, least-privilege authorization, credential handling, and operator audit visibility.
+
+**Batch 49.1 — Identity & tenant registry**
+- durable principals bound to explicit tenants
+- active identity lifecycle and role validation
+- viewer, operator, and admin roles with bounded permissions
+
+**Batch 49.2 — Least-privilege access**
+- tenant-scoped authorization for read, execute, and govern permissions
+- deny-by-default behavior for unknown roles and cross-tenant access
+- durable short-lived access-token metadata with revocation
+
+**Batch 49.3 — Security & credential hygiene**
+- one-way token hashing with per-token salt
+- constant-time token verification
+- recursive credential redaction before audit persistence
+- expiration and revocation enforcement
+
+**Batch 49.4 — Governance control center**
+- principal and token governance APIs
+- tenant-scoped authorization endpoint
+- bounded governance audit history
+- frontend governance/audit surface
+
+**Batch 49.5 — Verification & release hardening**
+- RBAC and cross-tenant isolation tests
+- token expiry/revocation tests
+- secret-redaction regression coverage
+- API and frontend contract coverage
+- full CI, benchmark-gate, and container verification required before phase completion
+
+Governance is additive to existing NEXUS approval, permission, verification, quota, runtime, and worker controls; it does not grant principals authority beyond their explicit role.
