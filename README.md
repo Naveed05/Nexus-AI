@@ -817,6 +817,7 @@ Phase 45 turns the durable workflow foundation into an operator-grade control pl
 - frontend controls remain thin clients over the authoritative backend control plane
 
 **Batch 45.5 — Verification & release hardening**
+- Release verification branch requires full API regression, workflow-control contracts, and benchmark-gate integration before Phase 45 closure.
 - control-command persistence and idempotency regression coverage
 - invalid-transition and recovery-path coverage
 - API control/metrics/health contract coverage
