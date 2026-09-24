@@ -272,7 +272,7 @@ class WorkflowScheduler:
             now=datetime.now(timezone.utc)
             for w in self.store.list(500):
                 s=w.schedule or {}
-                if w.status=="paused" or not s or w.status not in {"scheduled","completed","failed"}:
+                if w.status=="paused" or not s or s.get("enabled") is False or w.status not in {"scheduled","completed","failed"}:
                     continue
                 raw=s.get("run_at")
                 if not raw:
@@ -291,7 +291,7 @@ class WorkflowScheduler:
                 w.status="scheduled"
                 interval=s.get("interval_seconds")
                 if interval:
-                    s["run_at"]=(now+__import__("datetime").timedelta(seconds=max(1,int(interval)))).isoformat()
+                    s["run_at"]=(now+__import__("datetime").timedelta(seconds=max(1,int(interval)))).isoformat()\n                    s["enabled"]=True
                 else:
                     s["enabled"]=False
                 self.store.save(w,event_type="workflow.scheduled",detail="schedule became due")
