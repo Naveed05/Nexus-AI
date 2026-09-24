@@ -40,6 +40,7 @@ from nexus.core.agent_workflows import AgentWorkflowStore, AgentWorkflowOrchestr
 from nexus.core.evaluation_intelligence import EvaluationIntelligenceStore, compare_reports, trend_summary, telemetry_event
 from nexus.core.governance import GovernanceStore, GovernanceError, governance_payload
 from nexus.core.production_release import build_release_manifest, readiness_payload as production_readiness_payload, release_payload
+from nexus.core.resilience import BackupError, backup_payload, create_backup, list_backups, verify_backup
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate, AgentWorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -242,6 +243,17 @@ agent_orchestrator = AgentWorkflowOrchestrator(agent_workflow_store)
 worker_coordinator = WorkerCoordinator(settings.job_storage_path.replace("jobs.sqlite3", "workers.sqlite3"))
 evaluation_store = EvaluationIntelligenceStore(settings.job_storage_path.replace("jobs.sqlite3", "evaluation.sqlite3"))
 governance_store = GovernanceStore(settings.job_storage_path.replace("jobs.sqlite3", "governance.sqlite3"))
+backup_stores = {
+    "runs": settings.run_storage_path,
+    "jobs": settings.job_storage_path,
+    "workflows": settings.workflow_storage_path,
+    "agent_workflows": settings.workflow_storage_path.replace("workflows.sqlite3", "agent_workflows.sqlite3"),
+    "workers": settings.job_storage_path.replace("jobs.sqlite3", "workers.sqlite3"),
+    "evaluation": settings.job_storage_path.replace("jobs.sqlite3", "evaluation.sqlite3"),
+    "governance": settings.job_storage_path.replace("jobs.sqlite3", "governance.sqlite3"),
+    "artifacts": settings.artifact_registry_path,
+    "collaboration_audit": settings.collaboration_audit_storage_path,
+}
 
 def _workflow_condition_context(w) -> dict:
     return {
@@ -692,6 +704,30 @@ def _scale_deployment():
 @app.get("/api/v1/scale/deployment")
 def scale_deployment() -> dict:
     return deployment_payload(_scale_deployment())
+
+
+@app.get("/api/v1/resilience/backups")
+def resilience_backups(limit: int = 20) -> list[dict]:
+    try:
+        return [backup_payload(item) for item in list_backups(settings.backup_storage_path, limit=limit)]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/resilience/backups")
+def resilience_create_backup() -> dict:
+    try:
+        return backup_payload(create_backup(backup_root=settings.backup_storage_path, stores=backup_stores))
+    except BackupError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/resilience/backups/{backup_id}/verify")
+def resilience_verify_backup(backup_id: str) -> dict:
+    try:
+        return backup_payload(verify_backup(Path(settings.backup_storage_path) / backup_id))
+    except BackupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/production/release")
