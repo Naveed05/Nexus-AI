@@ -35,7 +35,8 @@ from nexus.core.control_center import build_control_center_summary
 from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
 from nexus.core.jobs import DurableJobManager, JobStore, job_payload
 from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, WorkflowControlError, WorkflowControlPlane, validate_workflow, workflow_payload, workflow_metrics, workflow_health, WORKFLOW_TEMPLATES, WorkflowScheduler, evaluate_condition, ready_steps
-from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate
+from nexus.core.agent_workflows import AgentWorkflowStore, AgentWorkflowOrchestrator, AgentWorkItem, AgentWorkflowValidationError, AgentWorkflowOrchestrationError, agent_workflow_payload
+from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate, AgentWorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
 from nexus.core.tools import configure_dataset_workspace, tool_registry
@@ -232,6 +233,8 @@ workflow_store = WorkflowStore(settings.workflow_storage_path)
 workflow_control = WorkflowControlPlane(workflow_store)
 workflow_scheduler = WorkflowScheduler(workflow_store)
 workflow_scheduler.start()
+agent_workflow_store = AgentWorkflowStore(settings.workflow_storage_path.replace("workflows.sqlite3", "agent_workflows.sqlite3"))
+agent_orchestrator = AgentWorkflowOrchestrator(agent_workflow_store)
 
 def _workflow_condition_context(w) -> dict:
     return {
@@ -512,6 +515,98 @@ def resume_workflow(workflow_id: UUID):
             except Exception:
                 pass
     return workflow_payload(_sync_workflow(w), workflow_store)
+
+
+@app.get("/api/v1/agent-workflows")
+def list_agent_workflows(limit: int = 100):
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return [agent_workflow_payload(w) for w in agent_workflow_store.list(limit)]
+
+@app.post("/api/v1/agent-workflows", status_code=201)
+def create_agent_workflow(payload: AgentWorkflowCreate, x_user_id: str = Header(default="local-user", alias="X-User-Id")):
+    items=[AgentWorkItem(item.item_id or uuid4(), item.objective.strip(), item.agent_id.strip(), list(item.depends_on), input_refs=list(item.input_refs)) for item in payload.items]
+    try:
+        w=agent_orchestrator.create(payload.objective, items, x_user_id, payload.max_parallel)
+    except AgentWorkflowValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return agent_workflow_payload(w)
+
+@app.get("/api/v1/agent-workflows/metrics")
+def agent_workflow_metrics(limit: int = 500):
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return agent_orchestrator.metrics(agent_workflow_store.list(limit))
+
+@app.get("/api/v1/agent-workflows/{workflow_id}")
+def get_agent_workflow(workflow_id: UUID):
+    w=agent_workflow_store.get(workflow_id)
+    if not w: raise HTTPException(status_code=404, detail="unknown agent workflow")
+    return agent_workflow_payload(w)
+
+@app.get("/api/v1/agent-workflows/{workflow_id}/health")
+def get_agent_workflow_health(workflow_id: UUID):
+    w=agent_workflow_store.get(workflow_id)
+    if not w: raise HTTPException(status_code=404, detail="unknown agent workflow")
+    return agent_orchestrator.health(w)
+
+@app.get("/api/v1/agent-workflows/{workflow_id}/events")
+def get_agent_workflow_events(workflow_id: UUID, limit: int = 100):
+    if not agent_workflow_store.get(workflow_id): raise HTTPException(status_code=404, detail="unknown agent workflow")
+    if limit < 1 or limit > 200: raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
+    return agent_workflow_store.events(workflow_id, limit)
+
+@app.post("/api/v1/agent-workflows/{workflow_id}/dispatch")
+def dispatch_agent_workflow(workflow_id: UUID):
+    try: selected=agent_orchestrator.dispatch(workflow_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentWorkflowOrchestrationError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    w=agent_workflow_store.get(workflow_id)
+    return {"workflow":agent_workflow_payload(w),"dispatched":[str(x.item_id) for x in selected]}
+
+@app.post("/api/v1/agent-workflows/{workflow_id}/items/{item_id}/complete")
+def complete_agent_work_item(workflow_id: UUID, item_id: UUID, payload: dict | None = None):
+    try: w=agent_orchestrator.complete(workflow_id,item_id,(payload or {}).get("output_refs",()),(payload or {}).get("provenance"))
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentWorkflowOrchestrationError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return agent_workflow_payload(w)
+
+@app.post("/api/v1/agent-workflows/{workflow_id}/items/{item_id}/fail")
+def fail_agent_work_item(workflow_id: UUID, item_id: UUID, payload: dict):
+    error=str(payload.get("error","work item failed")).strip()
+    if not error: raise HTTPException(status_code=422, detail="error is required")
+    try: w=agent_orchestrator.fail(workflow_id,item_id,error)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentWorkflowOrchestrationError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return agent_workflow_payload(w)
+
+@app.post("/api/v1/agent-workflows/{workflow_id}/items/{item_id}/retry")
+def retry_agent_work_item(workflow_id: UUID, item_id: UUID):
+    try: w=agent_orchestrator.retry(workflow_id,item_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentWorkflowOrchestrationError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return agent_workflow_payload(w)
+
+@app.post("/api/v1/agent-workflows/{workflow_id}/pause")
+def pause_agent_workflow(workflow_id: UUID):
+    try: w=agent_orchestrator.pause(workflow_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentWorkflowOrchestrationError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return agent_workflow_payload(w)
+
+@app.post("/api/v1/agent-workflows/{workflow_id}/resume")
+def resume_agent_workflow(workflow_id: UUID):
+    try: w=agent_orchestrator.resume(workflow_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentWorkflowOrchestrationError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return agent_workflow_payload(w)
+
+@app.post("/api/v1/agent-workflows/{workflow_id}/cancel")
+def cancel_agent_workflow(workflow_id: UUID):
+    try: w=agent_orchestrator.cancel(workflow_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentWorkflowOrchestrationError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return agent_workflow_payload(w)
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
