@@ -776,6 +776,9 @@ Phase 44 hardens the durable workflow layer with an append-only event journal, d
 
 **Batch 44.4 — Operator observability & release hardening**
 - workflow payloads expose event count, latest event sequence/time, and next scheduled run
+- operator event-history API exposes bounded workflow lifecycle events
+- dependency readiness and deterministic conditions are enforced by the durable workflow executor
+- due schedules transition into executable runs without replaying one-time schedules
 - focused regression coverage for event persistence, readiness, condition safety, and schedule idempotency
 - existing model, tool, verification, approval, quota, and job boundaries remain unchanged
 - CI and benchmark-gate verification required before phase completion
