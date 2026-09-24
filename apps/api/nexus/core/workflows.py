@@ -262,6 +262,135 @@ WORKFLOW_TEMPLATES={
 }
 
 
+class WorkflowControlError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class WorkflowCommand:
+    command_id: UUID
+    workflow_id: UUID
+    action: str
+    step_id: str | None
+    idempotency_key: str
+    status: str
+    detail: str
+    created_at: datetime
+
+
+class WorkflowControlPlane:
+    ACTIONS = {"start", "pause", "resume", "cancel", "retry", "restart", "retry_step", "skip_step"}
+
+    def __init__(self, store: WorkflowStore):
+        self.store = store
+        with self.store._lock, self.store._connect() as c:
+            c.execute("""CREATE TABLE IF NOT EXISTS workflow_commands(
+                command_id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, action TEXT NOT NULL,
+                step_id TEXT, idempotency_key TEXT NOT NULL UNIQUE, status TEXT NOT NULL,
+                detail TEXT NOT NULL, created_at TEXT NOT NULL)""")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_workflow_commands_workflow ON workflow_commands(workflow_id,created_at)")
+            c.commit()
+
+    def _existing(self, c, key):
+        row = c.execute("SELECT * FROM workflow_commands WHERE idempotency_key=?", (key,)).fetchone()
+        if not row:
+            return None
+        return WorkflowCommand(UUID(row["command_id"]), UUID(row["workflow_id"]), row["action"], row["step_id"],
+                               row["idempotency_key"], row["status"], row["detail"], datetime.fromisoformat(row["created_at"]))
+
+    def history(self, workflow_id, limit=50):
+        with self.store._lock, self.store._connect() as c:
+            rows=c.execute("SELECT * FROM workflow_commands WHERE workflow_id=? ORDER BY created_at DESC LIMIT ?",
+                           (str(workflow_id), max(1,min(200,limit)))).fetchall()
+        return [WorkflowCommand(UUID(r["command_id"]),UUID(r["workflow_id"]),r["action"],r["step_id"],
+                                 r["idempotency_key"],r["status"],r["detail"],datetime.fromisoformat(r["created_at"])) for r in rows]
+
+    def execute(self, workflow_id, action, *, step_id=None, idempotency_key=None):
+        if action not in self.ACTIONS:
+            raise WorkflowControlError(f"unsupported workflow command: {action}")
+        key=(idempotency_key or f"{workflow_id}:{action}:{step_id or ''}").strip()
+        if not key or len(key)>200:
+            raise WorkflowControlError("idempotency_key must be between 1 and 200 characters")
+        with self.store._lock, self.store._connect() as c:
+            existing=self._existing(c,key)
+            if existing:
+                if existing.workflow_id != workflow_id or existing.action != action or existing.step_id != step_id:
+                    raise WorkflowControlError("idempotency_key already belongs to a different command")
+                return self.store.get(workflow_id), existing
+            w=self.store.get(workflow_id)
+            if not w:
+                raise KeyError("unknown workflow")
+            by_id={s.step_id:s for s in w.steps}
+
+            if action=="start":
+                if w.status not in {"draft","scheduled"}:
+                    raise WorkflowControlError(f"cannot start workflow from {w.status}")
+                if w.status=="scheduled":
+                    w.schedule = w.schedule or {}
+                    w.schedule["enabled"]=False
+                w.status="running"
+            elif action=="pause":
+                if w.status in {"completed","failed","cancelled"}:
+                    raise WorkflowControlError(f"cannot pause workflow from {w.status}")
+                w.status="paused"
+            elif action=="resume":
+                if w.status!="paused":
+                    raise WorkflowControlError(f"cannot resume workflow from {w.status}")
+                w.status="running"
+            elif action=="cancel":
+                if w.status in {"completed","failed","cancelled"}:
+                    raise WorkflowControlError(f"cannot cancel workflow from {w.status}")
+                w.status="cancelled"
+            elif action=="retry":
+                if w.status!="failed":
+                    raise WorkflowControlError(f"cannot retry workflow from {w.status}")
+                for s in w.steps:
+                    if s.status==WorkflowStepStatus.FAILED:
+                        s.status=WorkflowStepStatus.PENDING
+                        s.job_id=None
+                        s.error=None
+                w.status="running"
+            elif action=="restart":
+                if w.status not in {"completed","failed","cancelled","paused"}:
+                    raise WorkflowControlError(f"cannot restart workflow from {w.status}")
+                for s in w.steps:
+                    s.status=WorkflowStepStatus.PENDING
+                    s.job_id=None
+                    s.result={}
+                    s.error=None
+                w.status="running"
+            elif action=="retry_step":
+                if not step_id or step_id not in by_id:
+                    raise WorkflowControlError("retry_step requires an existing step_id")
+                s=by_id[step_id]
+                if s.status!=WorkflowStepStatus.FAILED:
+                    raise WorkflowControlError(f"cannot retry step from {s.status.value}")
+                s.status=WorkflowStepStatus.PENDING
+                s.job_id=None
+                s.error=None
+                w.status="running"
+            elif action=="skip_step":
+                if not step_id or step_id not in by_id:
+                    raise WorkflowControlError("skip_step requires an existing step_id")
+                s=by_id[step_id]
+                if s.status not in {WorkflowStepStatus.PENDING,WorkflowStepStatus.FAILED}:
+                    raise WorkflowControlError(f"cannot skip step from {s.status.value}")
+                s.status=WorkflowStepStatus.SKIPPED
+                s.job_id=None
+                s.error="Skipped by operator command"
+                if w.status in {"failed","paused"}:
+                    w.status="running"
+
+            command_id=uuid4()
+            created_at=datetime.now(timezone.utc)
+            detail=f"workflow command {action} applied"
+            c.execute("INSERT INTO workflow_commands VALUES(?,?,?,?,?,?,?,?)",
+                      (str(command_id),str(workflow_id),action,step_id,key,"applied",detail,created_at.isoformat()))
+            c.commit()
+        self.store.save(w,event_type=f"workflow.command.{action}",detail=detail,step_id=step_id)
+        return w, WorkflowCommand(command_id,workflow_id,action,step_id,key,"applied",detail,created_at)
+
+
 class WorkflowScheduler:
     def __init__(self, store, tick=1.0):
         from threading import Event
