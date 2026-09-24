@@ -32,7 +32,7 @@ def test_create_task_builds_domain_object() -> None:
 def test_hard_task_routes_to_astra() -> None:
     response = client.post("/api/v1/tasks", json={"objective": "Debug this complex agent architecture"})
     assert response.status_code == 201
-    assert response.json()["selected_model"] == "gpt-6-astra"
+    assert response.json()["selected_model"] == "gpt-5.6-sol"
 
 
 def test_low_budget_task_routes_to_luna() -> None:
