@@ -65,6 +65,7 @@ def test_one_time_schedule_is_not_replayed(tmp_path):
     scheduler.stop()
     got=store.get(w.workflow_id)
     assert got and got.schedule["enabled"] is False
+    assert got.status=="running"
     assert store.event_summary(w.workflow_id)["count"]==2
 
 def test_store_hydrates_observability_on_read(tmp_path):
@@ -73,3 +74,32 @@ def test_store_hydrates_observability_on_read(tmp_path):
     store.save(w,event_type="workflow.created",detail="created")
     got=store.get(w.workflow_id)
     assert got and got.event_count==1 and got.last_event_sequence==1
+
+
+def test_recurring_schedule_advances_without_replaying_same_due_time(tmp_path):
+    store=WorkflowStore(str(tmp_path/"w.sqlite3"))
+    first=datetime.now(timezone.utc)-timedelta(seconds=1)
+    w=Workflow(__import__("uuid").uuid4(),"Recurring","Recurring",status="scheduled",
+               steps=[WorkflowStep("a","A")],
+               schedule={"run_at":first.isoformat(),"interval_seconds":60,"enabled":True})
+    store.save(w,event_type="workflow.scheduled")
+    scheduler=WorkflowScheduler(store,tick=0.05)
+    scheduler.start()
+    time.sleep(0.18)
+    scheduler.stop()
+    got=store.get(w.workflow_id)
+    assert got and got.status=="running"
+    assert got.schedule["enabled"] is True
+    assert datetime.fromisoformat(got.schedule["run_at"]) > datetime.now(timezone.utc)-timedelta(seconds=2)
+    assert store.event_summary(w.workflow_id)["count"]==2
+
+
+def test_condition_can_read_step_result_context():
+    assert evaluate_condition(
+        "steps.verify.result.passed == true",
+        {"steps":{"verify":{"status":"completed","result":{"passed":True},"error":None}}},
+    )
+    assert not evaluate_condition(
+        "steps.verify.result.passed == true",
+        {"steps":{"verify":{"status":"completed","result":{"passed":False},"error":None}}},
+    )
