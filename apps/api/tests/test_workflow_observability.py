@@ -66,3 +66,10 @@ def test_one_time_schedule_is_not_replayed(tmp_path):
     got=store.get(w.workflow_id)
     assert got and got.schedule["enabled"] is False
     assert store.event_summary(w.workflow_id)["count"]==2
+
+def test_store_hydrates_observability_on_read(tmp_path):
+    store=WorkflowStore(str(tmp_path/"w.sqlite3"))
+    w=Workflow(__import__("uuid").uuid4(),"Demo","Demo",steps=[WorkflowStep("a","A")])
+    store.save(w,event_type="workflow.created",detail="created")
+    got=store.get(w.workflow_id)
+    assert got and got.event_count==1 and got.last_event_sequence==1
