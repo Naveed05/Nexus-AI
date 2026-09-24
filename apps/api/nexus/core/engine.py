@@ -105,6 +105,9 @@ class NexusEngine:
         task: Task,
         model: ModelSpec,
         allowed_tools: tuple[str, ...],
+        *,
+        user_id: str | None = None,
+        use_byok: bool = False,
     ) -> ExecutionResult:
         """Call both current executors and older test/custom executors safely."""
         execute = self._executor.execute
@@ -115,7 +118,7 @@ class NexusEngine:
             accepts_allowed_tools = True
 
         if accepts_allowed_tools:
-            return execute(task, model, allowed_tools=allowed_tools)
+            return execute(task, model, allowed_tools=allowed_tools, user_id=user_id, use_byok=use_byok)
         return execute(task, model)
 
     def _run_with_recovery(
@@ -126,6 +129,9 @@ class NexusEngine:
         events: list[ExecutionEvent],
         allowed_tools: tuple[str, ...],
         control: ExecutionControl | None = None,
+        *,
+        user_id: str | None = None,
+        use_byok: bool = False,
     ) -> ExecutionResult:
         last_error: Exception | None = None
 
@@ -220,7 +226,14 @@ class NexusEngine:
             }
         )
 
-    def run(self, task: Task, control: ExecutionControl | None = None) -> EngineResult:
+    def run(
+        self,
+        task: Task,
+        control: ExecutionControl | None = None,
+        *,
+        user_id: str | None = None,
+        use_byok: bool = False,
+    ) -> EngineResult:
         task = self._resolve_workspace_context(task)
         task.status = TaskStatus.PLANNING
         route = self.route_task(task)
@@ -351,6 +364,8 @@ class NexusEngine:
                     events,
                     allowed_tools=allowed_tools,
                     control=control,
+                    user_id=user_id,
+                    use_byok=use_byok,
                 )
             except Exception as exc:
                 step.status = StepStatus.FAILED
