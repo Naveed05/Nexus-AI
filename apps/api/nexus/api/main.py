@@ -34,7 +34,7 @@ from nexus.core.collaboration_audit import CollaborationAuditLog
 from nexus.core.control_center import build_control_center_summary
 from nexus.core.artifacts import ArtifactNotFoundError, ArtifactRegistry, LocalArtifactStore
 from nexus.core.jobs import DurableJobManager, JobStore, job_payload
-from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, validate_workflow, workflow_payload, WORKFLOW_TEMPLATES, WorkflowScheduler, evaluate_condition, ready_steps
+from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, WorkflowStore, WorkflowValidationError, WorkflowControlError, WorkflowControlPlane, validate_workflow, workflow_payload, workflow_metrics, workflow_health, WORKFLOW_TEMPLATES, WorkflowScheduler, evaluate_condition, ready_steps
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -229,6 +229,7 @@ job_store = JobStore(settings.job_storage_path)
 job_manager = DurableJobManager(job_store, _execute_durable_job)
 
 workflow_store = WorkflowStore(settings.workflow_storage_path)
+workflow_control = WorkflowControlPlane(workflow_store)
 workflow_scheduler = WorkflowScheduler(workflow_store)
 workflow_scheduler.start()
 
@@ -393,6 +394,76 @@ def workflow_events(workflow_id: UUID, limit: int = 50) -> list[dict]:
         }
         for event in workflow_store.events(workflow_id, limit)
     ]
+
+
+@app.get("/api/v1/workflows/metrics")
+def workflow_metrics_summary(limit: int = 500) -> dict:
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return workflow_metrics(workflow_store.list(limit))
+
+
+@app.get("/api/v1/workflows/{workflow_id}/health")
+def workflow_health_summary(workflow_id: UUID) -> dict:
+    w = workflow_store.get(workflow_id)
+    if not w:
+        raise HTTPException(status_code=404, detail="unknown workflow")
+    return workflow_health(_sync_workflow(w))
+
+
+@app.get("/api/v1/workflows/{workflow_id}/commands")
+def workflow_command_history(workflow_id: UUID, limit: int = 50) -> list[dict]:
+    if not workflow_store.get(workflow_id):
+        raise HTTPException(status_code=404, detail="unknown workflow")
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
+    return [
+        {
+            "command_id": str(command.command_id),
+            "workflow_id": str(command.workflow_id),
+            "action": command.action,
+            "step_id": command.step_id,
+            "idempotency_key": command.idempotency_key,
+            "status": command.status,
+            "detail": command.detail,
+            "created_at": command.created_at.isoformat(),
+        }
+        for command in workflow_control.history(workflow_id, limit)
+    ]
+
+
+@app.post("/api/v1/workflows/{workflow_id}/commands")
+def execute_workflow_command(workflow_id: UUID, payload: dict) -> dict:
+    action = str(payload.get("action", "")).strip()
+    step_id = payload.get("step_id")
+    if step_id is not None:
+        step_id = str(step_id).strip() or None
+    idempotency_key = payload.get("idempotency_key")
+    if idempotency_key is not None:
+        idempotency_key = str(idempotency_key).strip()
+    try:
+        w, command = workflow_control.execute(
+            workflow_id,
+            action,
+            step_id=step_id,
+            idempotency_key=idempotency_key,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except WorkflowControlError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "workflow": workflow_payload(_sync_workflow(w), workflow_store),
+        "command": {
+            "command_id": str(command.command_id),
+            "action": command.action,
+            "step_id": command.step_id,
+            "idempotency_key": command.idempotency_key,
+            "status": command.status,
+            "detail": command.detail,
+            "created_at": command.created_at.isoformat(),
+        },
+    }
 
 
 @app.post("/api/v1/workflows/{workflow_id}/pause")
