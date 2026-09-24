@@ -19,7 +19,7 @@ def test_workspace_csv_upload_registers_dataset_and_surfaces_it():
         assert listed[0]["filename"] == "sample.csv"
         assert listed[0]["dataset_id"] == payload["dataset_id"]
         assert str(payload["dataset_id"]) in {
-            str(dataset.dataset_id) for dataset in workspace_registry.context(workspace.workspace_id).dataset_ids
+            str(dataset_id) for dataset_id in workspace_registry.context(workspace.workspace_id).dataset_ids
         }
     finally:
         for file_ref in list(file_registry.list(workspace_id=workspace.workspace_id)):
