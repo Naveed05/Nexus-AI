@@ -74,3 +74,17 @@ class ResearchResponse(BaseModel):
     document_count: int
     sources: list[dict]
     synthesis: dict
+
+
+class AgentWorkflowItemCreate(BaseModel):
+    item_id: UUID | None = None
+    objective: str = Field(min_length=1, max_length=20_000)
+    agent_id: str = Field(min_length=1, max_length=100)
+    depends_on: list[UUID] = Field(default_factory=list)
+    input_refs: list[str] = Field(default_factory=list, max_length=20)
+
+
+class AgentWorkflowCreate(BaseModel):
+    objective: str = Field(min_length=1, max_length=20_000)
+    items: list[AgentWorkflowItemCreate] = Field(min_length=1, max_length=32)
+    max_parallel: int = Field(default=2, ge=1, le=16)
