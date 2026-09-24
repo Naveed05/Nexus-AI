@@ -863,3 +863,38 @@ Phase 46 extends the existing bounded collaboration layer into a durable, depend
 - full CI and benchmark-gate verification required before phase completion
 
 The orchestration layer schedules only declared work, preserves existing approval/permission/verification boundaries, and does not grant agents autonomous policy authority.
+
+
+### 🌐 Phase 47 — Distributed Execution & Worker Infrastructure
+
+Phase 47 extends durable jobs into a production-oriented worker plane with explicit worker identity, bounded leases, heartbeats, stale-lease recovery, and operator-visible capacity.
+
+**Batch 47.1 — Worker identity & registry**
+- durable worker registration and capability metadata
+- online, draining, and offline lifecycle states
+- persistent heartbeat timestamps and current-job visibility
+
+**Batch 47.2 — Lease-based distributed execution**
+- exclusive short-lived job leases
+- lease release and idempotent release behavior
+- worker heartbeats renew active leases
+- draining workers cannot accept new jobs
+
+**Batch 47.3 — Failure recovery & restart safety**
+- stale lease detection and reclamation
+- offline worker detection from heartbeat age
+- bounded recovery without duplicating active ownership
+- existing durable job retry/cancellation boundaries remain authoritative
+
+**Batch 47.4 — Worker control plane & capacity**
+- worker registration, heartbeat, drain, claim, release, and stale-recovery APIs
+- worker metrics for online/draining/offline/busy/idle capacity
+- persistent worker state suitable for future queue partitioning
+
+**Batch 47.5 — Verification & release hardening**
+- lease exclusivity and recovery regression tests
+- persistence and heartbeat coverage
+- worker lifecycle and capacity metrics coverage
+- full CI, container build, and benchmark-gate verification required before phase completion
+
+Workers do not bypass NEXUS approval, permission, verification, quota, or runtime controls; the worker plane only provides durable execution ownership and recovery.
