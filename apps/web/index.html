@@ -33,6 +33,7 @@
       <a href="#knowledge" class="nav-item" data-nav="knowledge"><span>◉</span> Knowledge</a>
       <a href="#control-center" class="nav-item" data-nav="control-center"><span>◌</span> Control center</a>
       <a href="#evaluation" class="nav-item" data-nav="evaluation"><span>⌁</span> Evaluation</a>
+      <a href="#governance" class="nav-item" data-nav="governance"><span>◇</span> Governance</a>
     </nav>
     <div class="sidebar-bottom">
       <button class="nav-item nav-button" id="command-btn"><span>⌘</span> Command palette <kbd>⌘K</kbd></button>
@@ -168,6 +169,14 @@
           <div class="two-column"><div><p class="eyebrow">RUN HISTORY</p><div id="evaluation-runs" class="job-list"><div class="empty">Loading evaluation history…</div></div></div><div><p class="eyebrow">COMPONENT TELEMETRY</p><div id="evaluation-components" class="job-list"><div class="empty">Loading component metrics…</div></div></div></div>
         </section>
       </section>
+      <section id="governance" class="view-section">
+        <div class="page-intro"><p class="eyebrow">ENTERPRISE GOVERNANCE</p><h2>Identity, access, tenancy, and audit.</h2><p>Inspect the governance boundary that protects NEXUS resources and records authorization decisions.</p></div>
+        <section class="panel"><div class="section-head"><div><h2>Governance control plane</h2><span id="governance-summary" class="muted">Select a tenant to inspect its audit trail.</span></div></div>
+          <div class="stack-form"><div class="input-row"><input id="governance-tenant" maxlength="200" placeholder="Tenant ID"><button id="governance-load" class="ghost">Load audit</button></div></div>
+          <div class="control-grid"><article><small>Audit events</small><strong id="governance-events">—</strong><span>tenant scoped</span></article><article><small>Allow decisions</small><strong id="governance-allows">—</strong><span>recorded</span></article><article><small>Deny decisions</small><strong id="governance-denies">—</strong><span>recorded</span></article><article><small>Boundary</small><strong>RBAC</strong><span>read / execute / govern</span></article></div>
+          <div id="governance-audit-list" class="job-list"><div class="empty">No tenant selected.</div></div>
+        </section>
+      </section>
       <section id="control-center" class="view-section">
         <div class="page-intro"><p class="eyebrow">CONTROL CENTER</p><h2>Production intelligence at a glance.</h2><p>Deployment identity, runtime health, agents, models, tools, and audit integrity — one operational surface.</p></div>
         <section class="panel control-panel"><div class="control-hero"><div><span id="control-status" class="status-pill" role="status" aria-live="polite">Loading</span><h2 id="control-headline">System telemetry</h2><p id="control-summary" class="muted">Aggregating operational surfaces…</p></div><div class="control-clock"><small>LAST SYNC</small><b id="control-sync">—</b></div></div>
@@ -184,5 +193,5 @@
 <div class="mobile-scrim" id="mobile-scrim"></div>
 <div class="command-modal" id="command-modal" hidden><div class="command-dialog"><div class="command-search"><span>⌘</span><input id="command-input" placeholder="Jump to a NEXUS surface…" autocomplete="off"><kbd>Esc</kbd></div><div id="command-results"></div></div></div>
 <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
-<script type="module" src="/web/app.js"></script><script type="module" src="/web/workers.js"></script><script type="module" src="/web/agent-workflows.js"></script><script type="module" src="/web/evaluation.js"></script>
+<script type="module" src="/web/app.js"></script><script type="module" src="/web/workers.js"></script><script type="module" src="/web/agent-workflows.js"></script><script type="module" src="/web/evaluation.js"></script><script type="module" src="/web/governance.js"></script>
 </body></html>
