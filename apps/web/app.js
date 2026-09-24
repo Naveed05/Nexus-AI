@@ -9,7 +9,7 @@ async function loadApiSettings(){
   try{
     const data=await api.get("/api/v1/byok/credentials");
     const openai=data.providers?.find(x=>x.provider==="openai");
-    state.providerConfigured=Boolean(openai?.configured);
+    state.providerConfigured=Boolean(openai?.configured||openai?.server_configured);
     const title=$("provider-status-title"),detail=$("provider-status-detail"),dot=$("provider-dot"),banner=$("setup-banner");
     if(state.providerConfigured){
       if(title)title.textContent="OpenAI is connected";
