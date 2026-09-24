@@ -1503,23 +1503,61 @@ def list_workspaces() -> list[dict]: return [_workspace_payload(workspace) for w
 def get_workspace(workspace_id: UUID) -> dict: return _workspace_payload(_require_workspace(workspace_id))
 
 @app.post("/api/v1/workspaces/{workspace_id}/files", status_code=201)
-async def upload_workspace_file(workspace_id: UUID, file: UploadFile = File(...), x_user_id: str = Header(default="local-user", alias="X-User-Id")) -> dict:
-    _require_workspace(workspace_id); filename = Path(file.filename or "").name
-    if not filename: raise HTTPException(status_code=422, detail="filename cannot be empty")
+async def upload_workspace_file(
+    workspace_id: UUID,
+    file: UploadFile = File(...),
+    x_user_id: str = Header(default="local-user", alias="X-User-Id"),
+) -> dict:
+    _require_workspace(workspace_id)
+    filename = Path(file.filename or "").name
+    if not filename:
+        raise HTTPException(status_code=422, detail="filename cannot be empty")
     user_id = x_user_id.strip() or "local-user"
     plan = next(item for item in product_catalog.plans() if item.plan_id == product_catalog.profile(user_id).plan_id)
     payload_bytes = await file.read()
     if len(payload_bytes) > plan.max_file_bytes:
         raise HTTPException(status_code=413, detail="file exceeds the active product plan limit")
+
+    suffix = Path(filename).suffix.lower().lstrip(".")
+    dataset = None
     try:
         product_catalog.consume_file(user_id)
-        file_ref = file_store.put(payload_bytes, filename=filename, workspace_id=workspace_id, mime_type=file.content_type); file_registry.register(file_ref); workspace_registry.context(workspace_id).add_file(file_ref.file_id)
-    except (TypeError, ValueError) as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _file_payload(file_ref)
+        file_ref = file_store.put(
+            payload_bytes,
+            filename=filename,
+            workspace_id=workspace_id,
+            mime_type=file.content_type,
+        )
+        file_registry.register(file_ref)
+        workspace_registry.context(workspace_id).add_file(file_ref.file_id)
+
+        # Tabular uploads are first-class datasets as well as workspace files.
+        if suffix in {"csv", "parquet", "json"}:
+            dataset = dataset_workspace.register(
+                payload_bytes,
+                filename=filename,
+                file_format=suffix,
+                metadata={
+                    "content_type": file.content_type or "application/octet-stream",
+                    "workspace_id": str(workspace_id),
+                    "file_id": str(file_ref.file_id),
+                },
+            )
+            workspace_registry.context(workspace_id).add_dataset(dataset.dataset_id)
+            file_ref.metadata["dataset_id"] = str(dataset.dataset_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        **_file_payload(file_ref),
+        "dataset_id": str(dataset.dataset_id) if dataset else None,
+        "dataset_ready": dataset is not None,
+    }
 
 @app.get("/api/v1/workspaces/{workspace_id}/files")
 def list_workspace_files(workspace_id: UUID) -> list[dict]:
-    _require_workspace(workspace_id); return [_file_payload(f) for f in file_registry.list(workspace_id=workspace_id)]
+    _require_workspace(workspace_id)
+    return [_file_payload(f) for f in file_registry.list(workspace_id=workspace_id)]
 
 @app.get("/api/v1/workspaces/{workspace_id}/files/{file_id}")
 def download_workspace_file(workspace_id: UUID, file_id: UUID) -> Response:
