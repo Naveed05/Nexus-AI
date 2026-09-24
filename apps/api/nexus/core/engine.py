@@ -113,13 +113,21 @@ class NexusEngine:
         execute = self._executor.execute
         try:
             signature = inspect.signature(execute)
-            accepts_allowed_tools = "allowed_tools" in signature.parameters
+            parameters = signature.parameters
+            accepts_allowed_tools = "allowed_tools" in parameters
+            accepts_user_id = "user_id" in parameters
+            accepts_use_byok = "use_byok" in parameters
         except (TypeError, ValueError):
-            accepts_allowed_tools = True
+            accepts_allowed_tools = accepts_user_id = accepts_use_byok = True
 
+        kwargs = {}
         if accepts_allowed_tools:
-            return execute(task, model, allowed_tools=allowed_tools, user_id=user_id, use_byok=use_byok)
-        return execute(task, model)
+            kwargs["allowed_tools"] = allowed_tools
+        if accepts_user_id:
+            kwargs["user_id"] = user_id
+        if accepts_use_byok:
+            kwargs["use_byok"] = use_byok
+        return execute(task, model, **kwargs)
 
     def _run_with_recovery(
         self,
