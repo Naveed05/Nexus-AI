@@ -361,7 +361,7 @@ class WorkflowControlPlane:
             by_id={s.step_id:s for s in w.steps}
 
             if action=="start":
-                if w.status not in {"draft","scheduled"}:
+                if w.status not in {"draft","scheduled","running"}:
                     raise WorkflowControlError(f"cannot start workflow from {w.status}")
                 if w.status=="scheduled":
                     w.schedule = w.schedule or {}
