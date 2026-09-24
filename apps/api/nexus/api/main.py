@@ -155,7 +155,16 @@ def _workspace_payload(workspace) -> dict:
     return {"workspace_id": str(workspace.workspace_id), "name": workspace.name, "owner_id": workspace.owner_id, "metadata": workspace.metadata, "created_at": workspace.created_at.isoformat()}
 
 def _file_payload(file_ref) -> dict:
-    return {"file_id": str(file_ref.file_id), "workspace_id": str(file_ref.workspace_id) if file_ref.workspace_id else None, "filename": file_ref.filename, "mime_type": file_ref.mime_type, "size_bytes": file_ref.size_bytes, "metadata": file_ref.metadata, "created_at": file_ref.created_at.isoformat()}
+    return {
+        "file_id": str(file_ref.file_id),
+        "workspace_id": str(file_ref.workspace_id) if file_ref.workspace_id else None,
+        "filename": file_ref.filename,
+        "mime_type": file_ref.mime_type,
+        "size_bytes": file_ref.size_bytes,
+        "metadata": file_ref.metadata,
+        "dataset_id": file_ref.metadata.get("dataset_id"),
+        "created_at": file_ref.created_at.isoformat(),
+    }
 
 def _memory_payload(record) -> dict:
     return {
