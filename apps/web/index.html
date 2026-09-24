@@ -33,6 +33,7 @@
       <a href="#knowledge" class="nav-item" data-nav="knowledge"><span>◉</span> Knowledge</a>
       <a href="#control-center" class="nav-item" data-nav="control-center"><span>◌</span> Control center</a>
       <a href="#evaluation" class="nav-item" data-nav="evaluation"><span>⌁</span> Evaluation</a>
+      <a href="#governance" class="nav-item" data-nav="governance"><span>◇</span> Governance</a>
     </nav>
     <div class="sidebar-bottom">
       <button class="nav-item nav-button" id="command-btn"><span>⌘</span> Command palette <kbd>⌘K</kbd></button>
@@ -166,6 +167,14 @@
         <section class="panel"><div class="section-head"><div><h2>Evaluation trend</h2><span id="evaluation-summary" class="muted">Loading…</span></div><button id="evaluation-refresh" class="ghost">Refresh</button></div>
           <div class="control-grid"><article><small>Latest pass rate</small><strong id="eval-pass-rate">—</strong><span>benchmark quality</span></article><article><small>Check score</small><strong id="eval-check-score">—</strong><span>observable checks</span></article><article><small>Grounding</small><strong id="eval-grounding">—</strong><span>evidence score</span></article><article><small>Drift</small><strong id="eval-drift">—</strong><span>recent change signal</span></article></div>
           <div class="two-column"><div><p class="eyebrow">RUN HISTORY</p><div id="evaluation-runs" class="job-list"><div class="empty">Loading evaluation history…</div></div></div><div><p class="eyebrow">COMPONENT TELEMETRY</p><div id="evaluation-components" class="job-list"><div class="empty">Loading component metrics…</div></div></div></div>
+        </section>
+      </section>
+      <section id="governance" class="view-section">
+        <div class="page-intro"><p class="eyebrow">ENTERPRISE GOVERNANCE</p><h2>Identity, access, tenancy, and audit.</h2><p>Inspect the governance boundary that protects NEXUS resources and records authorization decisions.</p></div>
+        <section class="panel"><div class="section-head"><div><h2>Governance control plane</h2><span id="governance-summary" class="muted">Select a tenant to inspect its audit trail.</span></div></div>
+          <div class="stack-form"><div class="input-row"><input id="governance-tenant" maxlength="200" placeholder="Tenant ID"><button id="governance-load" class="ghost">Load audit</button></div></div>
+          <div class="control-grid"><article><small>Audit events</small><strong id="governance-events">—</strong><span>tenant scoped</span></article><article><small>Allow decisions</small><strong id="governance-allows">—</strong><span>recorded</span></article><article><small>Deny decisions</small><strong id="governance-denies">—</strong><span>recorded</span></article><article><small>Boundary</small><strong>RBAC</strong><span>read / execute / govern</span></article></div>
+          <div id="governance-audit-list" class="job-list"><div class="empty">No tenant selected.</div></div>
         </section>
       </section>
       <section id="control-center" class="view-section">
