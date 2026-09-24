@@ -48,3 +48,21 @@ def test_condition_language_is_deterministic():
     assert not evaluate_condition("verification.passed == true",{"verification":{"passed":False}})
     assert not evaluate_condition("__import__('os').system('x') == 0",{})
 
+
+import time
+from datetime import datetime, timezone, timedelta
+from nexus.core.workflows import WorkflowScheduler
+
+def test_one_time_schedule_is_not_replayed(tmp_path):
+    store=WorkflowStore(str(tmp_path/"w.sqlite3"))
+    w=Workflow(__import__("uuid").uuid4(),"Once","Once",status="scheduled",
+               steps=[WorkflowStep("a","A")],
+               schedule={"run_at":(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat(),"enabled":True})
+    store.save(w,event_type="workflow.scheduled")
+    scheduler=WorkflowScheduler(store,tick=0.05)
+    scheduler.start()
+    time.sleep(0.18)
+    scheduler.stop()
+    got=store.get(w.workflow_id)
+    assert got and got.schedule["enabled"] is False
+    assert store.event_summary(w.workflow_id)["count"]==2
