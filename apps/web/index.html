@@ -22,18 +22,24 @@
       <button id="new-workspace-btn" class="switcher-add" title="Create workspace">+</button>
     </div>
     <nav class="nav" aria-label="Primary navigation">
-      <a href="#overview" class="nav-item active" data-nav="overview"><span>⌂</span> Overview</a>
-      <a href="#workspace" class="nav-item" data-nav="workspace"><span>✦</span> Workspace</a>
-      <a href="#agents" class="nav-item" data-nav="agents"><span>◈</span> Agents</a>
-      <a href="#agent-orchestration" class="nav-item" data-nav="agent-orchestration"><span>◎</span> Orchestration</a>
-      <a href="#workers" class="nav-item" data-nav="workers"><span>◉</span> Workers</a>
-      <a href="#agent-workspace" class="nav-item" data-nav="agent-workspace"><span>⌁</span> Agent workspace</a>
-      <a href="#jobs" class="nav-item" data-nav="jobs"><span>◫</span> Jobs</a>
-      <a href="#runs" class="nav-item" data-nav="runs"><span>↯</span> Executions</a>
-      <a href="#knowledge" class="nav-item" data-nav="knowledge"><span>◉</span> Knowledge</a>
-      <a href="#control-center" class="nav-item" data-nav="control-center"><span>◌</span> Control center</a>
-      <a href="#evaluation" class="nav-item" data-nav="evaluation"><span>⌁</span> Evaluation</a>
-      <a href="#governance" class="nav-item" data-nav="governance"><span>◇</span> Governance</a>
+      <div class="nav-group-label">START</div>
+      <a href="#overview" class="nav-item active" data-nav="overview"><span>⌂</span><div>Home<small>Run a task</small></div></a>
+      <a href="#workspace" class="nav-item" data-nav="workspace"><span>✦</span><div>Workspace<small>Files & memory</small></div></a>
+      <a href="#knowledge" class="nav-item" data-nav="knowledge"><span>◉</span><div>Knowledge<small>Context & sources</small></div></a>
+      <div class="nav-group-label">WORK</div>
+      <a href="#agents" class="nav-item" data-nav="agents"><span>◈</span><div>Agents<small>Specialists</small></div></a>
+      <a href="#agent-orchestration" class="nav-item" data-nav="agent-orchestration"><span>◎</span><div>Orchestration<small>Multi-agent work</small></div></a>
+      <a href="#workflows" class="nav-item" data-nav="workflows"><span>◇</span><div>Workflows<small>Reusable plans</small></div></a>
+      <a href="#jobs" class="nav-item" data-nav="jobs"><span>◫</span><div>Jobs<small>Durable work</small></div></a>
+      <a href="#runs" class="nav-item" data-nav="runs"><span>↯</span><div>Executions<small>Live results</small></div></a>
+      <div class="nav-group-label">OPERATE</div>
+      <a href="#agent-workspace" class="nav-item" data-nav="agent-workspace"><span>⌁</span><div>Agent workspace<small>Inspect & control</small></div></a>
+      <a href="#workers" class="nav-item" data-nav="workers"><span>◉</span><div>Workers<small>Runtime capacity</small></div></a>
+      <a href="#control-center" class="nav-item" data-nav="control-center"><span>◌</span><div>Control center<small>System health</small></div></a>
+      <div class="nav-group-label">SYSTEM</div>
+      <a href="#evaluation" class="nav-item" data-nav="evaluation"><span>⌁</span><div>Evaluation<small>Quality & trends</small></div></a>
+      <a href="#governance" class="nav-item" data-nav="governance"><span>◇</span><div>Governance<small>Access & audit</small></div></a>
+      <a href="#settings" class="nav-item" data-nav="settings"><span>⚙</span><div>Settings<small>AI provider & app</small></div></a>
     </nav>
     <div class="sidebar-bottom">
       <button class="nav-item nav-button" id="command-btn"><span>⌘</span> Command palette <kbd>⌘K</kbd></button>
@@ -60,6 +66,11 @@
           <div class="hero-status"><span class="pulse"></span><div><b id="connection-status" role="status" aria-live="polite">Connecting</b><small id="last-sync">Syncing live telemetry</small></div></div>
         </div>
 
+        <section id="setup-banner" class="setup-banner" hidden>
+          <div class="setup-icon">⚡</div>
+          <div><b>Connect your AI provider</b><p>NEXUS is ready, but it needs an API key before it can run AI work.</p></div>
+          <button class="primary setup-btn" id="setup-provider-btn">Connect provider →</button>
+        </section>
         <section class="command-card">
           <div class="command-head"><div><span class="command-icon">✦</span><div><b>What should NEXUS do?</b><small>Describe the outcome. NEXUS will plan the work.</small></div></div><span class="shortcut">Ctrl + Enter</span></div>
           <textarea id="task-input" maxlength="20000" placeholder="e.g. Analyze this dataset, identify the three biggest revenue drivers, and produce a concise executive summary."></textarea>
@@ -167,6 +178,35 @@
         <section class="panel"><div class="section-head"><div><h2>Evaluation trend</h2><span id="evaluation-summary" class="muted">Loading…</span></div><button id="evaluation-refresh" class="ghost">Refresh</button></div>
           <div class="control-grid"><article><small>Latest pass rate</small><strong id="eval-pass-rate">—</strong><span>benchmark quality</span></article><article><small>Check score</small><strong id="eval-check-score">—</strong><span>observable checks</span></article><article><small>Grounding</small><strong id="eval-grounding">—</strong><span>evidence score</span></article><article><small>Drift</small><strong id="eval-drift">—</strong><span>recent change signal</span></article></div>
           <div class="two-column"><div><p class="eyebrow">RUN HISTORY</p><div id="evaluation-runs" class="job-list"><div class="empty">Loading evaluation history…</div></div></div><div><p class="eyebrow">COMPONENT TELEMETRY</p><div id="evaluation-components" class="job-list"><div class="empty">Loading component metrics…</div></div></div></div>
+        </section>
+      </section>
+      <section id="settings" class="view-section">
+        <div class="page-intro"><p class="eyebrow">SETTINGS</p><h2>Make NEXUS yours.</h2><p>Connect your AI provider, choose the appearance, and keep the setup simple. Your API key is never displayed back in full.</p></div>
+        <div class="settings-grid">
+          <section class="panel settings-hero">
+            <div class="settings-title"><div class="settings-provider-icon">✦</div><div><p class="eyebrow">AI PROVIDER</p><h2>Connect an API key</h2><p>For this local installation, the safest simple option is to configure your own provider key here. NEXUS keeps it in the local runtime memory and never sends it to the browser after saving.</p></div></div>
+            <div class="provider-status" id="provider-status-card"><span class="provider-dot" id="provider-dot"></span><div><b id="provider-status-title">Checking connection…</b><small id="provider-status-detail">Checking configured providers.</small></div></div>
+            <div class="provider-form">
+              <label><span>Provider</span><select id="provider-select"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="groq">Groq</option></select></label>
+              <label class="key-field"><span>API key</span><div class="secret-input"><input id="provider-api-key" type="password" autocomplete="off" placeholder="Paste your API key here"><button id="toggle-api-key" type="button" class="icon-button" aria-label="Show API key">◉</button></div></label>
+              <div class="provider-actions"><button id="save-api-key" class="primary">Save securely <b>→</b></button><button id="remove-api-key" class="ghost">Remove key</button></div>
+              <p id="settings-message" class="settings-message" role="status"></p>
+            </div>
+            <div class="security-note"><b>🔒 Local setup</b><span>Your key is stored by the NEXUS runtime for this local session. Do not use this in a shared or public deployment without a proper encrypted credential store.</span></div>
+          </section>
+          <section class="panel">
+            <div class="section-head"><div><p class="eyebrow">GET STARTED</p><h2>How to use NEXUS</h2></div><span class="live-badge">4 STEPS</span></div>
+            <div class="guide-list">
+              <div><i>1</i><div><b>Connect your provider</b><small>Add an OpenAI API key in this Settings page.</small></div></div>
+              <div><i>2</i><div><b>Create a workspace</b><small>Keep files and memory together for one project.</small></div></div>
+              <div><i>3</i><div><b>Describe the outcome</b><small>Use Home → Run a task. Start simple while testing.</small></div></div>
+              <div><i>4</i><div><b>Inspect the result</b><small>Open Jobs or Executions to see status, verification, and artifacts.</small></div></div>
+            </div>
+          </section>
+        </div>
+        <section class="panel settings-preferences">
+          <div class="section-head"><div><p class="eyebrow">PREFERENCES</p><h2>Appearance</h2></div></div>
+          <div class="preference-row"><div><b>Interface theme</b><small>Light is the default for easier long-session reading. You can switch back to dark anytime.</small></div><button id="settings-theme-btn" class="ghost">Toggle appearance</button></div>
         </section>
       </section>
       <section id="governance" class="view-section">
