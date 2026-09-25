@@ -19,12 +19,9 @@ def test_governance_store_bootstrap_and_token_auth(tmp_path: Path) -> None:
     assert store.authorize(authenticated, "execute", "tenant-b") is False
 
 
-def test_governance_guard_requires_credentials_when_enforced() -> None:
-    store = GovernanceStore(":memory:")
+def test_governance_guard_requires_credentials_when_enforced(tmp_path: Path) -> None:
+    store = GovernanceStore(tmp_path / "governance.sqlite3")
     guard = GovernanceGuard(store, enforced=True)
-    class Scope:
-        method = "POST"
-        headers = {}
     class Request:
         headers = {}
     with pytest.raises(HTTPException) as error:
