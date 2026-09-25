@@ -37,6 +37,7 @@
       <a href="#workers" class="nav-item" data-nav="workers"><span>◉</span><div>Workers<small>Runtime capacity</small></div></a>
       <a href="#control-center" class="nav-item" data-nav="control-center"><span>◌</span><div>Control center<small>System health</small></div></a>
       <a href="#reliability" class="nav-item" data-nav="reliability"><span>↻</span><div>Reliability<small>Recovery & health</small></div></a>
+      <a href="#platform" class="nav-item" data-nav="platform"><span>✦</span><div>Platform<small>Intelligence & scale</small></div></a>
       <div class="nav-group-label">SYSTEM</div>
       <a href="#evaluation" class="nav-item" data-nav="evaluation"><span>⌁</span><div>Evaluation<small>Quality & trends</small></div></a>
       <a href="#governance" class="nav-item" data-nav="governance"><span>◇</span><div>Governance<small>Access & audit</small></div></a>
@@ -195,6 +196,16 @@
           <div class="section-head"><div><p class="eyebrow">RECOVERY HISTORY</p><span class="muted">Auditable reconciliation actions.</span></div></div>
           <div id="reliability-history" class="job-list"><div class="empty">Loading recovery history…</div></div>
         </section>
+      </section>
+      <section id="platform" class="view-section">
+        <div class="page-intro"><p class="eyebrow">NEXUS PLATFORM 2.0</p><h2>One control plane for the whole system.</h2><p>Resource graph, execution trace, infrastructure readiness, specialists, connectors, analytics and security policy are visible from one operator surface.</p></div>
+        <section class="panel"><div class="control-grid">
+          <article><small>Infrastructure</small><strong id="platform-infra">—</strong><span>deployment topology</span></article>
+          <article><small>Events</small><strong id="platform-events">—</strong><span>execution spine</span></article>
+          <article><small>Connectors</small><strong id="platform-tools">—</strong><span>integration surface</span></article>
+          <article><small>Cost</small><strong id="platform-cost">—</strong><span>recorded usage</span></article>
+        </div><div class="section-head"><div><p class="eyebrow">RELEASE READINESS</p><span id="platform-readiness" class="muted">Loading…</span></div><button id="platform-refresh" class="ghost">Refresh</button></div>
+        <div id="platform-specialists" class="job-list"><div class="empty">Loading platform capabilities…</div></div></section>
       </section>
       <section id="settings" class="view-section">
         <div class="page-intro"><p class="eyebrow">SETTINGS</p><h2>Make NEXUS yours.</h2><p>Connect your AI provider, choose the appearance, and keep the setup simple. Your API key is never displayed back in full.</p></div>
