@@ -203,6 +203,7 @@ class ModelRegistry:
                 cost_score=1,
                 latency_score=5,
             )
+        )
         self.register(
             ModelSpec(
                 key="groq-gpt-oss-120b",
@@ -232,8 +233,6 @@ class ModelRegistry:
                 cost_score=2,
                 latency_score=1,
             )
-        )
-
         )
 
     def register(self, spec: ModelSpec) -> None:
