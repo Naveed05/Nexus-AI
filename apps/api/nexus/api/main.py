@@ -10,11 +10,13 @@ from fastapi.staticfiles import StaticFiles
 
 from nexus.core.config import settings
 from nexus.core.dataset_workspace import DatasetWorkspace
+from nexus.core.data_science import DataScienceService
 from nexus.core.documents import DocumentParseError, DocumentWorkspace
 from nexus.core.engine import engine
 from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
 from nexus.core.files import FileRegistry, LocalFileStore
 from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
+from nexus.core.knowledge_intelligence import KnowledgeIntelligenceService
 from nexus.core.memory import MemoryKind, memory_store
 from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, byok_provider_manager, model_health_registry, model_registry
 from nexus.core.research import ResearchEngine
@@ -47,6 +49,7 @@ from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
 from nexus.core.tools import configure_dataset_workspace, tool_registry
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
+from nexus.core.workspace_intelligence import WorkspaceIntelligenceService
 
 app = FastAPI(title=settings.app_name, version=settings.service_version)
 artifact_store = LocalArtifactStore(settings.artifact_storage_path)
@@ -150,6 +153,9 @@ agent_runtime = AgentRuntime(settings.run_storage_path,)
 production_runtime = ProductionRuntime(store_path=settings.run_storage_path, engine=engine)
 rate_limiter = SlidingWindowRateLimiter(limit=settings.rate_limit_per_minute)
 collaboration_audit = CollaborationAuditLog(settings.collaboration_audit_storage_path)
+workspace_intelligence = WorkspaceIntelligenceService(workspace_registry, file_registry, dataset_workspace.registry, document_workspace)
+knowledge_intelligence = KnowledgeIntelligenceService(knowledge_engine)
+data_science = DataScienceService(dataset_workspace)
 
 
 def _workspace_payload(workspace) -> dict:
@@ -1590,6 +1596,7 @@ async def upload_workspace_file(
             workspace_registry.context(workspace_id).add_dataset(dataset.dataset_id)
             workspace_registry.save_context(workspace_id)
             file_ref.metadata["dataset_id"] = str(dataset.dataset_id)
+            file_registry.update(file_ref)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1643,6 +1650,108 @@ def search_workspace(workspace_id: UUID, payload: dict) -> dict:
     if parsed_document_id is not None and parsed_document_id not in workspace_registry.context(workspace_id).document_ids: raise HTTPException(status_code=404, detail="Document does not belong to the requested workspace")
     return knowledge_engine.search(query, workspace_id=workspace_id, top_k=top_k, document_id=parsed_document_id).as_dict()
 
+
+
+
+
+@app.get("/api/v1/workspaces/{workspace_id}/intelligence")
+def workspace_intelligence_snapshot(workspace_id: UUID, max_context_chars: int = 8000) -> dict:
+    _require_workspace(workspace_id)
+    try:
+        return workspace_intelligence.inspect(workspace_id, max_context_chars=max_context_chars).as_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/workspaces/{workspace_id}/context")
+def workspace_context_pack(workspace_id: UUID, max_chars: int = 8000) -> dict:
+    _require_workspace(workspace_id)
+    try:
+        return {
+            "workspace_id": str(workspace_id),
+            "context": workspace_intelligence.context(workspace_id, max_chars=max_chars),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/datasets")
+def list_datasets(limit: int = 100) -> list[dict]:
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return [
+        {
+            "dataset_id": str(item.dataset_id),
+            "filename": item.filename,
+            "file_format": item.file_format,
+            "size_bytes": item.size_bytes,
+            "artifact_id": str(item.artifact_id) if item.artifact_id else None,
+            "metadata": item.metadata,
+            "created_at": item.created_at.isoformat(),
+        }
+        for item in dataset_workspace.registry.list()[-limit:]
+    ]
+
+
+@app.get("/api/v1/datasets/{dataset_id}/schema")
+def dataset_schema(dataset_id: UUID) -> dict:
+    try:
+        return data_science.schema(dataset_id)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/datasets/{dataset_id}/analyze")
+def analyze_dataset(dataset_id: UUID, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    target = payload.get("target")
+    if target is not None and not isinstance(target, str):
+        raise HTTPException(status_code=422, detail="target must be a string or null")
+    try:
+        return data_science.inspect(dataset_id, target=target).as_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/datasets/{dataset_id}/baseline")
+def baseline_dataset(dataset_id: UUID, payload: dict) -> dict:
+    target = str(payload.get("target", "")).strip()
+    if not target:
+        raise HTTPException(status_code=422, detail="target is required")
+    try:
+        return data_science.baseline(dataset_id, target)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/workspaces/{workspace_id}/knowledge/health")
+def workspace_knowledge_health(workspace_id: UUID) -> dict:
+    _require_workspace(workspace_id)
+    return knowledge_intelligence.health(workspace_id)
+
+
+@app.post("/api/v1/workspaces/{workspace_id}/knowledge/search")
+def workspace_knowledge_search(workspace_id: UUID, payload: dict) -> dict:
+    _require_workspace(workspace_id)
+    try:
+        return knowledge_intelligence.search(
+            workspace_id,
+            str(payload.get("query", "")),
+            top_k=int(payload.get("top_k", 8)),
+            max_context_chars=int(payload.get("max_context_chars", 8000)),
+        ).as_dict()
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/workspaces/{workspace_id}/knowledge/rebuild")
+def rebuild_workspace_knowledge(workspace_id: UUID) -> dict:
+    _require_workspace(workspace_id)
+    try:
+        chunks = knowledge_intelligence.rebuild_workspace(workspace_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"workspace_id": str(workspace_id), "indexed_chunks": chunks, "health": knowledge_intelligence.health(workspace_id)}
 
 @app.post("/api/v1/evaluations/runs", status_code=201)
 def create_evaluation_run(payload: dict) -> dict:
