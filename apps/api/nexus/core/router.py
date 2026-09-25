@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from nexus.core.models import ModelRequirements, ModelSpec, model_registry
+from nexus.core.models import ModelRequirements, ModelSpec, model_registry, provider_model_specs
 from nexus.core.task import RiskLevel, Task
 
 
@@ -62,7 +62,16 @@ class TaskRouter:
         requirements = self._requirements(task, hard=hard)
         models = model_registry.find(requirements)
         if provider:
-            models = tuple(model for model in models if model.provider == provider.strip().lower())
+            provider_models = provider_model_specs(provider)
+            models = tuple(
+                model for model in provider_models
+                if requirements.required_capabilities.issubset(model.capabilities)
+                and (requirements.reasoning_level is None or requirements.reasoning_level in model.reasoning_levels)
+                and model.context_window >= requirements.minimum_context_window
+                and (not requirements.require_tools or model.supports_tools)
+                and (requirements.maximum_cost_score is None or model.cost_score <= requirements.maximum_cost_score)
+                and (requirements.maximum_latency_score is None or model.latency_score <= requirements.maximum_latency_score)
+            )
         if professional and not (task.budget is not None and task.budget <= 1):
             models = tuple(
                 model for model in models if self._tier_rank[model.tier] >= self._tier_rank["professional"]
