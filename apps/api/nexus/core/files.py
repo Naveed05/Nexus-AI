@@ -168,6 +168,29 @@ class FileRegistry:
                 return files
             return tuple(file for file in files if file.workspace_id == workspace_id)
 
+    def update(self, file: FileRef) -> FileRef:
+        """Persist an updated immutable file reference."""
+        with self._lock:
+            if file.file_id not in self._files:
+                raise FileNotFoundError(f"Unknown file: {file.file_id}")
+            self._files[file.file_id] = file
+            if self._connection is not None:
+                self._connection.execute(
+                    "INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?)",
+                    (
+                        str(file.file_id),
+                        str(file.workspace_id) if file.workspace_id else None,
+                        file.filename,
+                        file.storage_key,
+                        file.mime_type,
+                        file.size_bytes,
+                        json.dumps(file.metadata),
+                        file.created_at.isoformat(),
+                    ),
+                )
+                self._connection.commit()
+            return file
+
     def remove(self, file_id: UUID, *, workspace_id: UUID | None = None) -> FileRef:
         with self._lock:
             file = self.get(file_id, workspace_id=workspace_id)
