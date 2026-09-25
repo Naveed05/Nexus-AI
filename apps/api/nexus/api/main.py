@@ -844,7 +844,7 @@ def register_worker(payload: dict):
 
 @app.post("/api/v1/workers/{worker_id}/heartbeat")
 def worker_heartbeat(worker_id: UUID):
-    try: w=worker_coordinator.heartbeat(worker_id)
+    try: w=worker_coordinator.heartbeat(worker_id, preserve_status=True)
     except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
     return worker_payload(w)
