@@ -856,10 +856,16 @@ def worker_drain(worker_id: UUID):
     return worker_payload(w)
 
 @app.post("/api/v1/workers/{worker_id}/claim/{job_id}")
-def worker_claim(worker_id: UUID, job_id: UUID):
-    try: return worker_coordinator.claim(worker_id,job_id)
-    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+def worker_claim(worker_id: UUID, job_id: UUID, request: Request):
+    decision = governance_guard.require(request, "execute")
+    try:
+        lease = distributed_bridge.claim_job(worker_id, job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    governance_guard.audit_mutation(decision, "worker.job.claim", str(job_id), {"worker_id": str(worker_id), "lease_id": str(lease.lease_id)})
+    return lease.payload()
 
 @app.post("/api/v1/workers/leases/{lease_id}/release")
 def worker_release(lease_id: UUID):
