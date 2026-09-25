@@ -204,36 +204,6 @@ class ModelRegistry:
                 latency_score=5,
             )
         )
-        self.register(
-            ModelSpec(
-                key="groq-gpt-oss-120b",
-                model_id="openai/gpt-oss-120b",
-                provider="groq",
-                tier="flagship",
-                description="Groq-hosted GPT-OSS 120B for reasoning, coding, research, and agentic work.",
-                capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis"}),
-                reasoning_levels=frozenset({"low", "medium", "high", "max"}),
-                context_window=131_072,
-                supports_tools=True,
-                cost_score=4,
-                latency_score=2,
-            )
-        )
-        self.register(
-            ModelSpec(
-                key="groq-gpt-oss-20b",
-                model_id="openai/gpt-oss-20b",
-                provider="groq",
-                tier="professional",
-                description="Groq-hosted GPT-OSS 20B for fast general workloads.",
-                capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis"}),
-                reasoning_levels=frozenset({"low", "medium", "high", "max"}),
-                context_window=131_072,
-                supports_tools=True,
-                cost_score=2,
-                latency_score=1,
-            )
-        )
 
     def register(self, spec: ModelSpec) -> None:
         if spec.key in self._models:
