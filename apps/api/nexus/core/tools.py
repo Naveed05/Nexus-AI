@@ -5,6 +5,7 @@ from uuid import UUID
 from nexus.core.data_engine import DataIntelligenceEngine
 from nexus.core.data_pipeline import DataPipeline
 from nexus.core.dataset_workspace import DatasetNotFoundError, DatasetWorkspace
+from nexus.core.data_science import DataScienceService
 from nexus.core.knowledge import search_knowledge
 from nexus.core.ml_tools import baseline_ml
 from nexus.core.research import research_knowledge
@@ -196,12 +197,41 @@ def analyze_dataset_by_id(dataset_id: str, target: str | None = None) -> dict[st
     return DataPipeline().analyze(frame, target=target)
 
 
+
+def data_science_report_by_id(dataset_id: str, target: str | None = None) -> dict[str, Any]:
+    try:
+        parsed = UUID(dataset_id)
+        return DataScienceService(_require_workspace()).inspect(parsed, target=target).as_dict()
+    except (ValueError, DatasetNotFoundError) as exc:
+        raise ValueError(f"Invalid or unknown dataset_id: {dataset_id}") from exc
+
+
+def baseline_ml_by_id(dataset_id: str, target: str) -> dict[str, Any]:
+    try:
+        parsed = UUID(dataset_id)
+        return DataScienceService(_require_workspace()).baseline(parsed, target)
+    except (ValueError, DatasetNotFoundError) as exc:
+        raise ValueError(f"Invalid or unknown dataset_id: {dataset_id}") from exc
+
+
+def dataset_schema_by_id(dataset_id: str) -> dict[str, Any]:
+    try:
+        parsed = UUID(dataset_id)
+        return DataScienceService(_require_workspace()).schema(parsed)
+    except (ValueError, DatasetNotFoundError) as exc:
+        raise ValueError(f"Invalid or unknown dataset_id: {dataset_id}") from exc
+
+
 tool_registry = ToolRegistry()
 tool_registry.register(ToolSpec("calculator", "Perform basic arithmetic calculations.", {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"], "additionalProperties": False}, "low", calculator, timeout_seconds=5.0, capabilities=frozenset({"calculation", "deterministic"}), idempotent=True))
 tool_registry.register(ToolSpec("profile_dataset", "Profile a UTF-8 CSV dataset and identify data-quality issues.", {"type": "object", "properties": {"csv_text": {"type": "string"}}, "required": ["csv_text"], "additionalProperties": False}, "low", profile_dataset, timeout_seconds=15.0, cost_units=0.1, capabilities=frozenset({"data_profiling", "data_quality", "tabular_data"}), idempotent=True))
 tool_registry.register(ToolSpec("analyze_dataset", "Analyze CSV data with cleaning, EDA, correlations, problem formulation, and recommendations.", {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["csv_text", "target"], "additionalProperties": False}, "low", analyze_dataset, timeout_seconds=30.0, cost_units=0.5, capabilities=frozenset({"data_analysis", "eda", "tabular_data"}), idempotent=True))
 tool_registry.register(ToolSpec("profile_dataset_by_id", "Profile a registered NEXUS dataset by dataset_id.", {"type": "object", "properties": {"dataset_id": {"type": "string"}}, "required": ["dataset_id"], "additionalProperties": False}, "low", profile_dataset_by_id, timeout_seconds=15.0, cost_units=0.1, capabilities=frozenset({"data_profiling", "data_quality", "tabular_data", "workspace_data"}), idempotent=True))
 tool_registry.register(ToolSpec("analyze_dataset_by_id", "Analyze a registered NEXUS dataset by dataset_id.", {"type": "object", "properties": {"dataset_id": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["dataset_id", "target"], "additionalProperties": False}, "low", analyze_dataset_by_id, timeout_seconds=30.0, cost_units=0.5, capabilities=frozenset({"data_analysis", "eda", "tabular_data", "workspace_data"}), idempotent=True))
+tool_registry.register(ToolSpec("data_science_report_by_id", "Create a dataset-scoped data-science report with schema, quality, EDA, correlations, and recommendations.", {"type": "object", "properties": {"dataset_id": {"type": "string"}, "target": {"type": ["string", "null"]}}, "required": ["dataset_id", "target"], "additionalProperties": False}, "low", data_science_report_by_id, timeout_seconds=45.0, cost_units=0.8, capabilities=frozenset({"data_science", "data_profiling", "eda", "tabular_data", "workspace_data"}), idempotent=True))
+tool_registry.register(ToolSpec("dataset_schema_by_id", "Inspect the typed schema and null/unique characteristics of a registered dataset.", {"type": "object", "properties": {"dataset_id": {"type": "string"}}, "required": ["dataset_id"], "additionalProperties": False}, "low", dataset_schema_by_id, timeout_seconds=20.0, cost_units=0.2, capabilities=frozenset({"data_schema", "tabular_data", "workspace_data"}), idempotent=True))
+tool_registry.register(ToolSpec("baseline_ml_by_id", "Train a conservative baseline model on a registered dataset for an explicit target.", {"type": "object", "properties": {"dataset_id": {"type": "string"}, "target": {"type": "string"}}, "required": ["dataset_id", "target"], "additionalProperties": False}, "medium", baseline_ml_by_id, timeout_seconds=60.0, cost_units=2.0, capabilities=frozenset({"machine_learning", "classification", "regression", "tabular_data", "workspace_data"}), idempotent=False))
+
 tool_registry.register(ToolSpec("baseline_ml", "Train and evaluate a conservative baseline ML model for an explicit target column.", {"type": "object", "properties": {"csv_text": {"type": "string"}, "target": {"type": "string"}}, "required": ["csv_text", "target"], "additionalProperties": False}, "medium", baseline_ml, permission="read", timeout_seconds=60.0, cost_units=2.0, capabilities=frozenset({"machine_learning", "classification", "regression", "tabular_data"}), idempotent=False))
 tool_registry.register(ToolSpec("search_knowledge", "Search workspace documents using hybrid retrieval and return grounded evidence with citations.", {"type": "object", "properties": {"query": {"type": "string"}, "top_k": {"type": "integer", "minimum": 1, "maximum": 20}, "document_id": {"type": ["string", "null"]}}, "required": ["query", "top_k", "document_id"], "additionalProperties": False}, "low", search_knowledge, timeout_seconds=15.0, cost_units=0.2, capabilities=frozenset({"knowledge_retrieval", "search", "evidence"}), idempotent=True))
 tool_registry.register(ToolSpec("research_knowledge", "Run bounded evidence-first research across workspace knowledge and return deduplicated cited sources.", {"type": "object", "properties": {"question": {"type": "string"}, "max_queries": {"type": "integer", "minimum": 1, "maximum": 8}, "results_per_query": {"type": "integer", "minimum": 1, "maximum": 20}}, "required": ["question", "max_queries", "results_per_query"], "additionalProperties": False}, "low", research_knowledge, timeout_seconds=45.0, cost_units=0.8, capabilities=frozenset({"research", "knowledge_retrieval", "evidence", "synthesis"}), idempotent=True))
