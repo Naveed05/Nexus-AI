@@ -236,6 +236,41 @@ class ModelRegistry:
 
 model_registry = ModelRegistry()
 
+GROQ_MODEL_SPECS: tuple[ModelSpec, ...] = (
+    ModelSpec(
+        key="groq-gpt-oss-120b",
+        model_id="openai/gpt-oss-120b",
+        provider="groq",
+        tier="flagship",
+        description="Groq-hosted GPT-OSS 120B.",
+        capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis"}),
+        reasoning_levels=frozenset({"low", "medium", "high", "max"}),
+        context_window=131_072,
+        supports_tools=True,
+        cost_score=4,
+        latency_score=2,
+    ),
+    ModelSpec(
+        key="groq-gpt-oss-20b",
+        model_id="openai/gpt-oss-20b",
+        provider="groq",
+        tier="professional",
+        description="Groq-hosted GPT-OSS 20B.",
+        capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis"}),
+        reasoning_levels=frozenset({"low", "medium", "high", "max"}),
+        context_window=131_072,
+        supports_tools=True,
+        cost_score=2,
+        latency_score=1,
+    ),
+)
+
+def provider_model_specs(provider: str) -> tuple[ModelSpec, ...]:
+    normalized = provider.strip().lower()
+    if normalized == "groq":
+        return GROQ_MODEL_SPECS
+    return tuple(model for model in model_registry.all() if model.provider == normalized)
+
 
 class ProviderCredentialError(ValueError):
     """Raised when a BYOK credential is missing or invalid."""
@@ -310,6 +345,7 @@ class BYOKProviderManager:
 
     def __init__(self, credential_store: InMemoryCredentialStore | None = None) -> None:
         self._store = credential_store or InMemoryCredentialStore()
+        self._preferred_provider: dict[str, str] = {}
 
     @property
     def credential_store(self) -> InMemoryCredentialStore:
@@ -320,13 +356,25 @@ class BYOKProviderManager:
         if normalized not in SUPPORTED_PROVIDERS:
             raise ProviderCredentialError(f"Unsupported provider: {provider}")
         self._store.set(user_id, normalized, api_key)
+        self._preferred_provider[user_id.strip()] = normalized
         return self._store.get(user_id, normalized).masked()
 
     def remove(self, user_id: str, provider: str) -> None:
-        self._store.delete(user_id, provider)
+        normalized = provider.strip().lower()
+        self._store.delete(user_id, normalized)
+        if self._preferred_provider.get(user_id.strip()) == normalized:
+            remaining = self.configured(user_id)
+            if remaining:
+                self._preferred_provider[user_id.strip()] = remaining[0]
+            else:
+                self._preferred_provider.pop(user_id.strip(), None)
 
     def configured(self, user_id: str) -> tuple[str, ...]:
         return self._store.configured_providers(user_id)
+
+    def preferred(self, user_id: str) -> str | None:
+        """Return the most recently configured provider for this local user."""
+        return self._preferred_provider.get(user_id.strip())
 
     def credential(self, user_id: str, provider: str) -> ProviderCredential:
         normalized = provider.strip().lower()

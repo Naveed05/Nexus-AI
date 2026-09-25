@@ -8,11 +8,13 @@ function setTheme(){document.documentElement.classList.toggle("light",state.them
 async function loadApiSettings(){
   try{
     const data=await api.get("/api/v1/byok/credentials");
-    const openai=data.providers?.find(x=>x.provider==="openai");
-    state.providerConfigured=Boolean(openai?.configured||openai?.server_configured);
+    const configured=data.providers?.filter(x=>x.configured||x.server_configured)||[];
+    const selectedProvider=$("provider-select")?.value||"openai";
+    const active=configured.find(x=>x.provider===selectedProvider)||configured[0];
+    state.providerConfigured=Boolean(active);
     const title=$("provider-status-title"),detail=$("provider-status-detail"),dot=$("provider-dot"),banner=$("setup-banner");
     if(state.providerConfigured){
-      if(title)title.textContent="OpenAI is connected";
+      if(title)title.textContent=(active.provider||"AI").toUpperCase()+" is connected";
       if(detail)detail.textContent="Your local provider key is configured. NEXUS can run jobs.";
       if(dot)dot.classList.add("connected");
       if(banner)banner.hidden=true;
