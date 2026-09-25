@@ -338,7 +338,7 @@ class ProviderCredential:
         return f"{value[:4]}••••••••{value[-4:]}"
 
 
-class PersistentCredentialStore(InMemoryCredentialStore if False else object):
+class PersistentCredentialStore:
     """Small durable credential store for the local single-instance deployment.
 
     Values are encrypted with a Fernet key stored outside the database. The key
