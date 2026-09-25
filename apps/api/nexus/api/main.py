@@ -17,7 +17,7 @@ from nexus.core.files import FileNotFoundError as NexusFileNotFoundError
 from nexus.core.files import FileRegistry, LocalFileStore
 from nexus.core.knowledge import KnowledgeEngine, configure_knowledge_engine
 from nexus.core.memory import MemoryKind, memory_store
-from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, byok_provider_manager, model_health_registry, model_registry
+from nexus.core.models import BYOKProviderError, ProviderCredentialError, ProviderNotConfiguredError, ModelSpec, SUPPORTED_PROVIDERS, EncryptedFileCredentialStore, byok_provider_manager, model_health_registry, model_registry
 from nexus.core.research import ResearchEngine
 from nexus.core.runtime import AgentRuntime, RunBudget
 from nexus.core.production_runtime import ProductionRuntime
@@ -60,6 +60,9 @@ from nexus.core.data_science_intelligence import DataScienceIntelligence
 from nexus.core.platform2 import ResourceGraphStore, ResourceLink, ExecutionTrace, IdentityStore, infrastructure_plan, AdaptivePlanner, SpecialistRegistry, Specialist, ConnectorRegistry, Connector, AnalyticsEngine, CostLedger, SecurityPolicyEngine, MultimodalRegistry, DeveloperWorkflow, PlatformReleaseChecker
 
 app = FastAPI(title=settings.app_name, version=settings.service_version)
+# Keep local BYOK credentials across container restarts. Production should inject
+# NEXUS_BYOK_ENCRYPTION_KEY from an external secret manager.
+byok_provider_manager.set_store(EncryptedFileCredentialStore(settings.byok_storage_path, settings.byok_encryption_key))
 artifact_store = LocalArtifactStore(settings.artifact_storage_path)
 artifact_registry = ArtifactRegistry(settings.artifact_registry_path)
 app.middleware("http")(observe_http_request)
@@ -1381,15 +1384,18 @@ def _byok_user(user_id: str | None) -> str:
 @app.get("/api/v1/byok/credentials")
 def list_byok_credentials(x_nexus_user_id: str | None = Header(default=None)) -> dict:
     user_id = _byok_user(x_nexus_user_id)
+    configured = byok_provider_manager.configured(user_id)
+    preferred = byok_provider_manager.preferred(user_id)
     return {
+        "preferred_provider": preferred,
         "providers": [
             {
                 "provider": provider,
-                "configured": provider in byok_provider_manager.configured(user_id),
+                "configured": provider in configured,
                 "server_configured": provider == "openai" and bool(settings.openai_api_key),
             }
             for provider in sorted(SUPPORTED_PROVIDERS)
-        ]
+        ],
     }
 
 
