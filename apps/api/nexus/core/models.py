@@ -187,51 +187,6 @@ class ModelRegistry:
         )
         self.register(
             ModelSpec(
-                key="groq-gpt-oss-120b",
-                model_id="openai/gpt-oss-120b",
-                provider="groq",
-                tier="flagship",
-                description="Groq-hosted GPT-OSS 120B for high-capability agentic work.",
-                capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis"}),
-                reasoning_levels=frozenset({"low", "medium", "high", "max"}),
-                context_window=131_072,
-                supports_tools=True,
-                cost_score=4,
-                latency_score=2,
-            )
-        )
-        self.register(
-            ModelSpec(
-                key="groq-gpt-oss-20b",
-                model_id="openai/gpt-oss-20b",
-                provider="groq",
-                tier="professional",
-                description="Groq-hosted GPT-OSS 20B for fast general and tool-enabled work.",
-                capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis"}),
-                reasoning_levels=frozenset({"low", "medium", "high", "max"}),
-                context_window=131_072,
-                supports_tools=True,
-                cost_score=2,
-                latency_score=1,
-            )
-        )
-        self.register(
-            ModelSpec(
-                key="groq-qwen3-8-27b",
-                model_id="qwen/qwen3.8-27b",
-                provider="groq",
-                tier="professional",
-                description="Groq-hosted Qwen 3.8 27B multimodal model.",
-                capabilities=frozenset({"reasoning", "coding", "research", "agentic", "multimodal", "tools", "data_analysis", "document_analysis"}),
-                reasoning_levels=frozenset({"low", "medium", "high"}),
-                context_window=131_072,
-                supports_tools=True,
-                cost_score=3,
-                latency_score=2,
-            )
-        )
-        self.register(
-            ModelSpec(
                 key="luna",
                 model_id="gpt-5.6-luna",
                 provider="openai",
