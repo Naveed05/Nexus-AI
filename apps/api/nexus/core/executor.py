@@ -278,21 +278,36 @@ class ModelExecutor:
                         grounded_evidence=tuple(grounded_evidence),
                     )
                 if use_byok and model.provider != "openai":
-                    raise ModelProviderExecutionError(
-                        f"{model.provider} tool-call continuation requires a provider-native message adapter"
+                    input_items.append(
+                        {
+                            "role": "assistant",
+                            "content": response.output or None,
+                            "tool_calls": [
+                                {
+                                    "id": call["call_id"],
+                                    "type": "function",
+                                    "function": {
+                                        "name": call["name"],
+                                        "arguments": call["arguments"],
+                                    },
+                                }
+                                for call in function_calls
+                            ],
+                        }
                     )
                 if tool_rounds >= self._max_tool_rounds:
                     raise RuntimeError("NEXUS tool execution limit exceeded")
                 tool_rounds += 1
                 for call in function_calls:
-                    input_items.append(
-                        {
-                            "type": "function_call",
-                            "name": call["name"],
-                            "arguments": call["arguments"],
-                            "call_id": call["call_id"],
-                        }
-                    )
+                    if not (use_byok and model.provider != "openai"):
+                        input_items.append(
+                            {
+                                "type": "function_call",
+                                "name": call["name"],
+                                "arguments": call["arguments"],
+                                "call_id": call["call_id"],
+                            }
+                        )
                     arguments = json.loads(call["arguments"])
                     tool = self._registry.get(call["name"])
                     self._policy.authorize(task, tool)
@@ -321,13 +336,22 @@ class ModelExecutor:
                     )
                     if success:
                         self._capture_grounded_evidence(call["name"], result, grounded_evidence)
-                    input_items.append(
-                        {
-                            "type": "function_call_output",
-                            "call_id": call["call_id"],
-                            "output": json.dumps(result),
-                        }
-                    )
+                    if use_byok and model.provider != "openai":
+                        input_items.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": call["call_id"],
+                                "content": json.dumps(result),
+                            }
+                        )
+                    else:
+                        input_items.append(
+                            {
+                                "type": "function_call_output",
+                                "call_id": call["call_id"],
+                                "output": json.dumps(result),
+                            }
+                        )
         finally:
             reset_knowledge_workspace(workspace_token)
 
