@@ -373,6 +373,11 @@ class BYOKProviderManager:
     def configured(self, user_id: str) -> tuple[str, ...]:
         return self._store.configured_providers(user_id)
 
+    def preferred(self, user_id: str) -> str | None:
+        """Return the most recently configured provider for this local user."""
+        providers = self.configured(user_id)
+        return providers[-1] if providers else None
+
     def credential(self, user_id: str, provider: str) -> ProviderCredential:
         normalized = provider.strip().lower()
         if normalized not in SUPPORTED_PROVIDERS:
