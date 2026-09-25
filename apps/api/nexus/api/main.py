@@ -1810,6 +1810,7 @@ async def upload_dataset(file: UploadFile = File(...)) -> dict:
     if suffix not in {"csv", "parquet", "json"}: raise HTTPException(status_code=415, detail="Supported dataset formats: csv, parquet, json")
     try: dataset = dataset_workspace.register(await file.read(), filename=filename, file_format=suffix, metadata={"content_type": file.content_type or "application/octet-stream"})
     except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+    resource_graph.upsert(ResourceLink(str(dataset.dataset_id), "global", "dataset", metadata={"artifact_id": str(dataset.artifact_id) if dataset.artifact_id else None}))
     return {"dataset_id": str(dataset.dataset_id), "filename": dataset.filename, "file_format": dataset.file_format, "size_bytes": dataset.size_bytes, "artifact_id": str(dataset.artifact_id) if dataset.artifact_id else None, "metadata": dataset.metadata}
 
 @app.post("/api/v1/workspaces", status_code=201)
@@ -1852,7 +1853,7 @@ async def upload_workspace_file(
             workspace_id=workspace_id,
             mime_type=file.content_type,
         )
-        file_registry.register(file_ref)
+        file_registry.register(file_ref)\n        resource_graph.upsert(ResourceLink(str(file_ref.file_id), str(workspace_id), "file", owner_id=user_id, metadata={"filename": filename}))
         workspace_registry.context(workspace_id).add_file(file_ref.file_id)
         workspace_registry.save_context(workspace_id)
 
