@@ -2,6 +2,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 import json
 import time
+import os
 
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -56,6 +57,7 @@ from nexus.core.phase_59_61 import PhaseControlPlane
 from nexus.core.workspace_intelligence import WorkspaceIntelligence
 from nexus.core.rag_intelligence import RAGIntelligence
 from nexus.core.data_science_intelligence import DataScienceIntelligence
+from nexus.core.platform2 import ResourceGraphStore, ResourceLink, ExecutionTrace, IdentityStore, infrastructure_plan, AdaptivePlanner, SpecialistRegistry, Specialist, ConnectorRegistry, Connector, AnalyticsEngine, CostLedger, SecurityPolicyEngine, MultimodalRegistry, DeveloperWorkflow, PlatformReleaseChecker
 
 app = FastAPI(title=settings.app_name, version=settings.service_version)
 artifact_store = LocalArtifactStore(settings.artifact_storage_path)
@@ -106,6 +108,71 @@ async def security_headers(request, call_next):
         "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     )
     return response
+@app.get("/api/v1/platform/resource-graph/{workspace_id}")
+def platform_resource_graph(workspace_id: UUID, resource_type: str | None = None) -> dict:
+    _require_workspace(workspace_id)
+    links = resource_graph.list(str(workspace_id), resource_type)
+    return {"workspace_id": str(workspace_id), "summary": resource_graph.summary(str(workspace_id)), "resources": [vars(x) for x in links]}
+
+@app.post("/api/v1/platform/resource-graph")
+def platform_resource_link(payload: dict) -> dict:
+    for key in ("resource_id", "workspace_id", "resource_type"):
+        if not str(payload.get(key, "")).strip(): raise HTTPException(status_code=422, detail=key + " is required")
+    _require_workspace(UUID(payload["workspace_id"]))
+    link = ResourceLink(str(payload["resource_id"]), str(payload["workspace_id"]), str(payload["resource_type"]), payload.get("owner_id"), payload.get("parent_id"), metadata=payload.get("metadata", {}))
+    return vars(resource_graph.upsert(link))
+
+@app.get("/api/v1/platform/execution-trace")
+def platform_execution_trace(task_id: UUID | None = None, limit: int = 500) -> dict:
+    return execution_trace.timeline(task_id, max(1, min(limit, 5000)))
+
+@app.get("/api/v1/platform/identity/tenant/{tenant_id}")
+def platform_identity_tenant(tenant_id: str) -> list[dict]:
+    return [vars(p) for p in identity_store.list_tenant(tenant_id)]
+
+@app.post("/api/v1/platform/identity/principals")
+def platform_identity_create(payload: dict) -> dict:
+    if not payload.get("tenant_id") or not payload.get("name"): raise HTTPException(status_code=422, detail="tenant_id and name are required")
+    return vars(identity_store.create(str(payload["tenant_id"]), str(payload["name"]), tuple(payload.get("roles", ["member"]))))
+
+@app.get("/api/v1/platform/infrastructure")
+def platform_infrastructure() -> dict: return infrastructure_plan(settings).as_dict()
+
+@app.post("/api/v1/platform/agents/plan")
+def platform_agent_plan(payload: dict) -> dict: return vars(adaptive_planner.plan(str(payload.get("objective", "")), payload.get("capabilities", []), str(payload.get("risk_level", "low"))))
+
+@app.get("/api/v1/platform/specialists")
+def platform_specialists() -> list[dict]: return [vars(x) for x in specialist_registry.list()]
+
+@app.get("/api/v1/platform/connectors")
+def platform_connectors() -> list[dict]: return [vars(x) for x in connector_registry.list()]
+
+@app.get("/api/v1/platform/analytics")
+def platform_analytics() -> dict: return analytics_engine.execution()
+
+@app.get("/api/v1/platform/cost/{tenant_id}")
+def platform_cost(tenant_id: str) -> dict: return cost_ledger.usage(tenant_id)
+
+@app.post("/api/v1/platform/cost/{tenant_id}")
+def platform_cost_record(tenant_id: str, payload: dict) -> dict:
+    return {"entry_id": cost_ledger.record(tenant_id, float(payload.get("units", 0)), float(payload.get("cost", 0)), str(payload.get("category", "other")), payload.get("run_id"))}
+
+@app.post("/api/v1/platform/security/check")
+def platform_security_check(payload: dict) -> dict: return security_policy.check(str(payload.get("action", "unknown")), risk_level=str(payload.get("risk_level", "low")), roles=payload.get("roles", []))
+
+@app.post("/api/v1/platform/multimodal/assets")
+def platform_multimodal_asset(payload: dict) -> dict:
+    import base64
+    try: data = base64.b64decode(str(payload.get("data", "")), validate=True)
+    except Exception as exc: raise HTTPException(status_code=422, detail="data must be base64") from exc
+    return vars(multimodal_registry.register(data, str(payload.get("modality", "unknown")), payload.get("workspace_id"), payload.get("mime_type")))
+
+@app.post("/api/v1/platform/developer/plan")
+def platform_developer_plan(payload: dict) -> dict: return developer_workflow.inspect(str(payload.get("objective", "")), payload.get("files", []))
+
+@app.get("/api/v1/platform/release/readiness")
+def platform_release_readiness() -> dict: return platform_release_checker.check(settings)
+
 @app.get("/api/v1/workspaces/{workspace_id}/intelligence/summary")
 def workspace_intelligence_summary(workspace_id: UUID) -> dict:
     _require_workspace(workspace_id)
@@ -377,6 +444,23 @@ governance_guard = GovernanceGuard(governance_store, settings.governance_enforce
 collaboration_runtime = CollaborationRuntime(agent_orchestrator, job_manager, collaboration_audit)
 distributed_bridge = DistributedExecutionBridge(job_store, worker_coordinator)
 phase_control_plane = PhaseControlPlane(collaboration_runtime, distributed_bridge, governance_store, collaboration_audit)
+platform_db = settings.job_storage_path.replace("jobs.sqlite3", "platform.sqlite3")
+resource_graph = ResourceGraphStore(platform_db)
+execution_trace = ExecutionTrace(event_store)
+identity_store = IdentityStore(platform_db)
+adaptive_planner = AdaptivePlanner()
+specialist_registry = SpecialistRegistry()
+for item in (Specialist("general","General Agent",("general",)), Specialist("researcher","Research Agent",("research","citations")), Specialist("data-scientist","Data Scientist",("data","csv","ml")), Specialist("developer","Developer Agent",("code","github")), Specialist("document-analyst","Document Analyst",("document","pdf"))):
+    specialist_registry.register(item)
+connector_registry = ConnectorRegistry()
+for item in (Connector("github","GitHub",("read_repo","write_pr"),"oauth"), Connector("google-drive","Google Drive",("read_file","write_file"),"oauth"), Connector("slack","Slack",("read_messages","send_message"),"oauth")):
+    connector_registry.register(item)
+analytics_engine = AnalyticsEngine(event_store)
+cost_ledger = CostLedger(platform_db)
+security_policy = SecurityPolicyEngine()
+multimodal_registry = MultimodalRegistry()
+developer_workflow = DeveloperWorkflow()
+platform_release_checker = PlatformReleaseChecker()
 backup_stores = {
     "runs": settings.run_storage_path,
     "jobs": settings.job_storage_path,
