@@ -1,6 +1,10 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import json
+import os
+import sqlite3
+from pathlib import Path
+from threading import RLock
 from typing import Any, Callable, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -304,6 +308,117 @@ class ProviderCredential:
         return f"{value[:4]}••••••••{value[-4:]}"
 
 
+class PersistentCredentialStore(InMemoryCredentialStore if False else object):
+    """Small durable credential store for the local single-instance deployment.
+
+    Values are encrypted with a Fernet key stored outside the database. The key
+    can be supplied with NEXUS_CREDENTIAL_ENCRYPTION_KEY; otherwise a local key
+    file is generated under .nexus. This is intended for the local runtime, not
+    as a substitute for a managed production secret store.
+    """
+
+    def __init__(self, storage_path: str | Path = ".nexus/credentials.sqlite3") -> None:
+        from cryptography.fernet import Fernet
+        self._fernet = None
+        self._path = Path(storage_path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        raw_key = os.getenv("NEXUS_CREDENTIAL_ENCRYPTION_KEY", "").strip()
+        key_path = Path(os.getenv("NEXUS_CREDENTIAL_KEY_PATH", ".nexus/credentials.key"))
+        if raw_key:
+            key = raw_key.encode("utf-8")
+        else:
+            key_path.parent.mkdir(parents=True, exist_ok=True)
+            if key_path.exists():
+                key = key_path.read_bytes().strip()
+            else:
+                key = Fernet.generate_key()
+                key_path.write_bytes(key)
+                try:
+                    os.chmod(key_path, 0o600)
+                except OSError:
+                    pass
+        self._fernet = Fernet(key)
+        self._lock = RLock()
+        self._connection = sqlite3.connect(self._path, check_same_thread=False)
+        self._connection.execute(
+            """CREATE TABLE IF NOT EXISTS credentials (
+                user_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                secret BLOB NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, provider)
+            )"""
+        )
+        self._connection.execute(
+            """CREATE TABLE IF NOT EXISTS preferences (
+                user_id TEXT PRIMARY KEY,
+                provider TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"""
+        )
+        self._connection.commit()
+
+    def set(self, user_id: str, provider: str, api_key: str) -> None:
+        if not user_id.strip():
+            raise ProviderCredentialError("user_id cannot be empty")
+        credential = ProviderCredential(provider=provider.strip().lower(), key=api_key.strip())
+        encrypted = self._fernet.encrypt(credential.key.encode("utf-8"))
+        with self._lock:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO credentials(user_id,provider,secret,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP)",
+                (user_id.strip(), credential.provider, encrypted),
+            )
+            self._connection.execute(
+                "INSERT OR REPLACE INTO preferences(user_id,provider,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)",
+                (user_id.strip(), credential.provider),
+            )
+            self._connection.commit()
+
+    def get(self, user_id: str, provider: str) -> ProviderCredential:
+        normalized = provider.strip().lower()
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT secret FROM credentials WHERE user_id=? AND provider=?",
+                (user_id.strip(), normalized),
+            ).fetchone()
+        if not row:
+            raise ProviderNotConfiguredError(f"No API key configured for provider: {normalized}")
+        try:
+            secret = self._fernet.decrypt(bytes(row[0])).decode("utf-8")
+        except Exception as exc:
+            raise ProviderCredentialError("stored provider credential could not be decrypted") from exc
+        return ProviderCredential(provider=normalized, key=secret)
+
+    def delete(self, user_id: str, provider: str) -> None:
+        normalized = provider.strip().lower()
+        with self._lock:
+            self._connection.execute(
+                "DELETE FROM credentials WHERE user_id=? AND provider=?",
+                (user_id.strip(), normalized),
+            )
+            self._connection.execute(
+                "DELETE FROM preferences WHERE user_id=? AND provider=?",
+                (user_id.strip(), normalized),
+            )
+            self._connection.commit()
+
+    def configured_providers(self, user_id: str) -> tuple[str, ...]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT provider FROM credentials WHERE user_id=? ORDER BY provider",
+                (user_id.strip(),),
+            ).fetchall()
+        return tuple(row[0] for row in rows)
+
+    def preferred(self, user_id: str) -> str | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT provider FROM preferences WHERE user_id=?",
+                (user_id.strip(),),
+            ).fetchone()
+        return row[0] if row else None
+
+
 class InMemoryCredentialStore:
     """Process-local BYOK store for development and tests.
 
@@ -344,7 +459,7 @@ class BYOKProviderManager:
     """Resolve user-owned API credentials without coupling agents to a vendor."""
 
     def __init__(self, credential_store: InMemoryCredentialStore | None = None) -> None:
-        self._store = credential_store or InMemoryCredentialStore()
+        self._store = credential_store or PersistentCredentialStore()
         self._preferred_provider: dict[str, str] = {}
 
     @property
@@ -374,7 +489,8 @@ class BYOKProviderManager:
 
     def preferred(self, user_id: str) -> str | None:
         """Return the most recently configured provider for this local user."""
-        return self._preferred_provider.get(user_id.strip())
+        stored = getattr(self._store, "preferred", lambda _user: None)(user_id)
+        return stored or self._preferred_provider.get(user_id.strip())
 
     def credential(self, user_id: str, provider: str) -> ProviderCredential:
         normalized = provider.strip().lower()
