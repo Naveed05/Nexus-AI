@@ -58,9 +58,11 @@ class TaskRouter:
             maximum_cost_score=1 if task.budget is not None and task.budget <= 1 else None,
         )
 
-    def _eligible_models(self, task: Task, *, hard: bool, professional: bool) -> tuple[ModelSpec, ...]:
+    def _eligible_models(self, task: Task, *, hard: bool, professional: bool, provider: str | None = None) -> tuple[ModelSpec, ...]:
         requirements = self._requirements(task, hard=hard)
         models = model_registry.find(requirements)
+        if provider:
+            models = tuple(model for model in models if model.provider == provider.strip().lower())
         if professional and not (task.budget is not None and task.budget <= 1):
             models = tuple(
                 model for model in models if self._tier_rank[model.tier] >= self._tier_rank["professional"]
@@ -88,7 +90,7 @@ class TaskRouter:
         )
         return ModelSelectionScore(model, round(total, 4), round(capability_fit, 4), round(reasoning_fit, 4), round(context_fit, 4), round(cost_fit, 4), round(latency_fit, 4))
 
-    def decide(self, task: Task) -> RoutingDecision:
+    def decide(self, task: Task, provider: str | None = None) -> RoutingDecision:
         objective = task.objective.lower()
         hard = any(signal in objective for signal in self._hard_signals)
         professional = bool(task.capabilities and self._professional_capabilities.intersection(task.capabilities))
@@ -96,29 +98,34 @@ class TaskRouter:
 
         if task.risk_level == RiskLevel.HIGH:
             reasons.append("high-risk task requires the strongest available reasoning model")
-            eligible = self._eligible_models(task, hard=True, professional=False)
+            eligible = self._eligible_models(task, hard=True, professional=False, provider=provider)
             selected = model_registry.get("astra")
             score = 100.0
         elif hard:
             reasons.append("objective contains a high-complexity signal")
-            eligible = self._eligible_models(task, hard=True, professional=False)
+            eligible = self._eligible_models(task, hard=True, professional=False, provider=provider)
             selected = model_registry.get("astra")
             score = 95.0
         elif professional and not (task.budget is not None and task.budget <= 1):
             reasons.append("task requests professional-domain capabilities")
-            eligible = self._eligible_models(task, hard=False, professional=True)
+            eligible = self._eligible_models(task, hard=False, professional=True, provider=provider)
             selected = model_registry.get("sol") if any(model.key == "sol" for model in eligible) else eligible[0]
             score = 80.0
         elif task.budget is not None and task.budget <= 1:
             reasons.append("task budget is constrained")
-            eligible = self._eligible_models(task, hard=False, professional=False)
+            eligible = self._eligible_models(task, hard=False, professional=False, provider=provider)
             selected = model_registry.get("luna")
             score = 60.0
         else:
             reasons.append("general task uses the balanced default model")
-            eligible = self._eligible_models(task, hard=False, professional=False)
+            eligible = self._eligible_models(task, hard=False, professional=False, provider=provider)
             selected = model_registry.get("terra")
             score = 50.0
+
+        if provider and (selected.provider != provider.strip().lower() or selected not in eligible):
+            if not eligible:
+                raise ValueError(f"no {provider} model satisfies the task requirements")
+            selected = eligible[0]
 
         if selected not in eligible:
             eligible = tuple(dict.fromkeys((*eligible, selected)))
@@ -126,9 +133,9 @@ class TaskRouter:
         reasons.append(f"selected {selected.key} using capability, reasoning, context, cost, and latency factors")
         return RoutingDecision(selected, score, tuple(reasons), candidates)
 
-    def route(self, task: Task) -> ModelSpec:
+    def route(self, task: Task, provider: str | None = None) -> ModelSpec:
         """Backward-compatible shorthand returning only the selected model."""
-        return self.decide(task).model
+        return self.decide(task, provider=provider).model
 
 
 router = TaskRouter()
