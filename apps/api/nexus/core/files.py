@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field\nimport json\nimport sqlite3\nimport os
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path\nfrom threading import RLock
 from typing import BinaryIO
 from uuid import UUID, uuid4
 
@@ -104,29 +104,71 @@ class LocalFileStore:
 class FileRegistry:
     """In-memory metadata registry for workspace file references."""
 
-    def __init__(self) -> None:
+    def __init__(self, storage_path: str | Path | None = None) -> None:
+        self._storage_path = Path(storage_path) if storage_path else None
         self._files: dict[UUID, FileRef] = {}
+        self._lock = RLock()
+        self._connection: sqlite3.Connection | None = None
+        if self._storage_path:
+            self._storage_path.parent.mkdir(parents=True, exist_ok=True)
+            self._connection = sqlite3.connect(self._storage_path, check_same_thread=False)
+            self._connection.execute("""CREATE TABLE IF NOT EXISTS files (
+                file_id TEXT PRIMARY KEY,
+                workspace_id TEXT,
+                filename TEXT NOT NULL,
+                storage_key TEXT NOT NULL,
+                mime_type TEXT,
+                size_bytes INTEGER NOT NULL,
+                metadata TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )""")
+            self._connection.commit()
+            self._load()
+
+    def _load(self) -> None:
+        assert self._connection is not None
+        for row in self._connection.execute("SELECT * FROM files ORDER BY created_at"):
+            self._files[UUID(row[0])] = FileRef(
+                file_id=UUID(row[0]), workspace_id=UUID(row[1]) if row[1] else None,
+                filename=row[2], storage_key=row[3], mime_type=row[4], size_bytes=row[5],
+                metadata=json.loads(row[6] or "{}"), created_at=datetime.fromisoformat(row[7]),
+            )
 
     def register(self, file: FileRef) -> FileRef:
-        self._files[file.file_id] = file
-        return file
+        with self._lock:
+            self._files[file.file_id] = file
+            if self._connection is not None:
+                self._connection.execute(
+                    "INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?)",
+                    (str(file.file_id), str(file.workspace_id) if file.workspace_id else None,
+                     file.filename, file.storage_key, file.mime_type, file.size_bytes,
+                     json.dumps(file.metadata), file.created_at.isoformat()),
+                )
+                self._connection.commit()
+            return file
 
     def get(self, file_id: UUID, *, workspace_id: UUID | None = None) -> FileRef:
-        try:
+        with self._lock:
+            try:
             file = self._files[file_id]
-        except KeyError as exc:
-            raise FileNotFoundError(f"Unknown file: {file_id}") from exc
-        if workspace_id is not None and file.workspace_id != workspace_id:
+            except KeyError as exc:
+                raise FileNotFoundError(f"Unknown file: {file_id}") from exc
+            if workspace_id is not None and file.workspace_id != workspace_id:
             raise FileNotFoundError(f"File {file_id} is not in workspace {workspace_id}")
         return file
 
     def list(self, *, workspace_id: UUID | None = None) -> tuple[FileRef, ...]:
-        files = self._files.values()
-        if workspace_id is not None:
-            files = (file for file in files if file.workspace_id == workspace_id)
-        return tuple(files)
+        with self._lock:
+            files = tuple(self._files.values())
+            if workspace_id is None:
+                return files
+            return tuple(file for file in files if file.workspace_id == workspace_id)
 
     def remove(self, file_id: UUID, *, workspace_id: UUID | None = None) -> FileRef:
-        file = self.get(file_id, workspace_id=workspace_id)
-        del self._files[file_id]
-        return file
+        with self._lock:
+            file = self.get(file_id, workspace_id=workspace_id)
+            del self._files[file_id]
+            if self._connection is not None:
+                self._connection.execute("DELETE FROM files WHERE file_id=?", (str(file_id),))
+                self._connection.commit()
+            return file
