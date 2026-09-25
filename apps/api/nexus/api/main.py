@@ -74,6 +74,19 @@ async def beta_guard(request: Request, call_next):
         if settings.environment.lower() == "production" and settings.beta_access_key:
             if request.headers.get("X-Nexus-Beta-Key") != settings.beta_access_key:
                 return Response("beta access key required", status_code=401)
+        if settings.governance_enforced and request.url.path.startswith("/api/v1/"):
+            public = {"/api/v1/ready", "/api/v1/health"}
+            if request.url.path not in public and not request.url.path.startswith("/api/v1/production/release"):
+                guard = globals().get("governance_guard")
+                if guard is not None:
+                    permission = "read" if request.method in {"GET", "HEAD", "OPTIONS"} else "execute"
+                    if request.url.path.startswith("/api/v1/governance/"):
+                        permission = "read" if request.method in {"GET", "HEAD", "OPTIONS"} else "govern"
+                    try:
+                        decision = guard.require(request, permission)
+                        request.state.nexus_principal = decision.principal
+                    except HTTPException as exc:
+                        return Response(str(exc.detail), status_code=exc.status_code)
     return await call_next(request)
 
 @app.middleware("http")
