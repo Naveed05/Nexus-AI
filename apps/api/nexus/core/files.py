@@ -150,12 +150,12 @@ class FileRegistry:
     def get(self, file_id: UUID, *, workspace_id: UUID | None = None) -> FileRef:
         with self._lock:
             try:
-            file = self._files[file_id]
+                file = self._files[file_id]
             except KeyError as exc:
                 raise FileNotFoundError(f"Unknown file: {file_id}") from exc
             if workspace_id is not None and file.workspace_id != workspace_id:
-            raise FileNotFoundError(f"File {file_id} is not in workspace {workspace_id}")
-        return file
+                raise FileNotFoundError(f"File {file_id} is not in workspace {workspace_id}")
+            return file
 
     def list(self, *, workspace_id: UUID | None = None) -> tuple[FileRef, ...]:
         with self._lock:
