@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     app_name: str = "NEXUS AI"
     environment: str = "development"
     openai_api_key: str | None = None
+    byok_storage_path: str = ".nexus/byok_credentials.json"
+    byok_encryption_key: str | None = None
     embedding_provider: str = "auto"
     embedding_model: str = "text-embedding-3-small"
     dataset_storage_path: str = ".nexus/data"
