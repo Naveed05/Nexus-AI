@@ -236,6 +236,41 @@ class ModelRegistry:
 
 model_registry = ModelRegistry()
 
+GROQ_MODEL_SPECS: tuple[ModelSpec, ...] = (
+    ModelSpec(
+        key="groq-gpt-oss-120b",
+        model_id="openai/gpt-oss-120b",
+        provider="groq",
+        tier="flagship",
+        description="Groq-hosted GPT-OSS 120B.",
+        capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis"}),
+        reasoning_levels=frozenset({"low", "medium", "high", "max"}),
+        context_window=131_072,
+        supports_tools=True,
+        cost_score=4,
+        latency_score=2,
+    ),
+    ModelSpec(
+        key="groq-gpt-oss-20b",
+        model_id="openai/gpt-oss-20b",
+        provider="groq",
+        tier="professional",
+        description="Groq-hosted GPT-OSS 20B.",
+        capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis"}),
+        reasoning_levels=frozenset({"low", "medium", "high", "max"}),
+        context_window=131_072,
+        supports_tools=True,
+        cost_score=2,
+        latency_score=1,
+    ),
+)
+
+def provider_model_specs(provider: str) -> tuple[ModelSpec, ...]:
+    normalized = provider.strip().lower()
+    if normalized == "groq":
+        return GROQ_MODEL_SPECS
+    return tuple(model for model in model_registry.all() if model.provider == normalized)
+
 
 class ProviderCredentialError(ValueError):
     """Raised when a BYOK credential is missing or invalid."""
