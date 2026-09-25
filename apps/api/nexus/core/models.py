@@ -1,9 +1,13 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import json
+import os
+from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from cryptography.fernet import Fernet, InvalidToken
 
 
 
@@ -340,6 +344,71 @@ class InMemoryCredentialStore:
 SUPPORTED_PROVIDERS = frozenset({"openai", "anthropic", "groq"})
 
 
+class EncryptedFileCredentialStore(InMemoryCredentialStore):
+    """Small durable encrypted credential store for the local NEXUS runtime.
+
+    The credential file contains only Fernet-encrypted API keys. The encryption
+    key is supplied by configuration or generated once into the NEXUS data
+    directory, so Docker restarts do not silently erase the user's provider setup.
+    Production deployments should inject the encryption key from an external
+    secret manager instead of relying on the local generated key file.
+    """
+
+    def __init__(self, storage_path: str, encryption_key: str | None = None) -> None:
+        super().__init__()
+        self._path = Path(storage_path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._fernet = Fernet(self._resolve_key(encryption_key))
+        self._load()
+
+    def _resolve_key(self, configured: str | None) -> bytes:
+        if configured and configured.strip():
+            return configured.strip().encode("utf-8")
+        key_path = self._path.with_name(self._path.name + ".key")
+        if key_path.exists():
+            return key_path.read_bytes().strip()
+        key = Fernet.generate_key()
+        key_path.write_bytes(key)
+        try:
+            os.chmod(key_path, 0o600)
+        except OSError:
+            pass
+        return key
+
+    def _load(self) -> None:
+        if not self._path.exists():
+            return
+        try:
+            payload = json.loads(self._path.read_text(encoding="utf-8"))
+            for user_id, providers in payload.get("credentials", {}).items():
+                for provider, token in providers.items():
+                    key = self._fernet.decrypt(str(token).encode("utf-8")).decode("utf-8")
+                    super().set(user_id, provider, key)
+        except (OSError, ValueError, InvalidToken, json.JSONDecodeError) as exc:
+            raise ProviderCredentialError("Unable to load encrypted BYOK credentials") from exc
+
+    def _save(self) -> None:
+        payload: dict[str, Any] = {"version": 1, "credentials": {}}
+        for compound, credential in self._credentials.items():
+            user_id, provider = compound.rsplit(":", 1)
+            payload["credentials"].setdefault(user_id, {})[provider] = self._fernet.encrypt(credential.key.encode("utf-8")).decode("utf-8")
+        temporary = self._path.with_suffix(self._path.suffix + ".tmp")
+        temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        temporary.replace(self._path)
+        try:
+            os.chmod(self._path, 0o600)
+        except OSError:
+            pass
+
+    def set(self, user_id: str, provider: str, api_key: str) -> None:
+        super().set(user_id, provider, api_key)
+        self._save()
+
+    def delete(self, user_id: str, provider: str) -> None:
+        super().delete(user_id, provider)
+        self._save()
+
+
 class BYOKProviderManager:
     """Resolve user-owned API credentials without coupling agents to a vendor."""
 
@@ -350,6 +419,10 @@ class BYOKProviderManager:
     @property
     def credential_store(self) -> InMemoryCredentialStore:
         return self._store
+
+    def set_store(self, credential_store: InMemoryCredentialStore) -> None:
+        self._store = credential_store
+        self._preferred_provider.clear()
 
     def configure(self, user_id: str, provider: str, api_key: str) -> str:
         normalized = provider.strip().lower()
