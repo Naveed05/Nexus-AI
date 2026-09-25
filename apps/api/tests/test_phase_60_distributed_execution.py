@@ -41,7 +41,7 @@ def test_draining_worker_stays_draining_on_heartbeat(tmp_path: Path) -> None:
     workers = WorkerCoordinator(tmp_path / "workers.sqlite3")
     worker = workers.register("worker-1", [])
     workers.drain(worker.worker_id)
-    refreshed = workers.heartbeat(worker.worker_id)
+    refreshed = workers.heartbeat(worker.worker_id, preserve_status=True)
     assert refreshed.status.value == "draining"
 
 
