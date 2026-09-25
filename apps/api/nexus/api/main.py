@@ -61,7 +61,7 @@ from nexus.core.platform2 import ResourceGraphStore, ResourceLink, ExecutionTrac
 
 app = FastAPI(title=settings.app_name, version=settings.service_version)
 # Keep local BYOK credentials across container restarts. Production should inject
-# NEXUS_BYOK_ENCRYPTION_KEY from an external secret manager.
+# BYOK_ENCRYPTION_KEY from an external secret manager.
 byok_provider_manager.set_store(EncryptedFileCredentialStore(settings.byok_storage_path, settings.byok_encryption_key))
 artifact_store = LocalArtifactStore(settings.artifact_storage_path)
 artifact_registry = ArtifactRegistry(settings.artifact_registry_path)
