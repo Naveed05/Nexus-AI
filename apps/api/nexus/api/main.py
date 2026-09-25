@@ -47,6 +47,9 @@ from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
 from nexus.core.tools import configure_dataset_workspace, tool_registry
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
+from nexus.core.workspace_intelligence import WorkspaceIntelligence
+from nexus.core.rag_intelligence import RAGIntelligence
+from nexus.core.data_science_intelligence import DataScienceIntelligence
 
 app = FastAPI(title=settings.app_name, version=settings.service_version)
 artifact_store = LocalArtifactStore(settings.artifact_storage_path)
@@ -81,6 +84,90 @@ async def security_headers(request, call_next):
         "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     )
     return response
+@app.get("/api/v1/workspaces/{workspace_id}/intelligence/summary")
+def workspace_intelligence_summary(workspace_id: UUID) -> dict:
+    _require_workspace(workspace_id)
+    return workspace_intelligence.summary(workspace_id)
+
+
+@app.get("/api/v1/workspaces/{workspace_id}/intelligence/inventory")
+def workspace_intelligence_inventory(workspace_id: UUID) -> dict:
+    _require_workspace(workspace_id)
+    return workspace_intelligence.inventory(workspace_id)
+
+
+@app.get("/api/v1/workspaces/{workspace_id}/intelligence/context")
+def workspace_intelligence_context(workspace_id: UUID, objective: str | None = None, max_chars: int = 8000) -> dict:
+    _require_workspace(workspace_id)
+    try:
+        return workspace_intelligence.context_pack(workspace_id, objective=objective, max_chars=max_chars)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/workspaces/{workspace_id}/intelligence/readiness")
+def workspace_intelligence_readiness(workspace_id: UUID) -> dict:
+    _require_workspace(workspace_id)
+    return workspace_intelligence.readiness(workspace_id)
+
+
+@app.post("/api/v1/knowledge/evidence")
+def knowledge_evidence(payload: dict, x_user_id: str = Header(default="local-user")) -> dict:
+    workspace_id = UUID(payload["workspace_id"]) if payload.get("workspace_id") else None
+    if workspace_id is not None:
+        _require_workspace(workspace_id)
+    try:
+        return rag_intelligence.retrieve(str(payload.get("query", "")), workspace_id=workspace_id, top_k=int(payload.get("top_k", 5)), document_id=UUID(payload["document_id"]) if payload.get("document_id") else None).as_dict()
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/knowledge/context")
+def knowledge_answer_context(payload: dict) -> dict:
+    workspace_id = UUID(payload["workspace_id"]) if payload.get("workspace_id") else None
+    if workspace_id is not None:
+        _require_workspace(workspace_id)
+    try:
+        return rag_intelligence.answer_context(str(payload.get("query", "")), workspace_id=workspace_id, top_k=int(payload.get("top_k", 5)))
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/datasets/{dataset_id}/intelligence/profile")
+def dataset_intelligence_profile(dataset_id: UUID) -> dict:
+    try:
+        return data_science_intelligence.profile(dataset_id)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/datasets/{dataset_id}/intelligence/analyze")
+def dataset_intelligence_analyze(dataset_id: UUID, payload: dict | None = None) -> dict:
+    try:
+        return data_science_intelligence.analyze(dataset_id, (payload or {}).get("target"))
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/datasets/{dataset_id}/intelligence/baseline")
+def dataset_intelligence_baseline(dataset_id: UUID, payload: dict) -> dict:
+    try:
+        target = str(payload.get("target", "")).strip()
+        if not target:
+            raise ValueError("target is required")
+        return data_science_intelligence.baseline(dataset_id, target)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/datasets/{dataset_id}/intelligence/history")
+def dataset_intelligence_history(dataset_id: UUID, limit: int = 50) -> list[dict]:
+    try:
+        return data_science_intelligence.history(dataset_id, limit)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.get("/api/v1/product/templates")
 def product_templates() -> list[dict]:
     return [
@@ -145,6 +232,9 @@ file_registry = FileRegistry(settings.file_storage_path + ".sqlite3")
 document_workspace = DocumentWorkspace(Path(settings.file_storage_path) / "documents")
 knowledge_engine = KnowledgeEngine(document_workspace, settings.knowledge_index_path)
 configure_knowledge_engine(knowledge_engine)
+workspace_intelligence = WorkspaceIntelligence(workspace_registry, memory_store)
+rag_intelligence = RAGIntelligence(knowledge_engine)
+data_science_intelligence = DataScienceIntelligence(dataset_workspace, settings.job_storage_path.replace("jobs.sqlite3", "data_science.sqlite3"))
 research_engine = ResearchEngine()
 agent_runtime = AgentRuntime(settings.run_storage_path,)
 production_runtime = ProductionRuntime(store_path=settings.run_storage_path, engine=engine)
