@@ -13,16 +13,12 @@ class DatasetNotFoundError(KeyError):
 
 
 class DatasetWorkspace:
-    """Resolve registered dataset references into bytes or data frames.
-
-    The workspace composes the Phase 5 artifact store and dataset registry.
-    Keeping this boundary separate from tools lets the storage backend evolve
-    without changing agent-facing tool contracts.
-    """
+    """Resolve registered dataset references into bytes or data frames."""
 
     def __init__(self, root: str | Path) -> None:
-        self.store = LocalArtifactStore(root)
-        self.registry = DatasetRegistry()
+        self.root = Path(root)
+        self.store = LocalArtifactStore(self.root)
+        self.registry = DatasetRegistry(self.root / "datasets.sqlite3")
         self.engine = DataIntelligenceEngine()
 
     def register(
@@ -52,16 +48,7 @@ class DatasetWorkspace:
         dataset = self.get(dataset_id)
         if dataset.artifact_id is None:
             raise DatasetNotFoundError(str(dataset_id))
-        artifact = next(
-            (
-                artifact
-                for artifact in (
-                    self._artifact_for_dataset(dataset),
-                )
-                if artifact is not None
-            ),
-            None,
-        )
+        artifact = self._artifact_for_dataset(dataset)
         if artifact is None:
             raise DatasetNotFoundError(str(dataset_id))
         return self.store.get(artifact)
@@ -74,7 +61,6 @@ class DatasetWorkspace:
         if dataset.artifact_id is None:
             return None
         from nexus.core.artifacts import Artifact
-
         return Artifact(
             artifact_id=dataset.artifact_id,
             artifact_type="dataset",
