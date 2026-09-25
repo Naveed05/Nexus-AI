@@ -8,6 +8,9 @@ services:
     environment:
       ENVIRONMENT: ${NEXUS_ENV:-development}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      NEXUS_CREDENTIAL_STORAGE_PATH: /app/.nexus/credentials.sqlite3
+      NEXUS_CREDENTIAL_KEY_PATH: /app/.nexus/credentials.key
       SERVICE_VERSION: "0.1.0"
       LOG_LEVEL: INFO
       REQUEST_METRICS_MAX_SAMPLES: "1000"
