@@ -73,13 +73,25 @@
           <div><b>Connect your AI provider</b><p>NEXUS is ready, but it needs an API key before it can run AI work.</p></div>
           <button class="primary setup-btn" id="setup-provider-btn">Connect provider →</button>
         </section>
-        <section class="command-card">
-          <div class="command-head"><div><span class="command-icon">✦</span><div><b>What should NEXUS do?</b><small>Describe the outcome. NEXUS will plan the work.</small></div></div><span class="shortcut">Ctrl + Enter</span></div>
-          <textarea id="task-input" maxlength="20000" placeholder="e.g. Analyze this dataset, identify the three biggest revenue drivers, and produce a concise executive summary."></textarea>
-          <div class="command-footer"><div class="context-wrap"><input id="context-input" maxlength="5000" placeholder="Add context, constraints, or a reference…"><select id="risk-input" aria-label="Risk level"><option value="low">Low risk</option><option value="medium">Medium risk</option><option value="high">High risk</option></select></div><button id="execute-btn" class="primary"><span>Run with NEXUS</span><b>→</b></button></div>
+        <section class="command-card chat-card">
+          <div class="command-head">
+            <div><span class="command-icon">✦</span><div><b>NEXUS</b><small>Your AI workspace — ask for anything, add context or documents, and NEXUS will execute and verify the work.</small></div></div>
+            <span class="shortcut" id="chat-provider-pill">Provider: checking…</span>
+          </div>
+          <div id="chat-messages" class="chat-messages" aria-live="polite">
+            <div class="chat-welcome"><strong>What can I help you get done?</strong><span>Research, analyze data, understand documents, write code, summarize files, or run a multi-step task.</span></div>
+          </div>
+          <textarea id="task-input" maxlength="20000" placeholder="Message NEXUS…"></textarea>
+          <div class="command-footer">
+            <div class="context-wrap">
+              <button id="chat-attach-btn" type="button" class="ghost">＋ Add document</button>
+              <input id="context-input" maxlength="5000" placeholder="Optional context or constraints…">
+              <select id="risk-input" aria-label="Risk level"><option value="low">Low risk</option><option value="medium">Medium risk</option><option value="high">High risk</option></select>
+            </div>
+            <button id="execute-btn" class="primary"><span>Send</span><b>→</b></button>
+          </div>
           <p id="task-error" class="error" role="alert"></p>
         </section>
-
         <div class="metric-grid">
           <article class="metric-card"><span class="metric-icon">↯</span><div><small>Active executions</small><strong id="active-runs">—</strong><em id="active-detail">Live</em></div></article>
           <article class="metric-card"><span class="metric-icon">✓</span><div><small>Completed</small><strong id="completed-runs">—</strong><em>Verified runs</em></div></article>
