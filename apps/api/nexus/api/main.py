@@ -38,6 +38,8 @@ from nexus.core.workflows import Workflow, WorkflowStep, WorkflowStepStatus, Wor
 from nexus.core.distributed_workers import WorkerCoordinator, worker_payload
 from nexus.core.agent_workflows import AgentWorkflowStore, AgentWorkflowOrchestrator, AgentWorkItem, AgentWorkflowValidationError, AgentWorkflowOrchestrationError, agent_workflow_payload
 from nexus.core.evaluation_intelligence import EvaluationIntelligenceStore, compare_reports, trend_summary, telemetry_event
+from nexus.core.evaluation_control import EvaluationControlPlane, EvaluationPolicy
+from nexus.core.reliability import ReliabilityStore, ReliabilityControlPlane
 from nexus.core.governance import GovernanceStore, GovernanceError, governance_payload
 from nexus.core.production_release import build_release_manifest, readiness_payload as production_readiness_payload, release_payload
 from nexus.core.resilience import BackupError, backup_payload, create_backup, list_backups, verify_backup
@@ -367,6 +369,9 @@ agent_workflow_store = AgentWorkflowStore(settings.workflow_storage_path.replace
 agent_orchestrator = AgentWorkflowOrchestrator(agent_workflow_store)
 worker_coordinator = WorkerCoordinator(settings.job_storage_path.replace("jobs.sqlite3", "workers.sqlite3"))
 evaluation_store = EvaluationIntelligenceStore(settings.job_storage_path.replace("jobs.sqlite3", "evaluation.sqlite3"))
+evaluation_control = EvaluationControlPlane(evaluation_store)
+reliability_store = ReliabilityStore(settings.job_storage_path.replace("jobs.sqlite3", "reliability.sqlite3"))
+reliability_control = ReliabilityControlPlane(reliability_store)
 governance_store = GovernanceStore(settings.job_storage_path.replace("jobs.sqlite3", "governance.sqlite3"))
 governance_guard = GovernanceGuard(governance_store, settings.governance_enforced)
 collaboration_runtime = CollaborationRuntime(agent_orchestrator, job_manager, collaboration_audit)
@@ -379,6 +384,7 @@ backup_stores = {
     "agent_workflows": settings.workflow_storage_path.replace("workflows.sqlite3", "agent_workflows.sqlite3"),
     "workers": settings.job_storage_path.replace("jobs.sqlite3", "workers.sqlite3"),
     "evaluation": settings.job_storage_path.replace("jobs.sqlite3", "evaluation.sqlite3"),
+    "reliability": settings.job_storage_path.replace("jobs.sqlite3", "reliability.sqlite3"),
     "governance": settings.job_storage_path.replace("jobs.sqlite3", "governance.sqlite3"),
     "artifacts": settings.artifact_registry_path,
     "collaboration_audit": settings.collaboration_audit_storage_path,
@@ -1911,6 +1917,66 @@ def evaluation_component_metrics(component_type: str | None = None, limit: int =
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
     return evaluation_store.component_metrics(component_type, limit)
+
+
+@app.post("/api/v1/evaluations/gate")
+def evaluation_gate(payload: dict) -> dict:
+    run_id = str(payload.get("run_id", "")).strip()
+    if not run_id:
+        raise HTTPException(status_code=422, detail="run_id is required")
+    raw = payload.get("policy") or {}
+    try:
+        policy = EvaluationPolicy(**{key: raw[key] for key in (
+            "minimum_pass_rate", "minimum_check_score", "minimum_grounding_score",
+            "maximum_pass_rate_drop", "maximum_check_score_drop", "maximum_grounding_score_drop",
+        ) if key in raw})
+        decision = evaluation_control.gate(run_id, baseline_run_id=payload.get("baseline_run_id"), policy=policy)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return decision.as_dict()
+
+
+@app.get("/api/v1/evaluations/quality")
+def evaluation_quality(suite_name: str | None = None, limit: int = 20) -> dict:
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 100")
+    return evaluation_control.quality_summary(suite_name=suite_name, limit=limit)
+
+
+@app.get("/api/v1/reliability/summary")
+def reliability_summary() -> dict:
+    return reliability_control.snapshot(job_manager=job_manager, worker_coordinator=worker_coordinator, event_store=event_store)
+
+
+@app.get("/api/v1/reliability/history")
+def reliability_history(limit: int = 50) -> list[dict]:
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+    return [
+        {"record_id": item.record_id, "action": item.action, "status": item.status,
+         "details": item.details, "created_at": item.created_at}
+        for item in reliability_store.list(limit)
+    ]
+
+
+@app.post("/api/v1/reliability/reconcile")
+def reliability_reconcile(request: Request) -> dict:
+    decision = governance_guard.require(request, "execute")
+    try:
+        result = reliability_control.reconcile(
+            distributed_bridge=distributed_bridge,
+            worker_coordinator=worker_coordinator,
+            job_manager=job_manager,
+            event_store=event_store,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    governance_guard.audit_mutation(decision, "reliability.reconcile", "control-plane", {
+        "recovered_leases": result["recovered_leases"], "recovered_jobs": result["recovered_jobs"]
+    })
+    return result
 
 
 @app.post("/api/v1/governance/principals", status_code=201)
