@@ -47,6 +47,10 @@ from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
 from nexus.core.tools import configure_dataset_workspace, tool_registry
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
+from nexus.core.collaboration_runtime import CollaborationRuntime
+from nexus.core.distributed_execution import DistributedExecutionBridge
+from nexus.core.governance_guard import GovernanceGuard
+from nexus.core.phase_59_61 import PhaseControlPlane
 from nexus.core.workspace_intelligence import WorkspaceIntelligence
 from nexus.core.rag_intelligence import RAGIntelligence
 from nexus.core.data_science_intelligence import DataScienceIntelligence
@@ -337,7 +341,7 @@ def _execute_durable_job(job) -> dict:
 
 
 job_store = JobStore(settings.job_storage_path)
-job_manager = DurableJobManager(job_store, _execute_durable_job)
+job_manager = DurableJobManager(job_store, _execute_durable_job, auto_start=not settings.distributed_workers_enabled)
 
 workflow_store = WorkflowStore(settings.workflow_storage_path)
 workflow_control = WorkflowControlPlane(workflow_store)
@@ -348,6 +352,10 @@ agent_orchestrator = AgentWorkflowOrchestrator(agent_workflow_store)
 worker_coordinator = WorkerCoordinator(settings.job_storage_path.replace("jobs.sqlite3", "workers.sqlite3"))
 evaluation_store = EvaluationIntelligenceStore(settings.job_storage_path.replace("jobs.sqlite3", "evaluation.sqlite3"))
 governance_store = GovernanceStore(settings.job_storage_path.replace("jobs.sqlite3", "governance.sqlite3"))
+governance_guard = GovernanceGuard(governance_store, settings.governance_enforced)
+collaboration_runtime = CollaborationRuntime(agent_orchestrator, job_manager, collaboration_audit)
+distributed_bridge = DistributedExecutionBridge(job_store, worker_coordinator)
+phase_control_plane = PhaseControlPlane(collaboration_runtime, distributed_bridge, governance_store, collaboration_audit)
 backup_stores = {
     "runs": settings.run_storage_path,
     "jobs": settings.job_storage_path,
