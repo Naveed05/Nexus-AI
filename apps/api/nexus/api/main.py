@@ -1351,6 +1351,24 @@ def get_model(model_key: str) -> dict:
     return _model_payload(model)
 
 
+@app.get("/api/v1/diagnostics")
+def diagnostics(x_nexus_user_id: str | None = Header(default=None)) -> dict:
+    user_id = (x_nexus_user_id or "").strip() or "local-user"
+    configured = byok_provider_manager.configured(user_id)
+    preferred = byok_provider_manager.preferred(user_id)
+    return {
+        "service": settings.app_name,
+        "version": settings.service_version,
+        "frontend": WEB_ROOT.exists(),
+        "configured_providers": list(configured),
+        "preferred_provider": preferred,
+        "byok_ready": bool(preferred and preferred in configured),
+        "server_provider_keys": {"openai": bool(settings.openai_api_key), "groq": bool(settings.groq_api_key)},
+        "job_worker_running": bool(job_manager._thread and job_manager._thread.is_alive()),
+        "distributed_workers": settings.distributed_workers_enabled,
+    }
+
+
 @app.get("/api/v1/byok/providers")
 def list_byok_providers() -> dict:
     """List supported BYOK providers without exposing credentials."""
@@ -1597,8 +1615,10 @@ def delete_memory(workspace_id: UUID, memory_id: UUID) -> Response:
     return Response(status_code=204)
 
 @app.post("/api/v1/tasks", response_model=TaskResponse, status_code=201)
-def create_task(payload: TaskCreate) -> TaskResponse:
-    task = _build_task(payload); route = engine.route_task(task)
+def create_task(payload: TaskCreate, x_nexus_user_id: str | None = Header(default=None)) -> TaskResponse:
+    user_id = _byok_user(x_nexus_user_id) if x_nexus_user_id else None
+    preferred_provider = byok_provider_manager.preferred(user_id) if user_id else None
+    task = _build_task(payload); route = engine.route_task(task, provider=preferred_provider)
     return TaskResponse(task_id=str(task.task_id), objective=task.objective, status=task.status, risk_level=task.risk_level, created_at=task.created_at.isoformat(), capabilities=task.capabilities, selected_model=route.model.model_id, workspace_id=str(task.workspace_id) if task.workspace_id else None)
 
 def _artifact_payload(artifact) -> dict:
@@ -1644,9 +1664,11 @@ def download_artifact(artifact_id: UUID) -> Response:
 
 
 @app.post("/api/v1/tasks/execute", response_model=ExecutionResponse, status_code=200)
-def execute_task(payload: TaskCreate) -> ExecutionResponse:
+def execute_task(payload: TaskCreate, x_nexus_user_id: str | None = Header(default=None)) -> ExecutionResponse:
+    user_id = _byok_user(x_nexus_user_id) if x_nexus_user_id else None
+    use_byok = bool(user_id and byok_provider_manager.configured(user_id))
     task = _build_task(payload)
-    run, result = agent_runtime.run_engine(task, engine, budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8))
+    run, result = agent_runtime.run(task, lambda current_task, control: engine.run(current_task, control=control, user_id=user_id, use_byok=use_byok), budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8))
     verification = result.verification
     run.metadata["result"] = {
         "model": result.model.model_id,

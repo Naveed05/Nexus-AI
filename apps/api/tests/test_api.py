@@ -159,6 +159,37 @@ def test_byok_credential_lifecycle_is_user_scoped_and_masks_keys() -> None:
     assert removed.status_code == 204
 
 
+def test_tasks_route_to_the_user_preferred_byok_provider() -> None:
+    user_id = "byok-routing-test-user"
+    from nexus.api.main import byok_provider_manager
+    byok_provider_manager.configure(user_id, "groq", "groq-routing-secret-1234")
+    try:
+        response = client.post(
+            "/api/v1/tasks",
+            headers={"X-Nexus-User-ID": user_id},
+            json={"objective": "Summarize this text"},
+        )
+        assert response.status_code == 201
+        assert response.json()["selected_model"] in {"openai/gpt-oss-120b", "openai/gpt-oss-20b"}
+    finally:
+        byok_provider_manager.remove(user_id, "groq")
+
+
+def test_diagnostics_reports_active_byok_provider() -> None:
+    user_id = "diagnostics-test-user"
+    from nexus.api.main import byok_provider_manager
+    byok_provider_manager.configure(user_id, "groq", "groq-diagnostics-secret-1234")
+    try:
+        response = client.get("/api/v1/diagnostics", headers={"X-Nexus-User-ID": user_id})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["preferred_provider"] == "groq"
+        assert body["byok_ready"] is True
+        assert body["configured_providers"] == ["groq"]
+    finally:
+        byok_provider_manager.remove(user_id, "groq")
+
+
 def test_byok_generate_uses_user_credential_without_exposing_it(monkeypatch) -> None:
     from nexus.api.main import byok_provider_manager
     from nexus.core.models import ModelResponse
