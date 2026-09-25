@@ -79,6 +79,9 @@ async def beta_guard(request: Request, call_next):
             if request.url.path not in public and not request.url.path.startswith("/api/v1/production/release"):
                 guard = globals().get("governance_guard")
                 if guard is not None:
+                    bootstrap = request.url.path == "/api/v1/governance/principals" and request.method == "POST" and governance_store.principal_count() == 0
+                    if bootstrap:
+                        return await call_next(request)
                     permission = "read" if request.method in {"GET", "HEAD", "OPTIONS"} else "execute"
                     if request.url.path.startswith("/api/v1/governance/"):
                         permission = "read" if request.method in {"GET", "HEAD", "OPTIONS"} else "govern"
