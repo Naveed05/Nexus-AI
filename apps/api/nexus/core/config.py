@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     object_storage_backend: str = "filesystem"
     queue_backend: str = "sqlite"
     deployment_mode: str = "single"
+    distributed_workers_enabled: bool = False
+    governance_enforced: bool = False
     deployment_region: str = ""
     instance_id: str = ""
 
