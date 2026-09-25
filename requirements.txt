@@ -14,3 +14,4 @@ pandas
 pyarrow
 pypdf
 python-docx
+cryptography
