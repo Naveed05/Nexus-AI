@@ -47,6 +47,10 @@ from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
 from nexus.core.tools import configure_dataset_workspace, tool_registry
 from nexus.core.workspaces import WorkspaceNotFoundError, workspace_registry
+from nexus.core.collaboration_runtime import CollaborationRuntime
+from nexus.core.distributed_execution import DistributedExecutionBridge
+from nexus.core.governance_guard import GovernanceGuard
+from nexus.core.phase_59_61 import PhaseControlPlane
 from nexus.core.workspace_intelligence import WorkspaceIntelligence
 from nexus.core.rag_intelligence import RAGIntelligence
 from nexus.core.data_science_intelligence import DataScienceIntelligence
@@ -70,6 +74,22 @@ async def beta_guard(request: Request, call_next):
         if settings.environment.lower() == "production" and settings.beta_access_key:
             if request.headers.get("X-Nexus-Beta-Key") != settings.beta_access_key:
                 return Response("beta access key required", status_code=401)
+        if settings.governance_enforced and request.url.path.startswith("/api/v1/"):
+            public = {"/api/v1/ready", "/api/v1/health"}
+            if request.url.path not in public and not request.url.path.startswith("/api/v1/production/release"):
+                guard = globals().get("governance_guard")
+                if guard is not None:
+                    bootstrap = request.url.path == "/api/v1/governance/principals" and request.method == "POST" and governance_store.principal_count() == 0
+                    if bootstrap:
+                        return await call_next(request)
+                    permission = "read" if request.method in {"GET", "HEAD", "OPTIONS"} else "execute"
+                    if request.url.path.startswith("/api/v1/governance/"):
+                        permission = "read" if request.method in {"GET", "HEAD", "OPTIONS"} else "govern"
+                    try:
+                        decision = guard.require(request, permission)
+                        request.state.nexus_principal = decision.principal
+                    except HTTPException as exc:
+                        return Response(str(exc.detail), status_code=exc.status_code)
     return await call_next(request)
 
 @app.middleware("http")
@@ -337,7 +357,7 @@ def _execute_durable_job(job) -> dict:
 
 
 job_store = JobStore(settings.job_storage_path)
-job_manager = DurableJobManager(job_store, _execute_durable_job)
+job_manager = DurableJobManager(job_store, _execute_durable_job, auto_start=not settings.distributed_workers_enabled)
 
 workflow_store = WorkflowStore(settings.workflow_storage_path)
 workflow_control = WorkflowControlPlane(workflow_store)
@@ -348,6 +368,10 @@ agent_orchestrator = AgentWorkflowOrchestrator(agent_workflow_store)
 worker_coordinator = WorkerCoordinator(settings.job_storage_path.replace("jobs.sqlite3", "workers.sqlite3"))
 evaluation_store = EvaluationIntelligenceStore(settings.job_storage_path.replace("jobs.sqlite3", "evaluation.sqlite3"))
 governance_store = GovernanceStore(settings.job_storage_path.replace("jobs.sqlite3", "governance.sqlite3"))
+governance_guard = GovernanceGuard(governance_store, settings.governance_enforced)
+collaboration_runtime = CollaborationRuntime(agent_orchestrator, job_manager, collaboration_audit)
+distributed_bridge = DistributedExecutionBridge(job_store, worker_coordinator)
+phase_control_plane = PhaseControlPlane(collaboration_runtime, distributed_bridge, governance_store, collaboration_audit)
 backup_stores = {
     "runs": settings.run_storage_path,
     "jobs": settings.job_storage_path,
@@ -641,6 +665,77 @@ def resume_workflow(workflow_id: UUID):
     return workflow_payload(_sync_workflow(w), workflow_store)
 
 
+@app.get("/api/v1/control-plane/phases-59-61")
+def phases_59_61_status():
+    return phase_control_plane.status()
+
+
+@app.post("/api/v1/agent-workflows/{workflow_id}/execute")
+def execute_agent_workflow(workflow_id: UUID, request: Request):
+    decision = governance_guard.require(request, "execute")
+    try:
+        result = collaboration_runtime.dispatch(workflow_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    governance_guard.audit_mutation(decision, "collaboration.dispatch", str(workflow_id), {"dispatch_count": len(result.dispatched)})
+    return {"workflow_id": str(result.workflow_id), "dispatched": list(result.dispatched), "active": result.active}
+
+
+@app.post("/api/v1/agent-workflows/{workflow_id}/sync")
+def sync_agent_workflow(workflow_id: UUID, request: Request):
+    decision = governance_guard.require(request, "execute")
+    try:
+        result = collaboration_runtime.sync(workflow_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    governance_guard.audit_mutation(decision, "collaboration.sync", str(workflow_id), {"changed": result["changed"]})
+    result["workflow"] = agent_workflow_payload(result["workflow"]) if result["workflow"] else None
+    return result
+
+
+@app.post("/api/v1/workers/{worker_id}/claim-next")
+def worker_claim_next(worker_id: UUID, request: Request):
+    decision = governance_guard.require(request, "execute")
+    try:
+        result = phase_control_plane.worker_claim(worker_id)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    governance_guard.audit_mutation(decision, "worker.claim-next", str(worker_id), {"claimed": bool(result)})
+    return result or {"claimed": False}
+
+
+@app.post("/api/v1/workers/leases/{lease_id}/complete")
+def worker_complete_lease(lease_id: UUID, payload: dict, request: Request):
+    decision = governance_guard.require(request, "execute")
+    try:
+        worker_id = UUID(str(payload.get("worker_id", "")))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="worker_id is required") from exc
+    try:
+        job = distributed_bridge.complete(lease_id, worker_id, payload.get("result") or {})
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    governance_guard.audit_mutation(decision, "worker.job.complete", str(job.job_id), {"worker_id": str(worker_id), "lease_id": str(lease_id)})
+    return job_payload(job)
+
+
+@app.post("/api/v1/workers/leases/{lease_id}/fail")
+def worker_fail_lease(lease_id: UUID, payload: dict, request: Request):
+    decision = governance_guard.require(request, "execute")
+    try:
+        worker_id = UUID(str(payload.get("worker_id", "")))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="worker_id is required") from exc
+    error = str(payload.get("error", "worker execution failed")).strip()
+    if not error:
+        raise HTTPException(status_code=422, detail="error is required")
+    try:
+        job = distributed_bridge.fail(lease_id, worker_id, error)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    governance_guard.audit_mutation(decision, "worker.job.fail", str(job.job_id), {"worker_id": str(worker_id), "lease_id": str(lease_id)})
+    return job_payload(job)
+
 @app.get("/api/v1/agent-workflows")
 def list_agent_workflows(limit: int = 100):
     if limit < 1 or limit > 500:
@@ -749,7 +844,7 @@ def register_worker(payload: dict):
 
 @app.post("/api/v1/workers/{worker_id}/heartbeat")
 def worker_heartbeat(worker_id: UUID):
-    try: w=worker_coordinator.heartbeat(worker_id)
+    try: w=worker_coordinator.heartbeat(worker_id, preserve_status=True)
     except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
     return worker_payload(w)
@@ -761,10 +856,16 @@ def worker_drain(worker_id: UUID):
     return worker_payload(w)
 
 @app.post("/api/v1/workers/{worker_id}/claim/{job_id}")
-def worker_claim(worker_id: UUID, job_id: UUID):
-    try: return worker_coordinator.claim(worker_id,job_id)
-    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+def worker_claim(worker_id: UUID, job_id: UUID, request: Request):
+    decision = governance_guard.require(request, "execute")
+    try:
+        lease = distributed_bridge.claim_job(worker_id, job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    governance_guard.audit_mutation(decision, "worker.job.claim", str(job_id), {"worker_id": str(worker_id), "lease_id": str(lease.lease_id)})
+    return lease.payload()
 
 @app.post("/api/v1/workers/leases/{lease_id}/release")
 def worker_release(lease_id: UUID):

@@ -1079,3 +1079,40 @@ Phase 58 turns registered datasets into durable, inspectable data-science work p
 - full API regression suite
 - benchmark gate
 - container build and readiness smoke test
+
+### 🤝 Phase 59 — Multi-Agent Collaboration Execution
+
+Phase 59 connects the durable agent-workflow DAG to the durable job execution plane.
+
+- work items remain dependency-aware and bounded
+- each dispatched work item receives a durable execution job
+- job IDs, agent IDs, workflow IDs, and output references are preserved as provenance
+- workflow synchronization imports only terminal job state
+- collaboration audit events record dispatch, binding, synchronization, and integrity state
+
+### 🌐 Phase 60 — Distributed Worker Integration
+
+Phase 60 turns the worker lease layer into an actual execution boundary for durable jobs.
+
+- workers can claim the next compatible queued job
+- optional required_capabilities are enforced before claiming
+- a successful claim changes the durable job to running
+- lease ownership is validated before completion/failure
+- completion and failure release the lease
+- retry budgets remain owned by the durable job store
+- draining workers remain draining across heartbeat calls
+- DISTRIBUTED_WORKERS_ENABLED=true disables the local job executor so external workers become the execution plane
+
+### 🔐 Phase 61 — Security & Governance Integration
+
+Phase 61 places governance at the control-plane boundary.
+
+- optional request-wide RBAC enforcement via GOVERNANCE_ENFORCED=true
+- bearer-token and X-Nexus-Access-Token authentication
+- tenant-scoped permission checks
+- read, execute, and govern permissions map to existing roles
+- one-time principal bootstrap is allowed only while no active principal exists
+- protected mutations write governance audit records
+- collaboration and distributed-worker execution APIs use the same authorization boundary
+
+These controls are opt-in for local development and can be enabled for production deployments without changing the underlying execution APIs.

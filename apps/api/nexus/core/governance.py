@@ -71,6 +71,11 @@ class GovernanceStore:
                     ON governance_audit(tenant_id, created_at);
             """)
 
+    def principal_count(self) -> int:
+        with sqlite3.connect(self.path) as db:
+            row = db.execute("SELECT COUNT(*) FROM principals WHERE active=1").fetchone()
+        return int(row[0])
+
     def upsert_principal(self, principal_id: str, tenant_id: str, role: str = "viewer") -> Principal:
         principal_id, tenant_id, role = principal_id.strip(), tenant_id.strip(), role.strip().lower()
         if not principal_id or not tenant_id:
