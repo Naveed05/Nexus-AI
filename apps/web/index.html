@@ -216,15 +216,15 @@
             <div class="provider-form">
               <label><span>Provider</span><select id="provider-select"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="groq">Groq</option></select></label>
               <label class="key-field"><span>API key</span><div class="secret-input"><input id="provider-api-key" type="password" autocomplete="off" placeholder="Paste your API key here"><button id="toggle-api-key" type="button" class="icon-button" aria-label="Show API key">◉</button></div></label>
-              <div class="provider-actions"><button id="save-api-key" class="primary">Save securely <b>→</b></button><button id="remove-api-key" class="ghost">Remove key</button></div>
+              <div class="provider-actions"><button id="save-api-key" class="primary">Save securely <b>→</b></button><button id="test-api-key" class="ghost">Test connection</button><button id="remove-api-key" class="ghost">Remove key</button></div>
               <p id="settings-message" class="settings-message" role="status"></p>
             </div>
-            <div class="security-note"><b>🔒 Local setup</b><span>Your key is stored by the NEXUS runtime for this local session. Do not use this in a shared or public deployment without a proper encrypted credential store.</span></div>
+            <div class="security-note"><b>🔒 Local setup</b><span>Your key is encrypted and stored in the local NEXUS runtime volume. Shared/public deployments should use an external secret manager.</span></div>
           </section>
           <section class="panel">
             <div class="section-head"><div><p class="eyebrow">GET STARTED</p><h2>How to use NEXUS</h2></div><span class="live-badge">4 STEPS</span></div>
             <div class="guide-list">
-              <div><i>1</i><div><b>Connect your provider</b><small>Add an OpenAI API key in this Settings page.</small></div></div>
+              <div><i>1</i><div><b>Connect your provider</b><small>Connect OpenAI, Groq, or Anthropic in this Settings page.</small></div></div>
               <div><i>2</i><div><b>Create a workspace</b><small>Keep files and memory together for one project.</small></div></div>
               <div><i>3</i><div><b>Describe the outcome</b><small>Use Home → Run a task. Start simple while testing.</small></div></div>
               <div><i>4</i><div><b>Inspect the result</b><small>Open Jobs or Executions to see status, verification, and artifacts.</small></div></div>
