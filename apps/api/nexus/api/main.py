@@ -1321,7 +1321,8 @@ def _model_payload(model: ModelSpec) -> dict:
 @app.get("/api/v1/models")
 def list_models() -> list[dict]:
     """Expose safe model capability metadata without credentials or provider secrets."""
-    return [_model_payload(model) for model in model_registry.all()]
+    models = (*model_registry.all(), *provider_model_specs("groq"))
+    return [_model_payload(model) for model in models]
 
 
 @app.get("/api/v1/models/health")
