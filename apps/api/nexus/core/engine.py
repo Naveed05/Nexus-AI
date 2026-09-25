@@ -4,7 +4,7 @@ import inspect
 from nexus.core.events import EventType, ExecutionEvent
 from nexus.core.executor import ExecutionResult, ModelExecutor
 from nexus.core.memory import MemoryStore, memory_store
-from nexus.core.models import ModelSpec
+from nexus.core.models import ModelSpec, byok_provider_manager
 from nexus.core.planner import TaskPlanner
 from nexus.core.router import RoutingDecision, TaskRouter
 from nexus.core.state import AgentState, PlanStep, StepStatus
@@ -67,9 +67,9 @@ class NexusEngine:
         self._retry_policy = retry_policy or RetryPolicy()
         self._memory = memory or memory_store
 
-    def route_task(self, task: Task) -> RouteResult:
+    def route_task(self, task: Task, provider: str | None = None) -> RouteResult:
         """Select the model and expose safe routing metadata without executing it."""
-        decision = self._router.decide(task)
+        decision = self._router.decide(task, provider=provider)
         return RouteResult(task=task, model=decision.model, decision=decision)
 
     def _resolve_workspace_context(self, task: Task) -> Task:
@@ -250,7 +250,8 @@ class NexusEngine:
     ) -> EngineResult:
         task = self._resolve_workspace_context(task)
         task.status = TaskStatus.PLANNING
-        route = self.route_task(task)
+        preferred_provider = byok_provider_manager.preferred(user_id) if use_byok and user_id else None
+        route = self.route_task(task, provider=preferred_provider)
         state = AgentState(task_id=task.task_id, objective=task.objective)
         events: list[ExecutionEvent] = [
             ExecutionEvent(
