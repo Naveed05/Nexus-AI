@@ -50,8 +50,13 @@ class CollaborationRuntime:
         if workflow is None:
             raise KeyError("unknown agent workflow")
         selected = self.orchestrator.dispatch(workflow_id)
+        workflow = self.orchestrator.store.get(workflow_id)
+        if workflow is None:
+            raise KeyError("unknown agent workflow")
+        selected_ids = {item.item_id for item in selected}
+        selected_items = [item for item in workflow.items if item.item_id in selected_ids]
         bindings: list[dict[str, str]] = []
-        for item in selected:
+        for item in selected_items:
             job = self.jobs.submit(
                 item.objective,
                 owner_id=workflow.owner_id,
