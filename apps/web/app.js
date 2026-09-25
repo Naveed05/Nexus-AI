@@ -16,7 +16,7 @@ function addChatMessage(role,text,meta="",extraClass=""){
 }
 function updateChatFromJob(job){
   if(!chatState.pendingJobId||job.job_id!==chatState.pendingJobId)return;
-  const pending=$("[data-chat-pending='"+job.job_id+"']");
+  const pending=document.querySelector("[data-chat-pending=\""+job.job_id+"\"]");
   if(!pending)return;
   pending.classList.remove("pending");
   if(job.status==="completed"&&job.result?.output){
