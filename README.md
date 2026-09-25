@@ -1041,3 +1041,41 @@ Phase 51 adds a verified recovery boundary around NEXUS's durable control-plane 
 - full API regression, benchmark gate, and container verification required before phase completion
 
 Phase 51 provides a recovery artifact and integrity boundary; it does not claim automatic off-site replication or restore-over-production semantics that are not configured.
+
+
+### 🧠 Phase 56 — Workspace Intelligence
+
+Phase 56 makes the workspace a first-class context boundary rather than only a resource container.
+
+**Batch 56.1 — Workspace intelligence**
+- deterministic workspace summary and resource inventory
+- bounded context packs combining workspace metadata, resource relationships, and relevant memory
+- workspace readiness signals for files, datasets, documents, and memory
+- restart-safe inspection through the durable workspace registry
+
+### 🔎 Phase 57 — Knowledge & RAG Intelligence
+
+Phase 57 turns the existing retrieval foundation into an explicit evidence-serving boundary.
+
+**Batch 57.1 — Evidence packs**
+- bounded hybrid retrieval exposed as citation-bearing evidence packs
+- explicit grounding readiness and citation counts
+- workspace/document scoped retrieval validation
+- answer-context contract instructing downstream synthesis to remain evidence-bound
+
+### 📊 Phase 58 — Data Science Intelligence
+
+Phase 58 turns registered datasets into durable, inspectable data-science work products.
+
+**Batch 58.1 — Durable analysis**
+- dataset profiling with quality signals
+- deterministic cleaning/EDA/correlation/problem analysis
+- conservative baseline ML for explicit targets
+- durable analysis history and restart-safe inspection
+- dataset-id based execution so large tabular payloads do not need to be copied into model prompts
+
+**Verification target**
+- focused Phase 56–58 regression coverage
+- full API regression suite
+- benchmark gate
+- container build and readiness smoke test
