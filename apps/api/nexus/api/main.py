@@ -1366,15 +1366,21 @@ def _byok_user(user_id: str | None) -> str:
 @app.get("/api/v1/byok/credentials")
 def list_byok_credentials(x_nexus_user_id: str | None = Header(default=None)) -> dict:
     user_id = _byok_user(x_nexus_user_id)
+    configured = byok_provider_manager.configured(user_id)
+    preferred = byok_provider_manager.preferred(user_id)
     return {
+        "preferred": preferred,
         "providers": [
             {
                 "provider": provider,
-                "configured": provider in byok_provider_manager.configured(user_id),
-                "server_configured": provider == "openai" and bool(settings.openai_api_key),
+                "configured": provider in configured,
+                "server_configured": (
+                    (provider == "openai" and bool(settings.openai_api_key))
+                    or (provider == "groq" and bool(settings.groq_api_key))
+                ),
             }
             for provider in sorted(SUPPORTED_PROVIDERS)
-        ]
+        ],
     }
 
 
@@ -1411,6 +1417,36 @@ def remove_byok_credential(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     byok_provider_manager.remove(user_id, provider)
     return Response(status_code=204)
+
+
+@app.post("/api/v1/byok/test")
+def test_byok_provider(
+    payload: dict | None = None,
+    x_nexus_user_id: str | None = Header(default=None),
+) -> dict:
+    """Make one small real provider call so the UI can verify the configured key."""
+    user_id = _byok_user(x_nexus_user_id)
+    provider = str((payload or {}).get("provider") or byok_provider_manager.preferred(user_id) or "").strip().lower()
+    if provider not in SUPPORTED_PROVIDERS:
+        raise HTTPException(status_code=422, detail="provider is required")
+    try:
+        credential = byok_provider_manager.credential(user_id, provider)
+        specs = provider_model_specs(provider)
+        if not specs:
+            raise ProviderCredentialError(f"No executable model is registered for provider: {provider}")
+        model = specs[0]
+        response = byok_provider_manager.generate(
+            user_id=user_id,
+            model=model,
+            input_items=[{"role": "user", "content": "Reply with exactly: NEXUS provider connection OK"}],
+            tools=[],
+            timeout_seconds=20,
+        )
+    except ProviderNotConfiguredError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (ProviderCredentialError, BYOKProviderError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"ok": True, "provider": response.provider, "model": response.model_id, "response_id": response.response_id, "output": response.output}
 
 
 @app.post("/api/v1/byok/generate")
