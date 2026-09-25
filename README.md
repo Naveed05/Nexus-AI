@@ -1116,3 +1116,53 @@ Phase 61 places governance at the control-plane boundary.
 - collaboration and distributed-worker execution APIs use the same authorization boundary
 
 These controls are opt-in for local development and can be enabled for production deployments without changing the underlying execution APIs.
+
+
+### 🧪 Phase 62 — Evaluation Intelligence & Quality Gates
+
+Phase 62 makes evaluation results an explicit production decision boundary.
+
+**Batch 62.1 — Durable quality policy**
+- configurable absolute quality floors for pass rate, observable check score, and grounding
+- configurable regression tolerances against a compatible baseline run
+- deterministic gate decisions with machine-readable reasons
+- latest-run quality summary for operators and CI-facing integrations
+
+**Batch 62.2 — Evaluation control plane**
+- POST /api/v1/evaluations/gate
+- GET /api/v1/evaluations/quality
+- suite identity checks prevent cross-suite comparisons
+- no hidden/model-internal reasoning is required for the gate
+
+### 🛡️ Phase 63 — Production Reliability & Recovery
+
+Phase 63 adds an auditable recovery control plane over the durable job and worker system.
+
+**Batch 63.1 — Reliability snapshots**
+- durable job, worker, and execution-event health snapshots
+- explicit attention state when failed jobs or offline workers are present
+- bounded recovery history
+
+**Batch 63.2 — Safe reconciliation**
+- stale worker lease recovery
+- stale distributed-job recovery
+- recovery outcomes persisted as auditable records
+- POST /api/v1/reliability/reconcile protected by the existing governance boundary
+- GET /api/v1/reliability/summary and /api/v1/reliability/history
+
+### ✨ Phase 64 — Flagship NEXUS Product Experience
+
+Phase 64 connects the mature control-plane capabilities into a clearer operator workflow.
+
+- dedicated Reliability surface for production health and recovery
+- Evaluation surface exposes an actionable quality gate, not only historical charts
+- command palette navigation includes reliability
+- recovery history, durable event counts, worker fleet state, and job health are visible together
+- no new frontend framework or client-side credential persistence introduced
+
+**Verification target**
+- Phase 62–64 focused regression coverage
+- complete API test suite
+- benchmark gate
+- container build and readiness smoke test
+- merge only after all required checks are green

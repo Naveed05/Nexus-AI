@@ -45,3 +45,29 @@ async function refreshEvaluation() {
 window.addEventListener("hashchange", () => { if (location.hash === "#evaluation") refreshEvaluation(); });
 $("evaluation-refresh")?.addEventListener("click", refreshEvaluation);
 if (location.hash === "#evaluation") refreshEvaluation();
+
+
+async function runEvaluationGate() {
+  const button = $("evaluation-gate");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    const quality = await fetch("/api/v1/evaluations/quality?limit=20").then(r => { if (!r.ok) throw new Error("Evaluation quality unavailable"); return r.json(); });
+    if (!quality.latest_run_id) throw new Error("No evaluation run available");
+    const decision = await fetch("/api/v1/evaluations/gate", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({run_id: quality.latest_run_id})
+    }).then(r => { if (!r.ok) throw new Error("Quality gate unavailable"); return r.json(); });
+    $("evaluation-gate-detail").textContent = decision.passed
+      ? "PASS · latest evaluation satisfies the production quality floor."
+      : "BLOCKED · " + decision.reasons.join(", ");
+    button.textContent = decision.passed ? "Gate passed" : "Gate blocked";
+    button.classList.toggle("ghost", !decision.passed);
+  } catch (error) {
+    $("evaluation-gate-detail").textContent = error.message;
+    button.textContent = "Gate unavailable";
+  } finally {
+    setTimeout(() => { button.disabled = false; button.textContent = "Run quality gate"; }, 1400);
+  }
+}
+$("evaluation-gate")?.addEventListener("click", runEvaluationGate);
