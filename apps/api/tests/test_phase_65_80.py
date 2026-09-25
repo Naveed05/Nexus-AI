@@ -46,7 +46,7 @@ def test_phase80_release():
 
 def test_groq_models_are_executable():
     from nexus.core.models import model_registry, provider_model_specs
-    assert {m.provider for m in model_registry.all()} >= {"openai", "groq"}
+    assert all(m.provider == "openai" for m in model_registry.all())
     assert provider_model_specs("groq")
     assert all(m.provider == "groq" and m.supports_tools for m in provider_model_specs("groq"))
 
