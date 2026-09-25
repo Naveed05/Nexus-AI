@@ -1166,3 +1166,58 @@ Phase 64 connects the mature control-plane capabilities into a clearer operator 
 - benchmark gate
 - container build and readiness smoke test
 - merge only after all required checks are green
+
+
+## 🚀 NEXUS Platform 2.0 — Phases 65–80
+
+The Phase 64 product experience is now extended into a platform-oriented release train.
+
+### Phase 65 — Unified Persistence & Resource Graph
+A durable resource relationship graph connects workspaces, files, datasets, documents, runs, jobs, artifacts and evaluations.
+
+### Phase 66 — Unified Event & Execution Spine
+A normalized execution-trace query layer exposes the durable event lifecycle as a reconstructable task timeline.
+
+### Phase 67 — Identity & Multi-Tenancy Foundation
+Durable tenant-scoped principals provide the foundation for users, teams and service identities.
+
+### Phase 68 — Enterprise Secrets
+The platform includes an encrypted-at-rest secret-vault contract using Fernet envelopes; production deployments should provide the encryption key through an external secret manager.
+
+### Phase 69 — Distributed Production Boundary
+Infrastructure topology explicitly describes shared state, queue, cache and object-storage requirements before distributed deployment is considered ready.
+
+### Phase 70 — Adaptive Agent Intelligence
+Deterministic objective classification produces specialist/model/tool requirements while retaining verification and risk boundaries.
+
+### Phase 71 — Specialist System
+Reusable research, data, developer and document specialist contracts provide a stable catalog for future multi-agent routing.
+
+### Phase 72 — Connector Platform
+Connector contracts define capabilities and authentication modes without coupling the kernel to third-party transports.
+
+### Phase 73 — Intelligence Analytics
+Operational analytics aggregate durable execution events into task, tool and verification signals.
+
+### Phase 74 — Continuous Evaluation
+Evaluation results can be used as an explicit production quality gate with baseline regression protection.
+
+### Phase 75 — Cost & Resource Intelligence
+Durable tenant-scoped usage/cost accounting provides the foundation for budgets and resource policies.
+
+### Phase 76 — Enterprise Security Policies
+Risk-aware policy evaluation makes privileged actions explicit and role-bound.
+
+### Phase 77 — Multimodal Asset Intelligence
+Content-addressed multimodal asset descriptors preserve workspace identity, modality, MIME type and exact SHA-256 provenance.
+
+### Phase 78 — Developer Workflow Platform
+Bounded developer plans produce deterministic, reviewable work plans with explicit verification and approval requirements.
+
+### Phase 79 — Flagship Platform Experience
+The web product exposes the new platform control plane through a dedicated Platform surface alongside Reliability and Evaluation.
+
+### Phase 80 — NEXUS Platform 2.0 Readiness
+A deterministic release-readiness contract reports test state and infrastructure blockers, providing a final platform deployment boundary.
+
+The default local deployment remains single-instance. Production horizontal scale should use shared transactional state, distributed queueing, shared cache and shared object storage.
