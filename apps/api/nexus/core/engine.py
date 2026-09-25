@@ -148,7 +148,13 @@ class NexusEngine:
             if control is not None and attempt > 1:
                 control.consume_retry()
             try:
-                execution = self._execute_compatibly(task, model, allowed_tools)
+                execution = self._execute_compatibly(
+                    task,
+                    model,
+                    allowed_tools,
+                    user_id=user_id,
+                    use_byok=use_byok,
+                )
                 if attempt > 1:
                     events.append(
                         ExecutionEvent(

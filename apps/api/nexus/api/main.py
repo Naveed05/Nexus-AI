@@ -41,6 +41,7 @@ from nexus.core.evaluation_intelligence import EvaluationIntelligenceStore, comp
 from nexus.core.governance import GovernanceStore, GovernanceError, governance_payload
 from nexus.core.production_release import build_release_manifest, readiness_payload as production_readiness_payload, release_payload
 from nexus.core.resilience import BackupError, backup_payload, create_backup, list_backups, verify_backup
+from nexus.core.events import event_store
 from nexus.core.schemas import ExecutionResponse, ResearchRequest, ResearchResponse, TaskCreate, TaskResponse, WorkflowCreate, AgentWorkflowCreate
 from nexus.core.task import Task
 from nexus.core.tool_execution import tool_executor
@@ -140,7 +141,7 @@ client = TestClient(app)
 dataset_workspace = DatasetWorkspace(settings.dataset_storage_path)
 configure_dataset_workspace(dataset_workspace)
 file_store = LocalFileStore(settings.file_storage_path)
-file_registry = FileRegistry()
+file_registry = FileRegistry(settings.file_storage_path + ".sqlite3")
 document_workspace = DocumentWorkspace(Path(settings.file_storage_path) / "documents")
 knowledge_engine = KnowledgeEngine(document_workspace, settings.knowledge_index_path)
 configure_knowledge_engine(knowledge_engine)
@@ -221,6 +222,9 @@ def _execute_durable_job(job) -> dict:
         metadata={"verified": str(bool(result.state.verification_passed)), "run_id": str(run.run_id), "job_id": str(job.job_id)},
     )
     artifact_registry.register(artifact)
+    if job.workspace_id is not None:
+        workspace_registry.context(job.workspace_id).add_artifact(artifact.artifact_id)
+        workspace_registry.save_context(job.workspace_id)
     run.metadata.setdefault("result", {})["artifact_id"] = str(artifact.artifact_id)
     agent_runtime._persist(run)
     job.run_id = run.run_id
@@ -1412,6 +1416,36 @@ def stream_agent_run(run_id: str):
     return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.get("/api/v1/events")
+def list_execution_events(task_id: str | None = None, event_type: str | None = None, limit: int = 500) -> list[dict]:
+    parsed_task_id = None
+    if task_id:
+        try:
+            parsed_task_id = UUID(task_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="task_id must be a UUID") from exc
+    try:
+        return [record.as_dict() for record in event_store.list(task_id=parsed_task_id, event_type=event_type, limit=limit)]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/events/summary")
+def execution_event_summary(task_id: str | None = None) -> dict:
+    parsed_task_id = None
+    if task_id:
+        try:
+            parsed_task_id = UUID(task_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="task_id must be a UUID") from exc
+    return event_store.summary(task_id=parsed_task_id)
+
+
+@app.get("/api/v1/events/{task_id}")
+def execution_event_timeline(task_id: UUID) -> list[dict]:
+    return event_store.task_timeline(task_id)
+
+
 @app.get("/api/v1/runs")
 def list_agent_runs() -> list[dict]:
     return [_run_payload(run) for run in agent_runtime.list_runs()]
@@ -1435,7 +1469,7 @@ def execute_production_task(payload: TaskCreate, idempotency_key: str | None = H
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     task = _build_task(payload)
     try:
-        run, result = production_runtime.start(task, idempotency_key=idempotency_key, budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8))
+        run, result = production_runtime.start(task, idempotency_key=idempotency_key, budget=RunBudget(max_steps=32, max_tool_calls=64, max_retries=8), user_id=user_id, use_byok=bool(byok_provider_manager.configured(user_id)))
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     verification = result.verification
@@ -1539,6 +1573,7 @@ async def upload_workspace_file(
         )
         file_registry.register(file_ref)
         workspace_registry.context(workspace_id).add_file(file_ref.file_id)
+        workspace_registry.save_context(workspace_id)
 
         # Tabular uploads are first-class datasets as well as workspace files.
         if suffix in {"csv", "parquet", "json"}:
@@ -1553,6 +1588,7 @@ async def upload_workspace_file(
                 },
             )
             workspace_registry.context(workspace_id).add_dataset(dataset.dataset_id)
+            workspace_registry.save_context(workspace_id)
             file_ref.metadata["dataset_id"] = str(dataset.dataset_id)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1580,7 +1616,7 @@ def delete_workspace_file(workspace_id: UUID, file_id: UUID) -> Response:
     _require_workspace(workspace_id)
     try: file_ref = file_registry.get(file_id, workspace_id=workspace_id)
     except NexusFileNotFoundError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
-    file_store.delete(file_ref); file_registry.remove(file_id, workspace_id=workspace_id); workspace_registry.context(workspace_id).remove_file(file_id); return Response(status_code=204)
+    file_store.delete(file_ref); file_registry.remove(file_id, workspace_id=workspace_id); workspace_registry.context(workspace_id).remove_file(file_id); workspace_registry.save_context(workspace_id); return Response(status_code=204)
 
 @app.post("/api/v1/workspaces/{workspace_id}/documents", status_code=201)
 async def upload_workspace_document(workspace_id: UUID, file: UploadFile = File(...)) -> dict:
@@ -1588,6 +1624,7 @@ async def upload_workspace_document(workspace_id: UUID, file: UploadFile = File(
     if not filename: raise HTTPException(status_code=422, detail="filename cannot be empty")
     try:
         document, chunk_count = knowledge_engine.ingest(await file.read(), filename=filename, workspace_id=workspace_id, metadata={"content_type": file.content_type or "application/octet-stream"}); workspace_registry.context(workspace_id).add_document(document.document_id)
+        workspace_registry.save_context(workspace_id)
     except DocumentParseError as exc: raise HTTPException(status_code=415, detail=str(exc)) from exc
     return {"document_id": str(document.document_id), "workspace_id": str(workspace_id), "filename": document.filename, "file_format": document.file_format, "size_bytes": document.size_bytes, "artifact_id": str(document.artifact_id) if document.artifact_id else None, "chunk_count": chunk_count, "metadata": document.metadata}
 
