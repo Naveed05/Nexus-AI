@@ -222,6 +222,9 @@ def _execute_durable_job(job) -> dict:
         metadata={"verified": str(bool(result.state.verification_passed)), "run_id": str(run.run_id), "job_id": str(job.job_id)},
     )
     artifact_registry.register(artifact)
+    if job.workspace_id is not None:
+        workspace_registry.context(job.workspace_id).add_artifact(artifact.artifact_id)
+        workspace_registry.save_context(job.workspace_id)
     run.metadata.setdefault("result", {})["artifact_id"] = str(artifact.artifact_id)
     agent_runtime._persist(run)
     job.run_id = run.run_id
