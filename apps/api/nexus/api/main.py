@@ -1111,8 +1111,14 @@ def job_summary() -> dict:
 
 
 @app.post("/api/v1/jobs", status_code=202)
-def create_job(payload: TaskCreate, x_user_id: str = Header(default="local-user", alias="X-User-Id")) -> dict:
-    user_id = x_user_id.strip() or "local-user"
+def create_job(
+    payload: TaskCreate,
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    x_nexus_user_id: str | None = Header(default=None, alias="X-Nexus-User-ID"),
+) -> dict:
+    # The web client uses X-Nexus-User-ID for BYOK identity. Accept both header
+    # names here so the durable job owner is the same identity that owns the key.
+    user_id = (x_nexus_user_id or x_user_id or "local-user").strip() or "local-user"
     _build_task(payload)
     try:
         product_catalog.consume_run(user_id)
