@@ -30,8 +30,8 @@ def test_phase75_cost(tmp_path):
  s=CostLedger(tmp_path/"c.sqlite3"); s.record("t",10,1.5,"model"); assert s.usage("t")["cost"]==1.5
 
 def test_phase76_security():
- assert not SecurityPolicyEngine().check("delete","risk_level":"critical",roles=())["allowed"]
- assert SecurityPolicyEngine().check("delete","risk_level":"critical",roles=("admin",))["allowed"]
+ assert not SecurityPolicyEngine().check("delete",risk_level="critical",roles=())["allowed"]
+ assert SecurityPolicyEngine().check("delete",risk_level="critical",roles=("admin",))["allowed"]
 
 def test_phase77_asset():
  a=MultimodalRegistry().register(b"abc","image"); assert len(a.sha256)==64 and a.size_bytes==3
