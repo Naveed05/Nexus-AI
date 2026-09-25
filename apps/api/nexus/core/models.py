@@ -355,6 +355,7 @@ class BYOKProviderManager:
 
     def __init__(self, credential_store: InMemoryCredentialStore | None = None) -> None:
         self._store = credential_store or InMemoryCredentialStore()
+        self._preferred_provider: dict[str, str] = {}
 
     @property
     def credential_store(self) -> InMemoryCredentialStore:
@@ -365,18 +366,25 @@ class BYOKProviderManager:
         if normalized not in SUPPORTED_PROVIDERS:
             raise ProviderCredentialError(f"Unsupported provider: {provider}")
         self._store.set(user_id, normalized, api_key)
+        self._preferred_provider[user_id.strip()] = normalized
         return self._store.get(user_id, normalized).masked()
 
     def remove(self, user_id: str, provider: str) -> None:
-        self._store.delete(user_id, provider)
+        normalized = provider.strip().lower()
+        self._store.delete(user_id, normalized)
+        if self._preferred_provider.get(user_id.strip()) == normalized:
+            remaining = self.configured(user_id)
+            if remaining:
+                self._preferred_provider[user_id.strip()] = remaining[0]
+            else:
+                self._preferred_provider.pop(user_id.strip(), None)
 
     def configured(self, user_id: str) -> tuple[str, ...]:
         return self._store.configured_providers(user_id)
 
     def preferred(self, user_id: str) -> str | None:
         """Return the most recently configured provider for this local user."""
-        providers = self.configured(user_id)
-        return providers[-1] if providers else None
+        return self._preferred_provider.get(user_id.strip())
 
     def credential(self, user_id: str, provider: str) -> ProviderCredential:
         normalized = provider.strip().lower()
