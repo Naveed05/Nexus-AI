@@ -75,6 +75,28 @@ class DistributedExecutionBridge:
             recovered += 1
         return recovered
 
+    def claim_job(self, worker_id: UUID, job_id: UUID) -> WorkerJobLease:
+        self.recover_stale_jobs()
+        worker = self.workers.get(worker_id)
+        if worker is None:
+            raise KeyError("unknown worker")
+        job = self.jobs.get(job_id)
+        if job is None:
+            raise KeyError("unknown job")
+        if job.status not in {JobStatus.QUEUED, JobStatus.RETRYING}:
+            raise ValueError("job is not available for distributed claim")
+        required = self._capabilities(job)
+        if required and not required.issubset(set(worker.capabilities)):
+            raise ValueError("worker lacks required capabilities")
+        lease = self.workers.claim(worker_id, job_id)
+        now = datetime.now(timezone.utc)
+        job.status = JobStatus.RUNNING
+        job.started_at = now
+        job.error = None
+        job.checkpoint = {**job.checkpoint, "distributed_lease_id": lease["lease_id"], "distributed_worker_id": str(worker_id), "distributed_claimed_at": now.isoformat()}
+        self.jobs.save(job)
+        return WorkerJobLease(UUID(lease["lease_id"]), worker_id, job, lease["lease_until"])
+
     def claim_next(self, worker_id: UUID) -> WorkerJobLease | None:
         self.recover_stale_jobs()
         worker = self.workers.get(worker_id)
@@ -88,20 +110,9 @@ class DistributedExecutionBridge:
             if required and not required.issubset(set(worker.capabilities)):
                 continue
             try:
-                lease = self.workers.claim(worker_id, job.job_id)
+                return self.claim_job(worker_id, job.job_id)
             except ValueError:
                 continue
-            job.status = JobStatus.RUNNING
-            job.started_at = datetime.now(timezone.utc)
-            job.error = None
-            job.checkpoint = {
-                **job.checkpoint,
-                "distributed_lease_id": lease["lease_id"],
-                "distributed_worker_id": str(worker_id),
-                "distributed_claimed_at": datetime.now(timezone.utc).isoformat(),
-            }
-            self.jobs.save(job)
-            return WorkerJobLease(UUID(lease["lease_id"]), worker_id, job, lease["lease_until"])
         return None
 
     def complete(self, lease_id: UUID, worker_id: UUID, result: dict[str, Any]) -> DurableJob:
