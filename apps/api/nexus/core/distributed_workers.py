@@ -91,8 +91,8 @@ class WorkerCoordinator:
             r=c.execute("SELECT * FROM workers WHERE worker_id=?",(str(worker_id),)).fetchone()
             if not r: raise KeyError("unknown worker")
             if r["status"]==WorkerStatus.OFFLINE.value: raise ValueError("offline workers cannot heartbeat")
-            c.execute("UPDATE workers SET last_heartbeat=?,status=? WHERE worker_id=?",
-                      (now.isoformat(),WorkerStatus.ONLINE.value,str(worker_id)))
+            c.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id=?",
+                      (now.isoformat(),str(worker_id)))
             c.execute("UPDATE worker_leases SET heartbeat_at=?,lease_until=? WHERE worker_id=? AND released_at IS NULL",
                       (now.isoformat(),(now+timedelta(seconds=self.lease_seconds)).isoformat(),str(worker_id)))
             c.commit()
@@ -134,7 +134,9 @@ class WorkerCoordinator:
             c.execute("UPDATE workers SET current_job_id=NULL,lease_until=NULL WHERE worker_id=? AND current_job_id=?",
                       (r["worker_id"],r["job_id"]))
             c.commit()
-        return dict(c.execute("SELECT * FROM worker_leases WHERE lease_id=?",(str(lease_id),)).fetchone())
+        with self._connect() as verify:
+            row = verify.execute("SELECT * FROM worker_leases WHERE lease_id=?", (str(lease_id),)).fetchone()
+        return dict(row)
 
     def recover_stale(self):
         now=self._now(); count=0
