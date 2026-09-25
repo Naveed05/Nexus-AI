@@ -1853,7 +1853,8 @@ async def upload_workspace_file(
             workspace_id=workspace_id,
             mime_type=file.content_type,
         )
-        file_registry.register(file_ref)\n        resource_graph.upsert(ResourceLink(str(file_ref.file_id), str(workspace_id), "file", owner_id=user_id, metadata={"filename": filename}))
+        file_registry.register(file_ref)
+        resource_graph.upsert(ResourceLink(str(file_ref.file_id), str(workspace_id), "file", owner_id=user_id, metadata={"filename": filename}))
         workspace_registry.context(workspace_id).add_file(file_ref.file_id)
         workspace_registry.save_context(workspace_id)
 
