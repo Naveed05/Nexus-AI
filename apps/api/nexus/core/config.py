@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "NEXUS AI"
     environment: str = "development"
     openai_api_key: str | None = None
+    groq_api_key: str | None = None
     embedding_provider: str = "auto"
     embedding_model: str = "text-embedding-3-small"
     dataset_storage_path: str = ".nexus/data"
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
     job_storage_path: str = ".nexus/jobs.sqlite3"
     workflow_storage_path: str = ".nexus/workflows.sqlite3"
     collaboration_audit_storage_path: str = ".nexus/collaboration_audit.sqlite3"
+    credential_storage_path: str = ".nexus/credentials.sqlite3"
+    credential_key_path: str = ".nexus/credentials.key"
     backup_storage_path: str = ".nexus/backups"
     log_level: str = "INFO"
     request_metrics_max_samples: int = 1000
