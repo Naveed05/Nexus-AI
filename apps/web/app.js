@@ -1,16 +1,42 @@
 const $=id=>document.getElementById(id);
-const api={async get(path,headers={}){const r=await fetch(path,{headers:{Accept:"application/json","X-Nexus-User-ID":LOCAL_USER_ID,...headers}});if(!r.ok)throw new Error(await r.text());return r.json()},async post(path,body,headers={}){const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Nexus-User-ID":LOCAL_USER_ID,...headers},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json()},async put(path,body,headers={}){const r=await fetch(path,{method:"PUT",headers:{"Content-Type":"application/json","X-Nexus-User-ID":LOCAL_USER_ID,...headers},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json()},async del(path,headers={}){const r=await fetch(path,{method:"DELETE",headers:{"X-Nexus-User-ID":LOCAL_USER_ID,...headers}});if(!r.ok&&r.status!==204)throw new Error(await r.text());return true}};
+const api={async get(path,headers={}){const r=await fetch(path,{headers:{Accept:"application/json","X-Nexus-User-ID":LOCAL_USER_ID,"X-User-Id":LOCAL_USER_ID,...headers}});if(!r.ok)throw new Error(await r.text());return r.json()},async post(path,body,headers={}){const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Nexus-User-ID":LOCAL_USER_ID,"X-User-Id":LOCAL_USER_ID,...headers},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json()},async put(path,body,headers={}){const r=await fetch(path,{method:"PUT",headers:{"Content-Type":"application/json","X-Nexus-User-ID":LOCAL_USER_ID,"X-User-Id":LOCAL_USER_ID,...headers},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json()},async del(path,headers={}){const r=await fetch(path,{method:"DELETE",headers:{"X-Nexus-User-ID":LOCAL_USER_ID,"X-User-Id":LOCAL_USER_ID,...headers}});if(!r.ok&&r.status!==204)throw new Error(await r.text());return true}};
 const LOCAL_USER_ID=localStorage.getItem("nexus-user-id")||("local-"+crypto.randomUUID());localStorage.setItem("nexus-user-id",LOCAL_USER_ID);
-const state={runs:[],agents:[],workspace:null,theme:localStorage.getItem("nexus-theme")||"light",runFilter:"",providerConfigured:false};let deferredInstallPrompt=null;
+const state={runs:[],agents:[],workspace:null,theme:localStorage.getItem("nexus-theme")||"light",runFilter:"",providerConfigured:false,provider:null};let deferredInstallPrompt=null;
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 function toast(message,type="ok"){const el=document.createElement("div");el.className="toast "+type;el.textContent=message;$("toast-stack").appendChild(el);setTimeout(()=>el.remove(),3200)}
 function setTheme(){document.documentElement.classList.toggle("light",state.theme==="light");$("theme-label").textContent=state.theme==="light"?"Light":"Dark";$("theme-btn").setAttribute("aria-label","Switch to "+(state.theme==="light"?"dark":"light")+" appearance");localStorage.setItem("nexus-theme",state.theme)}
+const chatState={pendingJobId:null};
+function addChatMessage(role,text,meta="",extraClass=""){
+  const host=$("chat-messages");if(!host)return null;
+  const welcome=host.querySelector(".chat-welcome");if(welcome)welcome.remove();
+  const el=document.createElement("div");el.className="chat-message "+role+" "+extraClass;
+  el.textContent=text;
+  if(meta){const small=document.createElement("small");small.textContent=meta;el.appendChild(small)}
+  host.appendChild(el);host.scrollTop=host.scrollHeight;return el;
+}
+function updateChatFromJob(job){
+  if(!chatState.pendingJobId||job.job_id!==chatState.pendingJobId)return;
+  const pending=document.querySelector("[data-chat-pending=\""+job.job_id+"\"]");
+  if(!pending)return;
+  pending.classList.remove("pending");
+  if(job.status==="completed"&&job.result?.output){
+    pending.textContent=job.result.output;
+    const small=document.createElement("small");small.textContent=(job.result.model||state.provider||"AI")+" · "+(job.result.verification_passed?"Verified":"Needs review");pending.appendChild(small);
+    chatState.pendingJobId=null;
+  }else if(job.status==="failed"||job.status==="cancelled"){
+    pending.classList.add("error");
+    pending.textContent=job.error||"NEXUS could not complete this task.";
+    chatState.pendingJobId=null;
+  }
+}
+
 async function loadApiSettings(){
   try{
     const data=await api.get("/api/v1/byok/credentials");
-    const configured=data.providers?.filter(x=>x.configured||x.server_configured)||[];
-    const selectedProvider=$("provider-select")?.value||"openai";
-    const active=configured.find(x=>x.provider===selectedProvider)||configured[0];
+    const configured=data.providers?.filter(x=>x.configured)||[];
+    const selectedProvider=$("provider-select")?.value||data.preferred||"groq";
+    const active=(data.preferred&&configured.find(x=>x.provider===data.preferred))||configured.find(x=>x.provider===selectedProvider)||configured[0];
+    state.provider=active?.provider||data.preferred||null;
     state.providerConfigured=Boolean(active);
     const title=$("provider-status-title"),detail=$("provider-status-detail"),dot=$("provider-dot"),banner=$("setup-banner");
     if(state.providerConfigured){
@@ -18,11 +44,13 @@ async function loadApiSettings(){
       if(detail)detail.textContent="Your local provider key is configured. NEXUS can run jobs.";
       if(dot)dot.classList.add("connected");
       if(banner)banner.hidden=true;
+      if($("chat-provider-pill"))$("chat-provider-pill").textContent="Provider: "+String(state.provider||"AI").toUpperCase();
     }else{
       if(title)title.textContent="No AI provider connected";
       if(detail)detail.textContent="Connect an API key to run AI work.";
       if(dot)dot.classList.remove("connected");
       if(banner)banner.hidden=false;
+      if($("chat-provider-pill"))$("chat-provider-pill").textContent="Provider: not connected";
     }
   }catch(e){
     const detail=$("provider-status-detail");if(detail)detail.textContent="Could not read provider status.";
@@ -34,6 +62,17 @@ async function saveApiKey(){
   const btn=$("save-api-key");btn.disabled=true;
   try{const data=await api.put("/api/v1/byok/credentials/"+encodeURIComponent(provider),{api_key:key});$("provider-api-key").value="";if(msg)msg.textContent=provider.toUpperCase()+" connected as "+data.masked_key;toast("AI provider connected");await loadApiSettings();activateView("overview")}
   catch(e){if(msg)msg.textContent="Could not save the key. "+e.message;toast("Provider setup failed","error")}
+  finally{btn.disabled=false}
+}
+async function testApiKey(){
+  const provider=$("provider-select").value,btn=$("test-api-key"),msg=$("settings-message");
+  if(!state.providerConfigured){msg.textContent="Save a provider key first.";return}
+  btn.disabled=true;msg.textContent="Testing "+provider.toUpperCase()+"…";
+  try{
+    const data=await api.post("/api/v1/byok/test",{provider});
+    msg.textContent="✓ "+data.provider.toUpperCase()+" is working with "+data.model;
+    toast("Provider connection verified");
+  }catch(e){msg.textContent="Connection test failed: "+e.message;toast("Provider test failed","error")}
   finally{btn.disabled=false}
 }
 async function removeApiKey(){
@@ -56,8 +95,22 @@ async function loadMemories(){const id=state.workspace;if(!id){$("memory-list").
 async function loadWorkspaceData(){await Promise.all([loadFiles(),loadMemories()]);const id=state.workspace;$("knowledge-summary").textContent=id?"Workspace "+id.slice(0,12)+" · live context":"No workspace selected";$("knowledge-detail").innerHTML=id?'<div class="file-item"><span>Active workspace</span><span class="file-size">'+esc(id)+'</span></div>':'<div class="empty">Select a workspace to inspect its context.</div>'}
 async function saveMemory(){const id=state.workspace,c=$("memory-input").value.trim();if(!id||!c){toast("Select a workspace and enter a memory","error");return}try{await api.post("/api/v1/memories",{workspace_id:id,content:c,memory_kind:"fact",source:"frontend"});$("memory-input").value="";await loadMemories();toast("Memory saved")}catch(e){toast("Could not save memory","error")}}
 async function recallMemory(){const id=state.workspace,q=$("memory-query").value.trim();if(!id||!q){toast("Select a workspace and enter a query","error");return}try{const r=await api.post("/api/v1/workspaces/"+id+"/memories/recall",{query:q,top_k:5});$("memory-list").innerHTML=r.matches.map(m=>'<div class="memory-item">'+esc(m.content)+'<small>relevance '+Number(m.relevance).toFixed(3)+' · confidence '+Number(m.confidence).toFixed(3)+'</small></div>').join("")||'<div class="empty">No matching memory.</div>'}catch(e){toast("Recall failed","error")}}
-async function uploadFile(){const id=state.workspace,file=$("file-input").files[0];if(!file)return;if(!id){$("file-input").value="";toast("Create or select a workspace before uploading a file.","error");activateView("workspace");return}$("workspace-status").textContent="Uploading "+file.name+"…";const data=new FormData();data.append("file",file);try{const r=await fetch("/api/v1/workspaces/"+encodeURIComponent(id)+"/files",{method:"POST",headers:{"X-User-Id":LOCAL_USER_ID,"X-Nexus-User-ID":LOCAL_USER_ID},body:data});if(!r.ok){let detail=await r.text();try{detail=JSON.parse(detail).detail||detail}catch(_){}throw new Error(detail)}const result=await r.json();$("file-input").value="";await loadFiles();toast(result.dataset_ready?"Dataset uploaded and ready for analysis":"File uploaded");}catch(e){$("workspace-status").textContent="Upload failed: "+e.message;toast("Upload failed: "+e.message,"error")}}
-
+async function uploadFile(){
+  const id=state.workspace,file=$("file-input").files[0];
+  if(!file)return;
+  if(!id){$("file-input").value="";toast("Create or select a workspace before uploading a file.","error");activateView("workspace");return}
+  $("workspace-status").textContent="Uploading "+file.name+"…";
+  const data=new FormData();data.append("file",file);
+  const ext=(file.name.split(".").pop()||"").toLowerCase();
+  const documentExts=["pdf","doc","docx","txt","md"];
+  const endpoint=documentExts.includes(ext)?"/api/v1/workspaces/"+encodeURIComponent(id)+"/documents":"/api/v1/workspaces/"+encodeURIComponent(id)+"/files";
+  try{
+    const r=await fetch(endpoint,{method:"POST",headers:{"X-User-Id":LOCAL_USER_ID,"X-Nexus-User-ID":LOCAL_USER_ID},body:data});
+    if(!r.ok){let detail=await r.text();try{detail=JSON.parse(detail).detail||detail}catch(_){}throw new Error(detail)}
+    const result=await r.json();$("file-input").value="";await loadFiles();
+    toast(result.dataset_ready?"Dataset uploaded and ready for analysis":documentExts.includes(ext)?"Document ingested into workspace knowledge":"File uploaded");
+  }catch(e){$("workspace-status").textContent="Upload failed: "+e.message;toast("Upload failed: "+e.message,"error")}
+}
 
 async function workflowCommand(id,action,stepId=null){
  try{
@@ -126,6 +179,7 @@ async function inspectJob(jobId){
 function renderJobDetail(j){
   const status=j.status||"unknown";
   $("job-summary").textContent=status+" · "+(j.retries||0)+"/"+(j.max_retries||0)+" retries";
+  updateChatFromJob(j);
   if(status==="completed"&&j.result?.output){renderRunResult(j.result);$("result-meta").textContent="Job "+j.job_id.slice(0,12)+" · Run "+(j.run_id||"—")+" · "+(j.result.tool_calls||0)+" tools";toast("Durable job completed","ok")}
 }
 async function cancelJob(jobId){try{await api.post("/api/v1/jobs/"+encodeURIComponent(jobId)+"/cancel",{});await loadJobs();toast("Job cancelled")}catch(e){toast("Could not cancel job","error")}}
@@ -133,12 +187,29 @@ async function retryJob(jobId){try{await api.post("/api/v1/jobs/"+encodeURICompo
 function renderRuns(runs){state.runs=runs||[];const list=$("runs-list");const filtered=state.runs.filter(r=>(r.objective||"").toLowerCase().includes(state.runFilter.toLowerCase())||(r.status||"").toLowerCase().includes(state.runFilter.toLowerCase()));if(!filtered.length){list.innerHTML=state.runs.length?'<div class="empty">No executions match that filter.</div>':'<div class="empty">No executions yet. Give NEXUS its first goal.</div>';return}list.innerHTML=filtered.slice().reverse().slice(0,12).map(r=>'<div class="run-row"><div class="run-objective">'+esc(r.objective||"Untitled task")+'</div><div class="run-state">'+esc(r.status)+'</div><div class="run-id">'+esc((r.run_id||"").slice(0,10))+'</div></div>').join("")}
 async function loadHealth(){try{const [health,models,runs]=await Promise.all([api.get("/api/v1/production/health"),api.get("/api/v1/models"),api.get("/api/v1/runs")]);$("connection-status").textContent="Operational";$("sidebar-health").textContent="Operational";$("sidebar-health-dot").style.background="var(--accent-2)";$("active-runs").textContent=health.runs.active;$("completed-runs").textContent=health.runs.completed;$("failed-runs").textContent=health.runs.failed;$("capacity").textContent=health.runtime.capacity_available+" capacity available";$("model-count").textContent=models.filter(m=>m.health.available).length+" / "+models.length;$("last-sync").textContent="Updated "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});renderRuns(runs)}catch(e){$("connection-status").textContent="Offline";$("sidebar-health").textContent="Offline";$("sidebar-health-dot").style.background="var(--danger)";setStatusPill("control-status","Unavailable","danger");$("last-sync").textContent="Runtime unavailable"}}
 async function loadControlCenter(){try{const d=await api.get("/api/v1/control-center/summary"),healthy=d.overall_status==="healthy";setStatusPill("control-status",healthy?"Healthy":"Degraded",healthy?"ok":"warning");$("control-headline").textContent=healthy?"NEXUS systems nominal":"Attention required";$("control-summary").textContent=healthy?"All exposed operational surfaces are reporting within the production contract.":"One or more operational surfaces need review.";$("control-run-count").textContent=d.runs.active;$("control-run-detail").textContent=d.runs.total+" total · "+d.runs.failed+" failed";$("control-agent-count").textContent=d.agents.count;$("control-agent-detail").textContent=d.agents.items.map(a=>a.role).join(" · ")||"No agents";$("control-model-count").textContent=d.models.available+" / "+d.models.count;$("control-model-detail").textContent="available";$("control-tool-count").textContent=d.tools.count;$("control-tool-detail").textContent=d.tools.items.filter(t=>t.health.healthy).length+" healthy";$("control-deployment").innerHTML="<strong>"+esc(d.deployment.mode.toUpperCase())+"</strong><span>"+esc(d.deployment.region||"local")+" · "+esc(d.deployment.instance_id||"single-instance")+"</span><small>"+(d.deployment.ready?"Scale contract ready":"Scale contract blocked")+"</small>";$("control-audit").innerHTML="<strong>"+(d.audit.valid?"Verified":"Integrity issue")+"</strong><span>"+d.audit.event_count+" events · head "+d.audit.head_sequence+"</span><small>"+esc(d.audit.error||"Hash chain valid")+"</small>";$("control-timeline").innerHTML=d.runs.recent.length?d.runs.recent.slice(0,8).map(r=>'<div class="timeline-row"><span class="timeline-dot"></span><div><strong>'+esc(r.objective||r.run_id)+'</strong><small>'+esc(r.status)+' · '+(r.steps_completed||0)+' steps · '+(r.tool_calls||0)+' tools</small></div></div>').join(""):'<div class="empty">No execution history yet.</div>';$("control-sync").textContent=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"})}catch(e){setStatusPill("control-status","Unavailable","danger");$("control-summary").textContent="Control center could not be reached."}}
-async function execute(){const objective=$("task-input").value.trim();if(!objective){$("task-error").textContent="Tell NEXUS what outcome you want.";return}if(!state.providerConfigured){$("task-error").textContent="Connect an AI provider first. Open Settings → AI provider.";activateView("settings");return}const btn=$("execute-btn");btn.disabled=true;$("task-error").textContent="";btn.querySelector("span").textContent="Queueing…";try{const job=await api.post("/api/v1/jobs",{objective,context:$("context-input").value.trim()||null,risk_level:$("risk-input").value,workspace_id:state.workspace});activateView("jobs");await loadJobs();inspectJob(job.job_id);toast("Durable job queued","ok")}catch(e){$("task-error").textContent="Could not queue job. "+e.message;toast("Job submission failed","error")}finally{btn.disabled=false;btn.querySelector("span").textContent="Run with NEXUS"}}
+async function execute(){
+  const objective=$("task-input").value.trim();
+  if(!objective){$("task-error").textContent="Tell NEXUS what outcome you want.";return}
+  if(!state.providerConfigured){$("task-error").textContent="Connect an AI provider first. Open Settings → AI provider.";activateView("settings");return}
+  addChatMessage("user",objective,state.provider?state.provider.toUpperCase():"AI");
+  const pending=addChatMessage("assistant","NEXUS is working…","Planning, executing, and verifying your request.","pending");
+  const btn=$("execute-btn");btn.disabled=true;$("task-error").textContent="";btn.querySelector("span").textContent="Working…";
+  try{
+    const job=await api.post("/api/v1/jobs",{objective,context:$("context-input").value.trim()||null,risk_level:$("risk-input").value,workspace_id:state.workspace});
+    if(pending)pending.dataset.chatPending=job.job_id;
+    chatState.pendingJobId=job.job_id;
+    $("task-input").value="";$("context-input").value="";
+    await loadJobs();inspectJob(job.job_id);toast("NEXUS started the task","ok");
+  }catch(e){
+    if(pending){pending.classList.remove("pending");pending.classList.add("error");pending.textContent="Could not start the task: "+e.message}
+    $("task-error").textContent="Could not start task. "+e.message;toast("Task failed to start","error");
+  }finally{btn.disabled=false;btn.querySelector("span").textContent="Send"}
+}
 const commands=[["Home","overview"],["Workspace","workspace"],["Knowledge","knowledge"],["Agents","agents"],["Orchestration","agent-orchestration"],["Workflows","workflows"],["Jobs","jobs"],["Executions","runs"],["Agent workspace","agent-workspace"],["Workers","workers"],["Control center","control-center"],["Reliability","reliability"],["Platform","platform"],["Evaluation","evaluation"],["Governance","governance"],["Settings","settings"]];
 function openCommand(){const modal=$("command-modal");modal.hidden=false;$("command-input").value="";renderCommands("");$("command-input").focus()}
 function closeCommand(){ $("command-modal").hidden=true}
 function renderCommands(q){const needle=q.toLowerCase();const items=commands.filter(x=>x[0].toLowerCase().includes(needle));$("command-results").innerHTML=items.map((x,i)=>'<div class="command-option '+(i===0?"selected":"")+'" data-command="'+x[1]+'"><span>'+x[0]+'</span><small>Go to surface</small></div>').join("")||'<div class="empty">No matching surface.</div>';document.querySelectorAll("[data-command]").forEach(x=>x.onclick=()=>{activateView(x.dataset.command);closeCommand()})}
-$("theme-btn").onclick=()=>{state.theme=state.theme==="dark"?"light":"dark";setTheme()};$("command-btn").onclick=openCommand;$("command-top-btn").onclick=openCommand;$("command-modal").onclick=e=>{if(e.target.id==="command-modal")closeCommand()};$("command-close").onclick=closeCommand;$("command-input").onkeydown=e=>{if(e.key==="Escape"){e.preventDefault();closeCommand()}};$("command-input").oninput=e=>renderCommands(e.target.value);$("mobile-menu").onclick=openMobile;$("mobile-close").onclick=closeMobile;$("mobile-scrim").onclick=closeMobile;$("new-workspace-btn").onclick=createWorkspace;$("setup-provider-btn").onclick=()=>activateView("settings");$("save-api-key").onclick=saveApiKey;$("remove-api-key").onclick=removeApiKey;$("toggle-api-key").onclick=()=>{const input=$("provider-api-key");input.type=input.type==="password"?"text":"password"};$("settings-theme-btn").onclick=()=>{state.theme=state.theme==="light"?"dark":"light";setTheme()};$("workspace-select").onchange=async e=>{state.workspace=e.target.value||null;await loadWorkspaceData()};$("file-input").onchange=uploadFile;$("save-memory-btn").onclick=saveMemory;$("recall-btn").onclick=recallMemory;$("execute-btn").onclick=execute;$("refresh-btn").onclick=async()=>{await Promise.all([loadHealth(),loadControlCenter(),loadAgents()]);toast("Telemetry refreshed")};$("runs-refresh").onclick=loadHealth;$("jobs-refresh").onclick=loadJobs;$("run-filter").oninput=e=>{state.runFilter=e.target.value.trim();renderRuns(state.runs)};$("download-artifact-btn").onclick=()=>toast("Artifact download started");$("copy-result-btn").onclick=async()=>{const value=$("result-output").textContent.trim();if(!value)return;try{await navigator.clipboard.writeText(value);toast("Result copied")}catch(e){toast("Copy unavailable — select the result manually","error")}};$("install-btn").onclick=async()=>{if(!deferredInstallPrompt)return;deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;$("install-btn").hidden=true};window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstallPrompt=e;$("install-btn").hidden=false});$("task-input").onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter")execute()};document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();openCommand()}if(e.key==="Escape")closeCommand();if($("command-modal")&&!$("command-modal").hidden&&["ArrowDown","ArrowUp"].includes(e.key)){e.preventDefault();const options=[...document.querySelectorAll(".command-option")];if(!options.length)return;let i=options.findIndex(x=>x.classList.contains("selected"));i=e.key==="ArrowDown"?Math.min(options.length-1,i+1):Math.max(0,i-1);options.forEach((x,n)=>x.classList.toggle("selected",n===i));options[i].scrollIntoView({block:"nearest"})}if($("command-modal")&&!$("command-modal").hidden&&e.key==="Enter"){const selected=document.querySelector(".command-option.selected");if(selected)selected.click()}});window.addEventListener("hashchange",route);window.addEventListener("error",e=>{toast("NEXUS encountered a frontend error. Refresh to recover.","error");console.error(e.error||e.message)});window.addEventListener("unhandledrejection",e=>{toast("NEXUS encountered an unexpected frontend error.","error");console.error(e.reason)});if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/web/sw.js").catch(()=>{}))}
+$("theme-btn").onclick=()=>{state.theme=state.theme==="dark"?"light":"dark";setTheme()};$("command-btn").onclick=openCommand;$("command-top-btn").onclick=openCommand;$("command-modal").onclick=e=>{if(e.target.id==="command-modal")closeCommand()};$("command-close").onclick=closeCommand;$("command-input").onkeydown=e=>{if(e.key==="Escape"){e.preventDefault();closeCommand()}};$("command-input").oninput=e=>renderCommands(e.target.value);$("mobile-menu").onclick=openMobile;$("mobile-close").onclick=closeMobile;$("mobile-scrim").onclick=closeMobile;$("new-workspace-btn").onclick=createWorkspace;$("setup-provider-btn").onclick=()=>activateView("settings");$("save-api-key").onclick=saveApiKey;$("test-api-key").onclick=testApiKey;$("remove-api-key").onclick=removeApiKey;$("toggle-api-key").onclick=()=>{const input=$("provider-api-key");input.type=input.type==="password"?"text":"password"};$("settings-theme-btn").onclick=()=>{state.theme=state.theme==="light"?"dark":"light";setTheme()};$("workspace-select").onchange=async e=>{state.workspace=e.target.value||null;await loadWorkspaceData()};$("file-input").onchange=uploadFile;$("save-memory-btn").onclick=saveMemory;$("recall-btn").onclick=recallMemory;$("execute-btn").onclick=execute;$("chat-attach-btn").onclick=()=>{activateView("workspace");$("file-input").click()};$("refresh-btn").onclick=async()=>{await Promise.all([loadHealth(),loadControlCenter(),loadAgents()]);toast("Telemetry refreshed")};$("runs-refresh").onclick=loadHealth;$("jobs-refresh").onclick=loadJobs;$("run-filter").oninput=e=>{state.runFilter=e.target.value.trim();renderRuns(state.runs)};$("download-artifact-btn").onclick=()=>toast("Artifact download started");$("copy-result-btn").onclick=async()=>{const value=$("result-output").textContent.trim();if(!value)return;try{await navigator.clipboard.writeText(value);toast("Result copied")}catch(e){toast("Copy unavailable — select the result manually","error")}};$("install-btn").onclick=async()=>{if(!deferredInstallPrompt)return;deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;$("install-btn").hidden=true};window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstallPrompt=e;$("install-btn").hidden=false});$("task-input").onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter")execute()};document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();openCommand()}if(e.key==="Escape")closeCommand();if($("command-modal")&&!$("command-modal").hidden&&["ArrowDown","ArrowUp"].includes(e.key)){e.preventDefault();const options=[...document.querySelectorAll(".command-option")];if(!options.length)return;let i=options.findIndex(x=>x.classList.contains("selected"));i=e.key==="ArrowDown"?Math.min(options.length-1,i+1):Math.max(0,i-1);options.forEach((x,n)=>x.classList.toggle("selected",n===i));options[i].scrollIntoView({block:"nearest"})}if($("command-modal")&&!$("command-modal").hidden&&e.key==="Enter"){const selected=document.querySelector(".command-option.selected");if(selected)selected.click()}});window.addEventListener("hashchange",route);window.addEventListener("error",e=>{toast("NEXUS encountered a frontend error. Refresh to recover.","error");console.error(e.error||e.message)});window.addEventListener("unhandledrejection",e=>{toast("NEXUS encountered an unexpected frontend error.","error");console.error(e.reason)});if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/web/sw.js").catch(()=>{}))}
 setTheme();route();Promise.allSettled([loadApiSettings(),loadHealth(),loadControlCenter(),loadAgents(),loadWorkspaces(),loadIntelligence(),loadProduct(),loadJobs()]).finally(()=>{const boot=$("boot-screen");if(boot)boot.classList.add("is-ready")});setInterval(loadHealth,15000);setInterval(loadControlCenter,10000);setInterval(loadJobs,5000);
 const collabState={requests:[],selectedRun:null,refreshTimer:null,eventSource:null,jobSource:null};
 const agentOptions=[["research","Researcher"],["analysis","Analyst"],["coding","Developer"],["writing","Writer"],["verification","Verifier"]];

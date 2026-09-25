@@ -1,4 +1,4 @@
-const CACHE="nexus-shell-v3";
+const CACHE="nexus-shell-v4";
 const ASSETS=["/","/web/","/web/index.html","/web/styles.css","/web/app.js","/web/manifest.webmanifest","/web/icon.svg"];
 self.addEventListener("install",event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()).catch(()=>self.skipWaiting()))});
 self.addEventListener("activate",event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()))});

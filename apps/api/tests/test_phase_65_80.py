@@ -42,3 +42,23 @@ def test_phase78_developer():
 def test_phase80_release():
  class S: deployment_mode="single"; state_backend="sqlite"; queue_backend="sqlite"; cache_backend="memory"; object_storage_backend="filesystem"
  assert PlatformReleaseChecker().check(S())["ready"]
+
+
+def test_groq_models_are_executable():
+    from nexus.core.models import model_registry, provider_model_specs
+    assert all(m.provider == "openai" for m in model_registry.all())
+    assert provider_model_specs("groq")
+    assert all(m.provider == "groq" and m.supports_tools for m in provider_model_specs("groq"))
+
+
+def test_persistent_byok_survives_manager_restart(tmp_path, monkeypatch):
+    key_path = tmp_path / "credentials.key"
+    db_path = tmp_path / "credentials.sqlite3"
+    monkeypatch.setenv("NEXUS_CREDENTIAL_KEY_PATH", str(key_path))
+    from nexus.core.models import PersistentCredentialStore, BYOKProviderManager
+    first = BYOKProviderManager(PersistentCredentialStore(db_path))
+    first.configure("user-1", "groq", "gsk-test-credential")
+    second = BYOKProviderManager(PersistentCredentialStore(db_path))
+    assert second.configured("user-1") == ("groq",)
+    assert second.preferred("user-1") == "groq"
+    assert second.credential("user-1", "groq").key == "gsk-test-credential"
