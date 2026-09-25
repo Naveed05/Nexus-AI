@@ -203,6 +203,7 @@ class DurableJobManager:
         *,
         auto_start: bool = True,
         poll_interval: float = 0.25,
+        auto_recover: bool = True,
     ) -> None:
         self.store = store
         self.executor = executor
@@ -211,7 +212,8 @@ class DurableJobManager:
         self._stop = Event()
         self._wake = Event()
         self._active: set[UUID] = set()
-        self.store.recover_interrupted()
+        if auto_recover:
+            self.store.recover_interrupted()
         self._thread: Thread | None = None
         if auto_start:
             self.start()
