@@ -34,14 +34,15 @@ async function loadApiSettings(){
   try{
     const data=await api.get("/api/v1/byok/credentials");
     const configured=data.providers?.filter(x=>x.configured)||[];
-    const selectedProvider=$("provider-select")?.value||data.preferred||"groq";
-    const active=(data.preferred&&configured.find(x=>x.provider===data.preferred))||configured.find(x=>x.provider===selectedProvider)||configured[0];
-    state.provider=active?.provider||data.preferred||null;
+    const selectedProvider=data.preferred||$("provider-select")?.value||"groq";
+    if($("provider-select"))$("provider-select").value=selectedProvider;
+    const active=configured.find(x=>x.provider===selectedProvider)||configured[0];
+    state.provider=active?.provider||selectedProvider;
     state.providerConfigured=Boolean(active);
     const title=$("provider-status-title"),detail=$("provider-status-detail"),dot=$("provider-dot"),banner=$("setup-banner");
     if(state.providerConfigured){
-      if(title)title.textContent=(active.provider||"AI").toUpperCase()+" is connected";
-      if(detail)detail.textContent="Your local provider key is configured. NEXUS can run jobs.";
+      if(title)title.textContent=(state.provider||"AI").toUpperCase()+" is connected";
+      if(detail)detail.textContent="Your local provider key is configured. NEXUS can run jobs with this provider.";
       if(dot)dot.classList.add("connected");
       if(banner)banner.hidden=true;
       if($("chat-provider-pill"))$("chat-provider-pill").textContent="Provider: "+String(state.provider||"AI").toUpperCase();
