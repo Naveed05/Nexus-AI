@@ -47,7 +47,36 @@ class DistributedExecutionBridge:
         raw = job.checkpoint.get("required_capabilities", []) if job.checkpoint else []
         return {str(value) for value in raw}
 
+    def recover_stale_jobs(self) -> int:
+        self.workers.recover_stale()
+        recovered = 0
+        for job in self.jobs.list(limit=500):
+            if job.status != JobStatus.RUNNING:
+                continue
+            lease_id = str(job.checkpoint.get("distributed_lease_id", "")).strip()
+            if not lease_id:
+                continue
+            with self.workers._lock, self.workers._connect() as conn:
+                row = conn.execute("SELECT released_at, lease_until FROM worker_leases WHERE lease_id=?", (lease_id,)).fetchone()
+            if row is None or row["released_at"] is None:
+                continue
+            if job.checkpoint.get("distributed_completed"):
+                continue
+            if job.retries < job.max_retries:
+                job.retries += 1
+                job.status = JobStatus.RETRYING
+                job.error = "Recovered after distributed worker lease expiry"
+            else:
+                job.status = JobStatus.FAILED
+                job.error = "Distributed worker lease expired and retry budget was exhausted"
+                job.finished_at = datetime.now(timezone.utc)
+            job.checkpoint = {**job.checkpoint, "distributed_recovered": True}
+            self.jobs.save(job)
+            recovered += 1
+        return recovered
+
     def claim_next(self, worker_id: UUID) -> WorkerJobLease | None:
+        self.recover_stale_jobs()
         worker = self.workers.get(worker_id)
         if worker is None:
             raise KeyError("unknown worker")
@@ -120,6 +149,9 @@ class DistributedExecutionBridge:
             raise KeyError("unknown lease")
         if row["worker_id"] != str(worker_id) or row["released_at"]:
             raise ValueError("lease is not owned by worker")
+        if row["lease_until"] <= datetime.now(timezone.utc).isoformat():
+            self.recover_stale_jobs()
+            raise ValueError("lease has expired")
         return dict(row)
 
     def _job_for_lease(self, lease: dict[str, Any]) -> DurableJob:
