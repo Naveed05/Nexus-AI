@@ -1,0 +1,70 @@
+name: NEXUS Browser E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "apps/api/**"
+      - "requirements.txt"
+      - ".github/workflows/browser-e2e.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "apps/api/**"
+      - "requirements.txt"
+      - ".github/workflows/browser-e2e.yml"
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -f apps/api/Dockerfile -t nexus-ai:e2e .
+
+      - name: Start NEXUS
+        run: |
+          docker run -d --name nexus-ai-e2e -p 8000:8000 nexus-ai:e2e
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/v1/ready >/tmp/nexus-ready.json; then
+              cat /tmp/nexus-ready.json
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Verify real workspace file upload
+        run: |
+          workspace_json=$(curl --fail --silent --show-error -X POST             -H "Content-Type: application/json"             -H "X-User-Id: e2e-ci"             -d '{"name":"CI Upload Smoke"}'             http://127.0.0.1:8000/api/v1/workspaces)
+          workspace_id=$(python -c 'import json,sys; print(json.load(sys.stdin)["workspace_id"])' <<< "$workspace_json")
+          printf 'NEXUS E2E context document.\n' > /tmp/e2e-context.txt
+          curl --fail --silent --show-error -X POST             -H "X-User-Id: e2e-ci"             -F "file=@/tmp/e2e-context.txt;type=text/plain"             "http://127.0.0.1:8000/api/v1/workspaces/$workspace_id/files"
+          curl --fail --silent --show-error             -H "X-User-Id: e2e-ci"             "http://127.0.0.1:8000/api/v1/workspaces/$workspace_id/files" | grep -q "e2e-context.txt"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install browser test dependencies
+        working-directory: apps/web
+        run: npm install
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser smoke test
+        working-directory: apps/web
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-playwright-report
+          path: apps/web/playwright-report/
