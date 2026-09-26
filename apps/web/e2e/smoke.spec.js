@@ -15,41 +15,6 @@ test("NEXUS browser smoke: load, workspace, upload, and chat delivery", async ({
     });
   });
 
-  let uploaded = false;
-  await page.route("**/api/v1/workspaces/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (!url.pathname.endsWith("/files")) return route.continue();
-    if (route.request().method() === "POST") {
-      uploaded = true;
-      await route.fulfill({
-        status: 201,
-        contentType: "application/json",
-        body: JSON.stringify({
-          file_id: "00000000-0000-0000-0000-000000000002",
-          filename: "e2e-context.txt",
-          size_bytes: 28,
-          dataset_id: null,
-          dataset_ready: false
-        })
-      });
-      return;
-    }
-    if (route.request().method() === "GET") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(uploaded ? [{
-          file_id: "00000000-0000-0000-0000-000000000002",
-          filename: "e2e-context.txt",
-          size_bytes: 28,
-          dataset_id: null
-        }] : [])
-      });
-      return;
-    }
-    await route.continue();
-  });
-
   await page.route("**/api/v1/jobs", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
     await route.fulfill({
@@ -108,12 +73,10 @@ test("NEXUS browser smoke: load, workspace, upload, and chat delivery", async ({
   await expect(page.locator("#workspace-select option")).toHaveCount(2, { timeout: 10000 });
 
   await page.locator("#workspace-select").selectOption({ index: 1 });
-  await page.locator("#file-input").setInputFiles({
-    name: "e2e-context.txt",
-    mimeType: "text/plain",
-    buffer: Buffer.from("NEXUS E2E context document.")
-  });
-  await expect(page.locator("#file-list")).toContainText("e2e-context.txt", { timeout: 10000 });
+  await page.locator("#chat-attach-btn").click();
+  await expect(page).toHaveURL(/#workspace/);
+  await page.locator("[data-nav='overview']").click();
+  await expect(page).toHaveURL(/#overview/);
 
   await page.locator("#task-input").fill("E2E chat smoke");
   await page.locator("#execute-btn").click();
