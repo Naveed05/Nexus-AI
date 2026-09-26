@@ -29,7 +29,6 @@ jobs:
       - name: Start NEXUS
         run: |
           docker run -d --name nexus-ai-e2e -p 8000:8000 nexus-ai:e2e
-          trap 'docker logs nexus-ai-e2e || true; docker rm -f nexus-ai-e2e || true' EXIT
           for i in {1..30}; do
             if curl --fail --silent http://127.0.0.1:8000/api/v1/ready >/tmp/nexus-ready.json; then
               cat /tmp/nexus-ready.json
