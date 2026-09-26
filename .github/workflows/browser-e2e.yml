@@ -37,6 +37,14 @@ jobs:
             sleep 2
           done
 
+      - name: Verify real workspace file upload
+        run: |
+          workspace_json=$(curl --fail --silent --show-error -X POST             -H "Content-Type: application/json"             -H "X-User-Id: e2e-ci"             -d '{"name":"CI Upload Smoke"}'             http://127.0.0.1:8000/api/v1/workspaces)
+          workspace_id=$(python -c 'import json,sys; print(json.load(sys.stdin)["workspace_id"])' <<< "$workspace_json")
+          printf 'NEXUS E2E context document.\n' > /tmp/e2e-context.txt
+          curl --fail --silent --show-error -X POST             -H "X-User-Id: e2e-ci"             -F "file=@/tmp/e2e-context.txt;type=text/plain"             "http://127.0.0.1:8000/api/v1/workspaces/$workspace_id/files"
+          curl --fail --silent --show-error             -H "X-User-Id: e2e-ci"             "http://127.0.0.1:8000/api/v1/workspaces/$workspace_id/files" | grep -q "e2e-context.txt"
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
