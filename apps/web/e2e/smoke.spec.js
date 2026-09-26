@@ -64,7 +64,7 @@ test("NEXUS browser smoke: load, workspace, upload, and chat delivery", async ({
     });
   });
 
-  await page.goto("/web/");
+  await page.goto("/");
   await expect(page.locator("#connection-status")).toHaveText("Operational", { timeout: 15000 });
   await expect(page.locator("#chat-provider-pill")).toHaveText("Provider: GROQ");
 
