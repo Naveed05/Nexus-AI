@@ -68,7 +68,6 @@ test("NEXUS browser smoke: load, workspace, upload, and chat delivery", async ({
   await expect(page.locator("#connection-status")).toHaveText("Operational", { timeout: 15000 });
   await expect(page.locator("#chat-provider-pill")).toHaveText("Provider: GROQ");
 
-  await page.locator("#new-workspace-btn").click();
   page.once("dialog", async (dialog) => await dialog.accept("E2E Workspace"));
   await page.locator("#new-workspace-btn").click();
   await expect(page.locator("#workspace-select option")).toHaveCount(2, { timeout: 10000 });
