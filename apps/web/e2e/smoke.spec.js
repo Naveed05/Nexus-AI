@@ -16,7 +16,7 @@ test("NEXUS browser smoke: load, workspace, upload, and chat delivery", async ({
   });
 
   let uploaded = false;
-  await page.route("**/api/v1/workspaces/*/files", async (route) => {
+  await page.route("**/api/v1/workspaces/**/files", async (route) => {
     if (route.request().method() === "POST") {
       uploaded = true;
       await route.fulfill({
