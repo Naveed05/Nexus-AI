@@ -15,6 +15,39 @@ test("NEXUS browser smoke: load, workspace, upload, and chat delivery", async ({
     });
   });
 
+  let uploaded = false;
+  await page.route("**/api/v1/workspaces/*/files", async (route) => {
+    if (route.request().method() === "POST") {
+      uploaded = true;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          file_id: "00000000-0000-0000-0000-000000000002",
+          filename: "e2e-context.txt",
+          size_bytes: 28,
+          dataset_id: null,
+          dataset_ready: false
+        })
+      });
+      return;
+    }
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(uploaded ? [{
+          file_id: "00000000-0000-0000-0000-000000000002",
+          filename: "e2e-context.txt",
+          size_bytes: 28,
+          dataset_id: null
+        }] : [])
+      });
+      return;
+    }
+    await route.continue();
+  });
+
   await page.route("**/api/v1/jobs", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
     await route.fulfill({
