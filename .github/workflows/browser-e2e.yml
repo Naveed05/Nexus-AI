@@ -1,0 +1,65 @@
+name: NEXUS Browser E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "apps/api/**"
+      - "requirements.txt"
+      - ".github/workflows/browser-e2e.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "apps/api/**"
+      - "requirements.txt"
+      - ".github/workflows/browser-e2e.yml"
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -f apps/api/Dockerfile -t nexus-ai:e2e .
+
+      - name: Start NEXUS
+        run: |
+          docker run -d --name nexus-ai-e2e -p 8000:8000 nexus-ai:e2e
+          trap 'docker logs nexus-ai-e2e || true; docker rm -f nexus-ai-e2e || true' EXIT
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/v1/ready >/tmp/nexus-ready.json; then
+              cat /tmp/nexus-ready.json
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install browser test dependencies
+        working-directory: apps/web
+        run: npm install
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser smoke test
+        working-directory: apps/web
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-playwright-report
+          path: apps/web/playwright-report/
