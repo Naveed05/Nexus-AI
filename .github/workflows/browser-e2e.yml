@@ -1,0 +1,93 @@
+name: NEXUS Browser E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "apps/api/**"
+      - "requirements.txt"
+      - ".github/workflows/browser-e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "apps/api/**"
+      - "requirements.txt"
+      - ".github/workflows/browser-e2e.yml"
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -f apps/api/Dockerfile -t nexus-ai:e2e .
+      - name: Start NEXUS
+        run: |
+          docker run -d --name nexus-ai-e2e -p 8000:8000 nexus-ai:e2e
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/v1/ready >/tmp/nexus-ready.json; then cat /tmp/nexus-ready.json; break; fi
+            sleep 2
+          done
+      - name: Verify real workspace upload and Data Autopilot pipeline
+        run: |
+          set -e
+          workspace_json=$(curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -H "X-User-Id: e2e-ci" -d '{"name":"CI Data Lab"}' http://127.0.0.1:8000/api/v1/workspaces)
+          workspace_id=$(python -c 'import json,sys; print(json.load(sys.stdin)["workspace_id"])' <<< "$workspace_json")
+          cat >/tmp/e2e-dataset.csv <<'EOF'
+          age,income,churn
+          20,100,0
+          21,110,0
+          22,120,0
+          23,130,1
+          24,140,1
+          25,150,1
+          26,160,1
+          27,170,0
+          28,180,0
+          29,190,1
+          EOF
+          curl --fail --silent --show-error -X POST -H "X-User-Id: e2e-ci" -F "file=@/tmp/e2e-dataset.csv;type=text/csv" "http://127.0.0.1:8000/api/v1/workspaces/$workspace_id/files" >/tmp/upload.json
+          cat /tmp/upload.json
+          python - <<'PY'
+          import json
+          payload=json.load(open("/tmp/upload.json"))
+          assert payload.get("dataset_id"), payload
+          print("dataset_id:", payload["dataset_id"])
+          PY
+          dataset_id=$(python -c 'import json; print(json.load(open("/tmp/upload.json"))["dataset_id"])')
+          curl --fail --silent --show-error "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/profile" >/tmp/profile.json
+          curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -d '{"target":"churn"}' "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/analyze" >/tmp/analysis.json
+          curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -d '{"target":"churn"}' "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/baseline" >/tmp/baseline.json
+          python - <<'PY'
+          import json
+          profile=json.load(open("/tmp/profile.json"))
+          analysis=json.load(open("/tmp/analysis.json"))
+          baseline=json.load(open("/tmp/baseline.json"))
+          assert profile["result"]["rows"] == 10, profile
+          result=analysis["result"]
+          assert result["problem"]["type"] == "classification", result
+          assert baseline["result"]["metrics"], baseline
+          print("Data Autopilot API E2E: profile/analyze/baseline passed")
+          PY
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install browser test dependencies
+        working-directory: apps/web
+        run: npm install
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Run browser smoke test
+        working-directory: apps/web
+        run: npm run test:e2e
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-playwright-report
+          path: apps/web/playwright-report/
