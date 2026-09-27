@@ -80,3 +80,21 @@ def test_nemotron_response_parser_accepts_openai_compatible_output() -> None:
     assert parsed.model_id == NEMOTRON_MODEL_SPECS[0].model_id
     assert parsed.output == "Evidence-backed result"
     assert parsed.response_id == "nemotron-test-response"
+
+def test_nemotron_server_key_path_does_not_persist_credentials() -> None:
+    class FakeResponse:
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+        def read(self):
+            return json.dumps({"id": "server-test", "choices": [{"message": {"content": "ok"}}]}).encode("utf-8")
+
+    manager = BYOKProviderManager(InMemoryCredentialStore())
+    response = manager.generate_with_api_key(
+        provider="nemotron",
+        api_key="nvapi-server-test",
+        model=NEMOTRON_MODEL_SPECS[0],
+        input_items=[{"role": "user", "content": "hello"}],
+        transport=BYOKHTTPTransport(opener=lambda *_args, **_kwargs: FakeResponse()),
+    )
+    assert response.output == "ok"
+    assert manager.configured("server-user") == ()
