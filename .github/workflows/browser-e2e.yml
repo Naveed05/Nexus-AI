@@ -52,7 +52,7 @@ jobs:
           dataset_id=$(python -c 'import json,sys; print(json.load(sys.stdin)["dataset_id"])' <<< "$upload")
           test -n "$dataset_id"
           curl --fail --silent --show-error "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/profile" | grep -q '"rows":11'
-          curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -d '{"target":"churn"}' "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/analyze" | grep -q '"problem_type"|"type"'
+          curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -d '{"target":"churn"}' "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/analyze" | grep -Eq '"problem_type"|"type"'
           curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -d '{"target":"churn"}' "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/baseline" | grep -q '"metrics"'
       - name: Set up Node
         uses: actions/setup-node@v4
