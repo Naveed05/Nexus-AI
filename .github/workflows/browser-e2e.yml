@@ -33,6 +33,7 @@ jobs:
           done
       - name: Verify real workspace upload and Data Autopilot pipeline
         run: |
+          set -e
           workspace_json=$(curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -H "X-User-Id: e2e-ci" -d '{"name":"CI Data Lab"}' http://127.0.0.1:8000/api/v1/workspaces)
           workspace_id=$(python -c 'import json,sys; print(json.load(sys.stdin)["workspace_id"])' <<< "$workspace_json")
           cat >/tmp/e2e-dataset.csv <<'EOF'
@@ -48,12 +49,29 @@ jobs:
           28,180,0
           29,190,1
           EOF
-          upload=$(curl --fail --silent --show-error -X POST -H "X-User-Id: e2e-ci" -F "file=@/tmp/e2e-dataset.csv;type=text/csv" "http://127.0.0.1:8000/api/v1/workspaces/$workspace_id/files")
-          dataset_id=$(python -c 'import json,sys; print(json.load(sys.stdin)["dataset_id"])' <<< "$upload")
-          test -n "$dataset_id"
-          curl --fail --silent --show-error "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/profile" | grep -q '"rows":11'
-          curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -d '{"target":"churn"}' "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/analyze" | grep -Eq '"problem_type"|"type"'
-          curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -d '{"target":"churn"}' "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/baseline" | grep -q '"metrics"'
+          curl --fail --silent --show-error -X POST -H "X-User-Id: e2e-ci" -F "file=@/tmp/e2e-dataset.csv;type=text/csv" "http://127.0.0.1:8000/api/v1/workspaces/$workspace_id/files" >/tmp/upload.json
+          cat /tmp/upload.json
+          python - <<'PY'
+          import json
+          payload=json.load(open("/tmp/upload.json"))
+          assert payload.get("dataset_id"), payload
+          print("dataset_id:", payload["dataset_id"])
+          PY
+          dataset_id=$(python -c 'import json; print(json.load(open("/tmp/upload.json"))["dataset_id"])')
+          curl --fail --silent --show-error "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/profile" >/tmp/profile.json
+          curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -d '{"target":"churn"}' "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/analyze" >/tmp/analysis.json
+          curl --fail --silent --show-error -X POST -H "Content-Type: application/json" -d '{"target":"churn"}' "http://127.0.0.1:8000/api/v1/datasets/$dataset_id/intelligence/baseline" >/tmp/baseline.json
+          python - <<'PY'
+          import json
+          profile=json.load(open("/tmp/profile.json"))
+          analysis=json.load(open("/tmp/analysis.json"))
+          baseline=json.load(open("/tmp/baseline.json"))
+          assert profile["rows"] == 11, profile
+          result=analysis["result"]
+          assert result["problem"]["type"] == "classification", result
+          assert baseline["result"]["metrics"], baseline
+          print("Data Autopilot API E2E: profile/analyze/baseline passed")
+          PY
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
