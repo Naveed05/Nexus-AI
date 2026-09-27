@@ -94,7 +94,7 @@ REMEMBER
 
 ### 🔑 Multi-provider / BYOK model layer
 
-NEXUS supports a Bring Your Own Key foundation so each user can connect their own model-provider credentials instead of sharing a platform-wide API key. The provider layer currently supports OpenAI, Anthropic Claude, and Groq, with per-user credential isolation, masked credentials, provider validation, provider-specific request adapters, and an extensible provider abstraction.
+NEXUS supports a Bring Your Own Key foundation so each user can connect their own model-provider credentials instead of sharing a platform-wide API key. The provider layer currently supports OpenAI, Anthropic Claude, Groq, and NVIDIA Nemotron. Nemotron 3 Super is exposed through NVIDIA's OpenAI-compatible NIM endpoint with 1M-context metadata, reasoning/tool-use capability contracts, per-user credential isolation, masked credentials, provider validation, provider-specific adapters, and an extensible provider abstraction.
 
 Raw user API keys are never returned by the credential-management interface. Production persistence is expected to use an encrypted secret store rather than plaintext application storage.
 
@@ -118,7 +118,22 @@ The architecture supports frontier reasoning models alongside lower-cost models 
 - grounding-aware verification
 - structured research reports
 
-### 📊 Data intelligence
+### 🏟️ Model Arena & Evidence Lab
+
+NEXUS includes an evaluation surface designed to answer which model actually performs better for a defined workload, rather than assuming a model is best because of a benchmark headline.
+
+- provider-neutral model capability catalog
+- executable arena runs against registered/configured models
+- per-model latency and output telemetry
+- optional assertion-based task scoring
+- explicit skipped/failed/completed states
+- NVIDIA Nemotron 3 Super integration for long-context reasoning and agentic workloads
+- optional manual GitHub live smoke workflow using a repository-owned NVIDIA_API_KEY secret
+- Data Autopilot / Evidence Lab for profiling, cleaning evidence, EDA, problem inference, baseline ML, decision traces, and experiment recommendations
+
+NVIDIA's current NIM API exposes Nemotron 3 Super through an OpenAI-compatible /v1/chat/completions endpoint with configurable reasoning effort and up to 1M context. NEXUS keeps the provider optional and evaluates it through the same provider-neutral contract used by the rest of the platform.
+
+## 📊 Data intelligence
 
 NEXUS includes a foundation for:
 
