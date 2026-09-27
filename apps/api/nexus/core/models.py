@@ -248,7 +248,7 @@ NEMOTRON_MODEL_SPECS: tuple[ModelSpec, ...] = (
         tier="flagship",
         description="NVIDIA Nemotron 3 Super with 1M context, reasoning, planning, tool calling, and agentic workflows.",
         capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis", "long_context"}),
-        reasoning_levels=frozenset({"low", "medium", "high", "max"}),
+        reasoning_levels=frozenset({"none", "low", "high"}),
         context_window=1_000_000,
         supports_tools=True,
         cost_score=1,
@@ -544,6 +544,35 @@ class BYOKProviderManager:
         )
         return (transport or BYOKHTTPTransport()).execute(request, timeout_seconds=timeout_seconds)
 
+    def generate_with_api_key(
+        self,
+        *,
+        provider: str,
+        api_key: str,
+        model: ModelSpec,
+        input_items: list[Any],
+        tools: list[Mapping[str, Any]] | None = None,
+        tool_choice: str = "auto",
+        transport: "BYOKHTTPTransport | None" = None,
+        timeout_seconds: float = 30.0,
+    ) -> ModelResponse:
+        """Execute a deployment-owned provider credential without persisting it."""
+        normalized = provider.strip().lower()
+        if normalized not in SUPPORTED_PROVIDERS:
+            raise ProviderCredentialError(f"Unsupported provider: {provider}")
+        secret = api_key.strip()
+        if not secret:
+            raise ProviderCredentialError(f"Server credential is empty for provider: {normalized}")
+        credential = ProviderCredential(provider=normalized, key=secret)
+        request = provider_adapter(normalized).build_request(
+            credential=credential,
+            model=model,
+            input_items=input_items,
+            tools=tools or [],
+            tool_choice=tool_choice,
+        )
+        return (transport or BYOKHTTPTransport()).execute(request, timeout_seconds=timeout_seconds)
+
 
 byok_provider_manager = BYOKProviderManager()
 
@@ -706,7 +735,8 @@ class OpenAICompatibleBYOKAdapter(BYOKProviderAdapter):
             if self.reasoning:
                 payload["temperature"] = 1.0
                 payload["top_p"] = 0.95
-                payload["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}}
+                payload["max_tokens"] = 16_384
+                payload["reasoning_effort"] = "high"
         else:
             payload = {
                 "model": model.model_id,
