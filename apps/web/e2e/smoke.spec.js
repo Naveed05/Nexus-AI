@@ -11,6 +11,9 @@ test("NEXUS browser smoke: workspace, chat, and Data Autopilot", async ({ page }
     if(route.request().method()!=="POST") return route.continue();
     await route.fulfill({status:202,contentType:"application/json",body:JSON.stringify({job_id:"00000000-0000-0000-0000-000000000001",status:"queued",objective:"E2E chat smoke",retries:0,max_retries:3})});
   });
+  await page.route("**/api/v1/jobs/00000000-0000-0000-0000-000000000001", async route => {
+    await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({job_id:"00000000-0000-0000-0000-000000000001",status:"queued",retries:0,max_retries:3})});
+  });
   await page.route("**/api/v1/jobs/00000000-0000-0000-0000-000000000001/stream", async route => {
     await route.fulfill({status:200,headers:{"Content-Type":"text/event-stream","Cache-Control":"no-cache"},body:"event: job\ndata: "+JSON.stringify({job_id:"00000000-0000-0000-0000-000000000001",status:"completed",retries:0,max_retries:3,result:{output:"E2E response delivered successfully.",model:"groq/test-model",verification_passed:true,tool_calls:0,grounding_score:1}})+"\n\n"});
   });
