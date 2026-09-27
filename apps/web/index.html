@@ -25,7 +25,7 @@
       <div class="nav-group-label">START</div>
       <a href="#overview" class="nav-item active" data-nav="overview"><span>⌂</span><div>Home<small>Run a task</small></div></a>
       <a href="#workspace" class="nav-item" data-nav="workspace"><span>✦</span><div>Workspace<small>Files & memory</small></div></a>
-      <a href="#knowledge" class="nav-item" data-nav="knowledge"><span>◉</span><div>Knowledge<small>Context & sources</small></div></a>
+      <a href="#knowledge" class="nav-item" data-nav="knowledge"><span>◉</span><div>Knowledge<small>Context & sources</small></div></a><a href="#data-lab" class="nav-item" data-nav="data-lab"><span>◫</span><div>Data Lab<small>Autopilot analysis</small></div></a>
       <div class="nav-group-label">WORK</div>
       <a href="#agents" class="nav-item" data-nav="agents"><span>◈</span><div>Agents<small>Specialists</small></div></a>
       <a href="#agent-orchestration" class="nav-item" data-nav="agent-orchestration"><span>◎</span><div>Orchestration<small>Multi-agent work</small></div></a>
@@ -264,7 +264,31 @@
           <div><p class="eyebrow">EXECUTION TIMELINE</p><div id="control-timeline" class="timeline"></div></div>
         </section>
       </section>
-    </main>
+    <section id="data-lab" class="view-section">
+  <div class="page-intro"><p class="eyebrow">DATA AUTOPILOT · EVIDENCE LAB</p><h2>Turn a raw dataset into a defensible data-science brief.</h2><p>NEXUS profiles the data, measures quality, applies conservative cleaning, infers the problem type, surfaces relationships, and can benchmark a transparent baseline model.</p></div>
+  <section class="panel data-autopilot-hero"><div class="data-lab-controls">
+    <div><label class="mini-label" for="data-lab-dataset">DATASET</label><select id="data-lab-dataset" aria-label="Dataset for Data Autopilot"><option value="">Select a workspace dataset</option></select></div>
+    <div><label class="mini-label" for="data-lab-target">TARGET · OPTIONAL</label><select id="data-lab-target" aria-label="Target column"><option value="">No supervised target</option></select></div>
+    <button id="data-autopilot-run" class="primary">Run Data Autopilot →</button>
+  </div><div id="data-lab-status" class="data-lab-status" role="status" aria-live="polite">Select a CSV, JSON, or Parquet dataset from the active workspace.</div></section>
+  <div id="data-lab-results" class="data-lab-results" hidden>
+    <div class="metric-grid data-lab-metrics">
+      <article class="metric-card"><span class="metric-icon">▦</span><div><small>Rows</small><strong id="dl-rows">—</strong><em id="dl-shape">—</em></div></article>
+      <article class="metric-card"><span class="metric-icon">◇</span><div><small>Columns</small><strong id="dl-columns">—</strong><em>Features available</em></div></article>
+      <article class="metric-card"><span class="metric-icon">✓</span><div><small>Data quality</small><strong id="dl-quality">—</strong><em id="dl-quality-detail">Computed from evidence</em></div></article>
+      <article class="metric-card"><span class="metric-icon">◎</span><div><small>Problem</small><strong id="dl-problem">—</strong><em id="dl-problem-detail">No target selected</em></div></article>
+    </div>
+    <div class="two-column">
+      <section class="panel"><div class="section-head"><div><p class="eyebrow">DATA CONTRACT</p><h2>Quality & cleaning</h2></div><span class="live-badge">DETERMINISTIC</span></div><div id="dl-quality-list" class="data-lab-list"></div></section>
+      <section class="panel"><div class="section-head"><div><p class="eyebrow">SIGNALS</p><h2>What the data says</h2></div><span class="muted">Evidence first</span></div><div id="dl-signals" class="data-lab-list"></div></section>
+    </div>
+    <div class="two-column">
+      <section class="panel"><div class="section-head"><div><p class="eyebrow">BASELINE</p><h2>Transparent model benchmark</h2></div><span id="dl-model-badge" class="status-pill status-neutral">Not run</span></div><div id="dl-baseline" class="data-lab-list"><div class="empty">Choose a target and run Autopilot to benchmark a baseline.</div></div></section>
+      <section class="panel"><div class="section-head"><div><p class="eyebrow">DECISION TRACE</p><h2>How NEXUS reached this brief</h2></div></section><ol id="dl-trace" class="data-trace"></ol></section>
+    </div>
+    <section class="panel"><div class="section-head"><div><p class="eyebrow">NEXT EXPERIMENTS</p><h2>Recommended next moves</h2></div><span class="muted">Generated from measured evidence</span></div><div id="dl-recommendations" class="recommendation-grid"></div></section>
+  </div>
+</section></main>
     <footer><span>NEXUS AI</span><span>Understand · Plan · Route · Execute · Observe · Verify · Deliver</span><span>Production control surface</span></footer>
   </div>
 </div>
@@ -272,5 +296,5 @@
 <div class="mobile-scrim" id="mobile-scrim"></div>
 <div class="command-modal" id="command-modal" hidden><div class="command-dialog"><div class="command-search"><span>⌘</span><input id="command-input" placeholder="Jump to a NEXUS surface…" autocomplete="off"><button id="command-close" class="command-close" type="button" aria-label="Close command palette" title="Close command palette"><kbd>Esc</kbd></button></div><div id="command-results"></div></div></div>
 <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
-<script type="module" src="/web/app.js"></script><script type="module" src="/web/workers.js"></script><script type="module" src="/web/agent-workflows.js"></script><script type="module" src="/web/evaluation.js"></script><script type="module" src="/web/reliability.js"></script><script type="module" src="/web/platform.js"></script><script type="module" src="/web/governance.js"></script>
+<script type="module" src="/web/app.js"></script><script type="module" src="/web/workers.js"></script><script type="module" src="/web/agent-workflows.js"></script><script type="module" src="/web/evaluation.js"></script><script type="module" src="/web/reliability.js"></script><script type="module" src="/web/platform.js"></script><script type="module" src="/web/governance.js"></script><script type="module" src="/web/data-autopilot.js"></script>
 </body></html>
