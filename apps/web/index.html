@@ -193,6 +193,21 @@
           <div class="control-grid"><article><small>Latest pass rate</small><strong id="eval-pass-rate">—</strong><span>benchmark quality</span></article><article><small>Check score</small><strong id="eval-check-score">—</strong><span>observable checks</span></article><article><small>Grounding</small><strong id="eval-grounding">—</strong><span>evidence score</span></article><article><small>Drift</small><strong id="eval-drift">—</strong><span>recent change signal</span></article></div>
           <div class="section-head"><div><p class="eyebrow">QUALITY GATE</p><span id="evaluation-gate-detail" class="muted">Checking latest evaluation…</span></div><button id="evaluation-gate" class="primary">Run quality gate</button></div>
           <div class="section-head"><div><p class="eyebrow">MODEL ARENA</p><h2>Compare the intelligence layer before you deploy it.</h2><span class="muted">Provider-neutral capability, context, latency, cost, and health metadata. Run live evaluations only against providers you have configured.</span></div><button id="model-arena-refresh" class="ghost">Refresh</button></div>
+          <div class="two-column">
+            <div>
+              <label class="field-label" for="model-arena-prompt">Benchmark prompt</label>
+              <textarea id="model-arena-prompt" rows="4" placeholder="Example: Explain the dataset's main risk in three concise bullets."></textarea>
+              <label class="field-label" for="model-arena-expected">Optional expected phrases (comma-separated)</label>
+              <input id="model-arena-expected" placeholder="risk, evidence, recommendation">
+            </div>
+            <div>
+              <div class="section-head"><div><p class="eyebrow">REGISTERED MODELS</p><span class="muted">Choose up to four configured models.</span></div></div>
+              <div id="model-arena-selectors" class="job-list"><div class="empty">Loading model catalog…</div></div>
+              <button id="model-arena-run" class="primary">Run arena</button>
+              <span id="model-arena-run-status" class="muted"></span>
+            </div>
+          </div>
+          <div id="model-arena-results" class="job-list"><div class="empty">No arena run yet.</div></div>
           <div id="model-arena-list" class="job-list"><div class="empty">Loading model catalog…</div></div>
           <div class="two-column"><div><p class="eyebrow">RUN HISTORY</p><div id="evaluation-runs" class="job-list"><div class="empty">Loading evaluation history…</div></div></div><div><p class="eyebrow">COMPONENT TELEMETRY</p><div id="evaluation-components" class="job-list"><div class="empty">Loading component metrics…</div></div></div></div>
         </section>
