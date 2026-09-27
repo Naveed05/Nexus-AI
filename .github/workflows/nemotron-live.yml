@@ -1,0 +1,45 @@
+name: NEXUS Nemotron Live Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Small deterministic provider smoke prompt"
+        required: false
+        default: "Reply with exactly: NEXUS Nemotron live smoke OK"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call NVIDIA NIM
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          PROMPT: ${{ inputs.prompt }}
+        run: |
+          set -euo pipefail
+          test -n "$NVIDIA_API_KEY" || { echo "NVIDIA_API_KEY repository secret is required"; exit 1; }
+          python - <<'PY'
+          import json, os, urllib.request
+          payload = {
+              "model": "nvidia/nemotron-3-super-120b-a12b",
+              "messages": [{"role": "user", "content": os.environ["PROMPT"]}],
+              "temperature": 1.0,
+              "top_p": 0.95,
+              "max_tokens": 1024,
+              "reasoning_effort": "high",
+              "stream": False,
+          }
+          request = urllib.request.Request(
+              "https://integrate.api.nvidia.com/v1/chat/completions",
+              data=json.dumps(payload).encode(),
+              headers={"Authorization": f"Bearer {os.environ['NVIDIA_API_KEY']}", "Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(request, timeout=60) as response:
+              body = json.loads(response.read())
+          assert body.get("id"), body
+          choices = body.get("choices") or []
+          assert choices and choices[0].get("message", {}).get("content"), body
+          print("Nemotron live smoke passed:", body["id"])
+          PY
