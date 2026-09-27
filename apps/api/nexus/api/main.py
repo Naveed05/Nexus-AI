@@ -1346,12 +1346,109 @@ def model_arena(x_nexus_user_id: str | None = Header(default=None)) -> dict:
             "supports_tools": model.supports_tools,
             "cost_score": model.cost_score,
             "latency_score": model.latency_score,
-            "configured": model.provider in configured,
+            "configured": model.provider in configured or bool({
+                "openai": settings.openai_api_key,
+                "groq": settings.groq_api_key,
+                "nemotron": settings.nvidia_api_key,
+            }.get(model.provider)),
             "available": health.available,
             "consecutive_failures": health.consecutive_failures,
             "latency_ms": health.latency_ms,
         })
     return {"models": models, "configured_providers": sorted(configured)}
+
+@app.post("/api/v1/models/arena/run")
+def run_model_arena(
+    payload: dict,
+    x_nexus_user_id: str | None = Header(default=None),
+) -> dict:
+    """Run one benchmark prompt against selected registered models."""
+    user_id = _byok_user(x_nexus_user_id)
+    prompt = str(payload.get("prompt", "")).strip()
+    if not prompt:
+        raise HTTPException(status_code=422, detail="prompt is required")
+    if len(prompt) > 10_000:
+        raise HTTPException(status_code=422, detail="prompt is too long")
+    selected = payload.get("models")
+    if not isinstance(selected, list) or not selected:
+        raise HTTPException(status_code=422, detail="models must be a non-empty array")
+    if len(selected) > 4:
+        raise HTTPException(status_code=422, detail="at most 4 models can run per arena")
+    expected = payload.get("expected_contains", [])
+    if not isinstance(expected, list) or not all(isinstance(item, str) for item in expected):
+        raise HTTPException(status_code=422, detail="expected_contains must be an array of strings")
+    if len(expected) > 10:
+        raise HTTPException(status_code=422, detail="at most 10 expected_contains assertions are allowed")
+
+    catalog = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"))
+    by_key = {model.key: model for model in catalog}
+    server_keys = {
+        "openai": settings.openai_api_key,
+        "groq": settings.groq_api_key,
+        "nemotron": settings.nvidia_api_key,
+    }
+    results = []
+    for key in selected:
+        model = by_key.get(str(key))
+        if model is None:
+            results.append({"model": str(key), "status": "rejected", "error": "model is not in the registered catalog"})
+            continue
+        user_configured = model.provider in byok_provider_manager.configured(user_id)
+        server_key = server_keys.get(model.provider)
+        if not user_configured and not server_key:
+            results.append({"model": model.key, "provider": model.provider, "status": "skipped", "error": "provider is not configured"})
+            continue
+        started = time.perf_counter()
+        try:
+            if user_configured:
+                response = byok_provider_manager.generate(
+                    user_id=user_id,
+                    model=model,
+                    input_items=[{"role": "user", "content": prompt}],
+                    tools=[],
+                    timeout_seconds=30,
+                )
+            else:
+                response = byok_provider_manager.generate_with_api_key(
+                    provider=model.provider,
+                    api_key=str(server_key),
+                    model=model,
+                    input_items=[{"role": "user", "content": prompt}],
+                    tools=[],
+                    timeout_seconds=30,
+                )
+            latency_ms = round((time.perf_counter() - started) * 1000, 1)
+            lowered = response.output.lower()
+            matched = [item for item in expected if item.lower() in lowered]
+            results.append({
+                "model": model.key,
+                "model_id": response.model_id,
+                "provider": response.provider,
+                "status": "completed",
+                "latency_ms": latency_ms,
+                "output": response.output,
+                "output_chars": len(response.output),
+                "response_id": response.response_id,
+                "assertion_score": (len(matched) / len(expected)) if expected else None,
+                "matched_assertions": matched,
+            })
+        except (ProviderCredentialError, ProviderNotConfiguredError, BYOKProviderError) as exc:
+            results.append({
+                "model": model.key,
+                "provider": model.provider,
+                "status": "failed",
+                "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+                "error": str(exc),
+            })
+    return {
+        "prompt": prompt,
+        "expected_contains": expected,
+        "results": results,
+        "completed": sum(item["status"] == "completed" for item in results),
+        "failed": sum(item["status"] == "failed" for item in results),
+        "skipped": sum(item["status"] == "skipped" for item in results),
+    }
+
 
 @app.get("/api/v1/models/health")
 def list_model_health() -> dict:
