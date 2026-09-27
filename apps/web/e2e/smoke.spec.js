@@ -18,6 +18,30 @@ test("NEXUS browser smoke: workspace, chat, and Data Autopilot", async ({ page }
     await route.fulfill({status:200,headers:{"Content-Type":"text/event-stream","Cache-Control":"no-cache"},body:"event: job\ndata: "+JSON.stringify({job_id:"00000000-0000-0000-0000-000000000001",status:"completed",retries:0,max_retries:3,result:{output:"E2E response delivered successfully.",model:"groq/test-model",verification_passed:true,tool_calls:0,grounding_score:1}})+"\n\n"});
   });
 
+  await page.route("**/api/v1/models/arena", async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        models: [
+          {key:"groq-gpt-oss-120b",model_id:"openai/gpt-oss-120b",provider:"groq",description:"E2E model",context_window:131072,supports_tools:true,configured:true,available:true,latency_ms:12,cost_score:4,latency_score:2},
+          {key:"nemotron-3-super-120b-a12b",model_id:"nvidia/nemotron-3-super-120b-a12b",provider:"nemotron",description:"E2E Nemotron",context_window:1000000,supports_tools:true,configured:true,available:true,latency_ms:18,cost_score:1,latency_score:3}
+        ]
+      })
+    });
+  });
+  await page.route("**/api/v1/models/arena/run", async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        prompt:"E2E arena benchmark",
+        results:[{model:"nemotron-3-super-120b-a12b",model_id:"nvidia/nemotron-3-super-120b-a12b",provider:"nemotron",status:"completed",latency_ms:25,output:"Evidence-backed benchmark response",output_chars:34,assertion_score:1,matched_assertions:["evidence"]}],
+        completed:1,failed:0,skipped:0
+      })
+    });
+  });
+
   await page.goto("/");
   await expect(page.locator("#connection-status")).toHaveText("Operational",{timeout:15000});
   await expect(page.locator("#chat-provider-pill")).toHaveText("Provider: GROQ");
@@ -58,4 +82,14 @@ test("NEXUS browser smoke: workspace, chat, and Data Autopilot", async ({ page }
   await expect(page.locator("#dl-model-badge")).toHaveText("Benchmarked");
   await expect(page.locator("#dl-trace li")).toHaveCount(6);
   await expect(page.locator("#data-lab-status")).toContainText("Data Autopilot complete");
+
+  await page.locator("[data-nav='evaluation']").click();
+  await expect(page).toHaveURL(/#evaluation/);
+  await expect(page.locator("#model-arena-list")).toContainText("NVIDIA/NEMOTRON");
+  await page.locator("#model-arena-prompt").fill("E2E arena benchmark");
+  await page.locator("#model-arena-expected").fill("evidence");
+  await page.locator(".model-arena-check[value="nemotron-3-super-120b-a12b"]").check();
+  await page.locator("#model-arena-run").click();
+  await expect(page.locator("#model-arena-results")).toContainText("Evidence-backed benchmark response");
+  await expect(page.locator("#model-arena-run-status")).toContainText("1 completed");
 });
