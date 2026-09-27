@@ -445,3 +445,22 @@ def test_workflow_control_rejects_invalid_transition():
         json={"action": "resume", "idempotency_key": "bad-resume"},
     )
     assert response.status_code == 422
+
+def test_model_arena_catalog_and_safe_skip_without_credentials() -> None:
+    response = client.get("/api/v1/models/arena", headers={"X-Nexus-User-ID": "arena-test-user"})
+    assert response.status_code == 200
+    body = response.json()
+    nemotron = next(item for item in body["models"] if item["provider"] == "nemotron")
+    assert nemotron["context_window"] == 1_000_000
+    assert nemotron["configured"] is False
+
+    run = client.post(
+        "/api/v1/models/arena/run",
+        headers={"X-Nexus-User-ID": "arena-test-user"},
+        json={"prompt": "Return a short answer", "models": ["nemotron-3-super-120b-a12b"]},
+    )
+    assert run.status_code == 200
+    result = run.json()
+    assert result["completed"] == 0
+    assert result["skipped"] == 1
+    assert result["results"][0]["status"] == "skipped"

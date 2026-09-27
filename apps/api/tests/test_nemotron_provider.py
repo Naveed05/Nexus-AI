@@ -17,6 +17,7 @@ def test_nemotron_catalog_exposes_long_context_reasoning_model() -> None:
     assert model.provider == "nemotron"
     assert model.model_id == "nvidia/nemotron-3-super-120b-a12b"
     assert model.context_window == 1_000_000
+    assert model.reasoning_levels == frozenset({"none", "low", "high"})
     assert {"reasoning", "tools", "agentic", "long_context"}.issubset(model.capabilities)
     assert model.supports_tools is True
 
@@ -55,7 +56,8 @@ def test_nemotron_builds_openai_compatible_reasoning_request() -> None:
     assert request.payload["tool_choice"] == "auto"
     assert request.payload["temperature"] == 1.0
     assert request.payload["top_p"] == 0.95
-    assert request.payload["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
+    assert request.payload["max_tokens"] == 16_384
+    assert request.payload["reasoning_effort"] == "high"
 
 
 def test_nemotron_response_parser_accepts_openai_compatible_output() -> None:
@@ -78,3 +80,21 @@ def test_nemotron_response_parser_accepts_openai_compatible_output() -> None:
     assert parsed.model_id == NEMOTRON_MODEL_SPECS[0].model_id
     assert parsed.output == "Evidence-backed result"
     assert parsed.response_id == "nemotron-test-response"
+
+def test_nemotron_server_key_path_does_not_persist_credentials() -> None:
+    class FakeResponse:
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+        def read(self):
+            return json.dumps({"id": "server-test", "choices": [{"message": {"content": "ok"}}]}).encode("utf-8")
+
+    manager = BYOKProviderManager(InMemoryCredentialStore())
+    response = manager.generate_with_api_key(
+        provider="nemotron",
+        api_key="nvapi-server-test",
+        model=NEMOTRON_MODEL_SPECS[0],
+        input_items=[{"role": "user", "content": "hello"}],
+        transport=BYOKHTTPTransport(opener=lambda *_args, **_kwargs: FakeResponse()),
+    )
+    assert response.output == "ok"
+    assert manager.configured("server-user") == ()
