@@ -1425,10 +1425,11 @@ def list_byok_credentials(x_nexus_user_id: str | None = Header(default=None)) ->
             {
                 "provider": provider,
                 "configured": provider in configured,
-                "server_configured": (
-                    (provider == "openai" and bool(settings.openai_api_key))
-                    or (provider == "groq" and bool(settings.groq_api_key))
-                ),
+                "server_configured": bool({
+                    "openai": settings.openai_api_key,
+                    "groq": settings.groq_api_key,
+                    "nemotron": settings.nvidia_api_key,
+                }.get(provider)),
             }
             for provider in sorted(SUPPORTED_PROVIDERS)
         ],
@@ -1486,13 +1487,23 @@ def test_byok_provider(
         if not specs:
             raise ProviderCredentialError(f"No executable model is registered for provider: {provider}")
         model = specs[0]
-        response = byok_provider_manager.generate(
-            user_id=user_id,
-            model=model,
-            input_items=[{"role": "user", "content": "Reply with exactly: NEXUS provider connection OK"}],
-            tools=[],
-            timeout_seconds=20,
-        )
+        if provider == "nemotron" and provider not in byok_provider_manager.configured(user_id) and settings.nvidia_api_key:
+            response = byok_provider_manager.generate_with_api_key(
+                provider=provider,
+                api_key=settings.nvidia_api_key,
+                model=model,
+                input_items=[{"role": "user", "content": "Reply with exactly: NEXUS provider connection OK"}],
+                tools=[],
+                timeout_seconds=20,
+            )
+        else:
+            response = byok_provider_manager.generate(
+                user_id=user_id,
+                model=model,
+                input_items=[{"role": "user", "content": "Reply with exactly: NEXUS provider connection OK"}],
+                tools=[],
+                timeout_seconds=20,
+            )
     except ProviderNotConfiguredError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (ProviderCredentialError, BYOKProviderError) as exc:
