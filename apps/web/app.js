@@ -34,10 +34,10 @@ async function loadApiSettings(){
   try{
     const data=await api.get("/api/v1/byok/credentials");
     const configured=data.providers?.filter(x=>x.configured)||[];
-    const selectedProvider=data.preferred||$("provider-select")?.value||"groq";
+    const selectedProvider=data.preferred||configured[0]?.provider||"";
     if($("provider-select"))$("provider-select").value=selectedProvider;
     const active=configured.find(x=>x.provider===selectedProvider)||configured[0];
-    state.provider=active?.provider||selectedProvider;
+    state.provider=active?.provider||"";
     state.providerConfigured=Boolean(active);
     const title=$("provider-status-title"),detail=$("provider-status-detail"),dot=$("provider-dot"),banner=$("setup-banner");
     if(state.providerConfigured){
