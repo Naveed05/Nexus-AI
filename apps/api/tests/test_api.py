@@ -304,7 +304,7 @@ def test_model_catalog_and_health_api_are_safe() -> None:
     models = client.get("/api/v1/models")
     assert models.status_code == 200
     body = models.json()
-    assert {item["key"] for item in body} == {"astra", "sol", "terra", "luna", "groq-gpt-oss-120b", "groq-gpt-oss-20b"}
+    assert {item["key"] for item in body} == {"astra", "sol", "terra", "luna", "groq-gpt-oss-120b", "groq-gpt-oss-20b", "nemotron-3-super-120b-a12b"}
     astra = next(item for item in body if item["key"] == "astra")
     assert "agentic" in astra["capabilities"]
     assert "health" in astra

@@ -1321,9 +1321,37 @@ def _model_payload(model: ModelSpec) -> dict:
 @app.get("/api/v1/models")
 def list_models() -> list[dict]:
     """Expose safe model capability metadata without credentials or provider secrets."""
-    models = (*model_registry.all(), *provider_model_specs("groq"))
+    models = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"))
     return [_model_payload(model) for model in models]
 
+
+@app.get("/api/v1/models/arena")
+def model_arena(x_nexus_user_id: str | None = Header(default=None)) -> dict:
+    """Return a provider-neutral comparison surface for model evaluation."""
+    user_id = (x_nexus_user_id or "").strip() or "local-user"
+    configured = set(byok_provider_manager.configured(user_id))
+    catalog = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"))
+    models = []
+    for model in catalog:
+        health = model_health_registry.get(model.key)
+        models.append({
+            "key": model.key,
+            "model_id": model.model_id,
+            "provider": model.provider,
+            "tier": model.tier,
+            "description": model.description,
+            "capabilities": sorted(model.capabilities),
+            "reasoning_levels": sorted(model.reasoning_levels),
+            "context_window": model.context_window,
+            "supports_tools": model.supports_tools,
+            "cost_score": model.cost_score,
+            "latency_score": model.latency_score,
+            "configured": model.provider in configured,
+            "available": health.available,
+            "consecutive_failures": health.consecutive_failures,
+            "latency_ms": health.latency_ms,
+        })
+    return {"models": models, "configured_providers": sorted(configured)}
 
 @app.get("/api/v1/models/health")
 def list_model_health() -> dict:
@@ -1346,8 +1374,12 @@ def list_model_health() -> dict:
 def get_model(model_key: str) -> dict:
     try:
         model = model_registry.get(model_key)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError:
+        provider_models = (*provider_model_specs("groq"), *provider_model_specs("nemotron"))
+        matches = [candidate for candidate in provider_models if candidate.key == model_key]
+        if not matches:
+            raise HTTPException(status_code=404, detail=f"Unknown model: {model_key}")
+        model = matches[0]
     return _model_payload(model)
 
 
@@ -1363,7 +1395,7 @@ def diagnostics(x_nexus_user_id: str | None = Header(default=None)) -> dict:
         "configured_providers": list(configured),
         "preferred_provider": preferred,
         "byok_ready": bool(preferred and preferred in configured),
-        "server_provider_keys": {"openai": bool(settings.openai_api_key), "groq": bool(settings.groq_api_key)},
+        "server_provider_keys": {"openai": bool(settings.openai_api_key), "groq": bool(settings.groq_api_key), "nemotron": bool(settings.nvidia_api_key)},
         "job_worker_running": bool(job_manager._thread and job_manager._thread.is_alive()),
         "distributed_workers": settings.distributed_workers_enabled,
     }

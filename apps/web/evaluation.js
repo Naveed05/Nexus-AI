@@ -1,3 +1,38 @@
+function renderModelArena(models) {
+  const root = $("model-arena-list");
+  if (!root) return;
+  if (!models.length) {
+    root.innerHTML = '<div class="empty">No models are registered.</div>';
+    return;
+  }
+  root.innerHTML = models.map(model => {
+    const context = model.context_window >= 1000000 ? "1M context" : `${Math.round(model.context_window / 1000)}K context`;
+    const configured = model.configured ? "Configured" : "BYOK required";
+    const health = model.available ? "Healthy" : "Degraded";
+    return `
+      <article class="job-row">
+        <div>
+          <b>${model.provider.toUpperCase()} · ${model.model_id}</b>
+          <small>${model.description} · ${context} · tools ${model.supports_tools ? "yes" : "no"} · ${configured}</small>
+        </div>
+        <span class="status-pill ${model.available ? "success" : "warning"}">${health} · ${model.latency_ms ? Math.round(model.latency_ms) + "ms" : "—"}</span>
+      </article>`;
+  }).join("");
+}
+
+async function refreshModelArena() {
+  const root = $("model-arena-list");
+  if (!root) return;
+  try {
+    const data = await fetch("/api/v1/models/arena", {
+      headers: {"X-Nexus-User-ID": localStorage.getItem("nexus-user-id") || "local-user"}
+    }).then(r => { if (!r.ok) throw new Error("Model Arena unavailable"); return r.json(); });
+    renderModelArena(data.models || []);
+  } catch (error) {
+    root.innerHTML = `<div class="empty">${error.message}</div>`;
+  }
+}
+
 const $ = (id) => document.getElementById(id);
 
 function pct(value) {
@@ -42,8 +77,9 @@ async function refreshEvaluation() {
   }
 }
 
-window.addEventListener("hashchange", () => { if (location.hash === "#evaluation") refreshEvaluation(); });
+window.addEventListener("hashchange", () => { if (location.hash === "#evaluation") { refreshEvaluation(); refreshModelArena(); } });
 $("evaluation-refresh")?.addEventListener("click", refreshEvaluation);
+$("model-arena-refresh")?.addEventListener("click", refreshModelArena);
 if (location.hash === "#evaluation") refreshEvaluation();
 
 
