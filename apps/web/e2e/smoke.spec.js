@@ -85,10 +85,10 @@ test("NEXUS browser smoke: workspace, chat, and Data Autopilot", async ({ page }
 
   await page.locator("[data-nav='evaluation']").click();
   await expect(page).toHaveURL(/#evaluation/);
-  await expect(page.locator("#model-arena-list")).toContainText("NVIDIA/NEMOTRON");
+  await expect(page.locator("#model-arena-list")).toContainText("NEMOTRON");
   await page.locator("#model-arena-prompt").fill("E2E arena benchmark");
   await page.locator("#model-arena-expected").fill("evidence");
-  await page.locator(".model-arena-check[value="nemotron-3-super-120b-a12b"]").check();
+  await page.locator(".model-arena-check[value='nemotron-3-super-120b-a12b']").check();
   await page.locator("#model-arena-run").click();
   await expect(page.locator("#model-arena-results")).toContainText("Evidence-backed benchmark response");
   await expect(page.locator("#model-arena-run-status")).toContainText("1 completed");
