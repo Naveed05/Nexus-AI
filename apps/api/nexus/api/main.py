@@ -1325,6 +1325,34 @@ def list_models() -> list[dict]:
     return [_model_payload(model) for model in models]
 
 
+@app.get("/api/v1/models/arena")
+def model_arena(x_nexus_user_id: str | None = Header(default=None)) -> dict:
+    """Return a provider-neutral comparison surface for model evaluation."""
+    user_id = (x_nexus_user_id or "").strip() or "local-user"
+    configured = set(byok_provider_manager.configured(user_id))
+    catalog = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"))
+    models = []
+    for model in catalog:
+        health = model_health_registry.get(model.key)
+        models.append({
+            "key": model.key,
+            "model_id": model.model_id,
+            "provider": model.provider,
+            "tier": model.tier,
+            "description": model.description,
+            "capabilities": sorted(model.capabilities),
+            "reasoning_levels": sorted(model.reasoning_levels),
+            "context_window": model.context_window,
+            "supports_tools": model.supports_tools,
+            "cost_score": model.cost_score,
+            "latency_score": model.latency_score,
+            "configured": model.provider in configured,
+            "available": health.available,
+            "consecutive_failures": health.consecutive_failures,
+            "latency_ms": health.latency_ms,
+        })
+    return {"models": models, "configured_providers": sorted(configured)}
+
 @app.get("/api/v1/models/health")
 def list_model_health() -> dict:
     return {
