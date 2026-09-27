@@ -240,6 +240,22 @@ class ModelRegistry:
 
 model_registry = ModelRegistry()
 
+NEMOTRON_MODEL_SPECS: tuple[ModelSpec, ...] = (
+    ModelSpec(
+        key="nemotron-3-super-120b-a12b",
+        model_id="nvidia/nemotron-3-super-120b-a12b",
+        provider="nemotron",
+        tier="flagship",
+        description="NVIDIA Nemotron 3 Super with 1M context, reasoning, planning, tool calling, and agentic workflows.",
+        capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis", "long_context"}),
+        reasoning_levels=frozenset({"low", "medium", "high", "max"}),
+        context_window=1_000_000,
+        supports_tools=True,
+        cost_score=1,
+        latency_score=3,
+    ),
+)
+
 GROQ_MODEL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec(
         key="groq-gpt-oss-120b",
@@ -273,6 +289,8 @@ def provider_model_specs(provider: str) -> tuple[ModelSpec, ...]:
     normalized = provider.strip().lower()
     if normalized == "groq":
         return GROQ_MODEL_SPECS
+    if normalized == "nemotron":
+        return NEMOTRON_MODEL_SPECS
     return tuple(model for model in model_registry.all() if model.provider == normalized)
 
 
@@ -452,7 +470,7 @@ class InMemoryCredentialStore:
         return tuple(sorted(key.removeprefix(prefix) for key in self._credentials if key.startswith(prefix)))
 
 
-SUPPORTED_PROVIDERS = frozenset({"openai", "anthropic", "groq"})
+SUPPORTED_PROVIDERS = frozenset({"openai", "anthropic", "groq", "nemotron"})
 
 
 class BYOKProviderManager:
@@ -668,9 +686,10 @@ class BYOKProviderAdapter:
 
 
 class OpenAICompatibleBYOKAdapter(BYOKProviderAdapter):
-    def __init__(self, provider: str, endpoint: str) -> None:
+    def __init__(self, provider: str, endpoint: str, *, reasoning: bool = False) -> None:
         self.provider = provider
         self.endpoint = endpoint
+        self.reasoning = reasoning
 
     def build_request(self, *, credential: ProviderCredential, model: ModelSpec,
                       input_items: list[Any], tools: list[Mapping[str, Any]],
@@ -679,11 +698,15 @@ class OpenAICompatibleBYOKAdapter(BYOKProviderAdapter):
             "Authorization": f"Bearer {credential.key}",
             "Content-Type": "application/json",
         }
-        if self.provider == "groq":
+        if self.provider in {"groq", "nemotron"}:
             payload: dict[str, Any] = {
                 "model": model.model_id,
                 "messages": input_items,
             }
+            if self.reasoning:
+                payload["temperature"] = 1.0
+                payload["top_p"] = 0.95
+                payload["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}}
         else:
             payload = {
                 "model": model.model_id,
@@ -726,6 +749,7 @@ class AnthropicBYOKAdapter(BYOKProviderAdapter):
 BYOK_PROVIDER_ADAPTERS: dict[str, BYOKProviderAdapter] = {
     "openai": OpenAICompatibleBYOKAdapter("openai", "https://api.openai.com/v1/responses"),
     "groq": OpenAICompatibleBYOKAdapter("groq", "https://api.groq.com/openai/v1/chat/completions"),
+    "nemotron": OpenAICompatibleBYOKAdapter("nemotron", "https://integrate.api.nvidia.com/v1/chat/completions", reasoning=True),
     "anthropic": AnthropicBYOKAdapter(),
 }
 
