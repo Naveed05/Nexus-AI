@@ -83,7 +83,7 @@ def test_byok_isolated_per_user_and_provider() -> None:
 def test_byok_rejects_unknown_provider_and_empty_key() -> None:
     manager = BYOKProviderManager()
     with pytest.raises(ProviderCredentialError):
-        manager.configure("user-1", "gemini", "key")
+        manager.configure("user-1", "unknown-provider", "key")
     with pytest.raises(ProviderCredentialError):
         manager.configure("user-1", "openai", " ")
 
