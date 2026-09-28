@@ -1330,7 +1330,7 @@ def model_arena(x_nexus_user_id: str | None = Header(default=None)) -> dict:
     """Return a provider-neutral comparison surface for model evaluation."""
     user_id = (x_nexus_user_id or "").strip() or "local-user"
     configured = set(byok_provider_manager.configured(user_id))
-    catalog = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"))
+    catalog = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"), *provider_model_specs("gemini"))
     models = []
     for model in catalog:
         health = model_health_registry.get(model.key)
@@ -1350,6 +1350,7 @@ def model_arena(x_nexus_user_id: str | None = Header(default=None)) -> dict:
                 "openai": settings.openai_api_key,
                 "groq": settings.groq_api_key,
                 "nemotron": settings.nvidia_api_key,
+                "gemini": settings.gemini_api_key,
             }.get(model.provider)),
             "available": health.available,
             "consecutive_failures": health.consecutive_failures,
@@ -1380,12 +1381,13 @@ def run_model_arena(
     if len(expected) > 10:
         raise HTTPException(status_code=422, detail="at most 10 expected_contains assertions are allowed")
 
-    catalog = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"))
+    catalog = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"), *provider_model_specs("gemini"))
     by_key = {model.key: model for model in catalog}
     server_keys = {
         "openai": settings.openai_api_key,
         "groq": settings.groq_api_key,
         "nemotron": settings.nvidia_api_key,
+        "gemini": settings.gemini_api_key,
     }
     results = []
     for key in selected:
@@ -1492,7 +1494,7 @@ def diagnostics(x_nexus_user_id: str | None = Header(default=None)) -> dict:
         "configured_providers": list(configured),
         "preferred_provider": preferred,
         "byok_ready": bool(preferred and preferred in configured),
-        "server_provider_keys": {"openai": bool(settings.openai_api_key), "groq": bool(settings.groq_api_key), "nemotron": bool(settings.nvidia_api_key)},
+        "server_provider_keys": {"openai": bool(settings.openai_api_key), "groq": bool(settings.groq_api_key), "nemotron": bool(settings.nvidia_api_key), "gemini": bool(settings.gemini_api_key)},
         "job_worker_running": bool(job_manager._thread and job_manager._thread.is_alive()),
         "distributed_workers": settings.distributed_workers_enabled,
     }
@@ -1526,6 +1528,7 @@ def list_byok_credentials(x_nexus_user_id: str | None = Header(default=None)) ->
                     "openai": settings.openai_api_key,
                     "groq": settings.groq_api_key,
                     "nemotron": settings.nvidia_api_key,
+                    "gemini": settings.gemini_api_key,
                 }.get(provider)),
             }
             for provider in sorted(SUPPORTED_PROVIDERS)
@@ -1584,10 +1587,12 @@ def test_byok_provider(
         if not specs:
             raise ProviderCredentialError(f"No executable model is registered for provider: {provider}")
         model = specs[0]
-        if provider == "nemotron" and provider not in byok_provider_manager.configured(user_id) and settings.nvidia_api_key:
-            response = byok_provider_manager.generate_with_api_key(
-                provider=provider,
-                api_key=settings.nvidia_api_key,
+        if provider in {"nemotron", "gemini"} and provider not in byok_provider_manager.configured(user_id):
+            server_key = {"nemotron": settings.nvidia_api_key, "gemini": settings.gemini_api_key}.get(provider)
+            if server_key:
+                response = byok_provider_manager.generate_with_api_key(
+                    provider=provider,
+                    api_key=server_key,
                 model=model,
                 input_items=[{"role": "user", "content": "Reply with exactly: NEXUS provider connection OK"}],
                 tools=[],
