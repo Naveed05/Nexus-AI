@@ -75,7 +75,17 @@ async function testApiKey(){
     const data=await api.post("/api/v1/byok/test",{provider});
     msg.textContent="✓ "+data.provider.toUpperCase()+" is working with "+data.model;
     toast("Provider connection verified");
-  }catch(e){msg.textContent="Connection test failed: "+e.message;toast("Provider test failed","error")}
+  }catch(e){
+    const detail=String(e.message||"");
+    const friendly=detail.includes("HTTP 503")||detail.includes("HTTP 502")||detail.includes("HTTP 504")
+      ? provider.toUpperCase()+" is temporarily unavailable. NEXUS can retry or fall back to another configured provider."
+      : detail.includes("HTTP 429")
+        ? provider.toUpperCase()+" is rate-limited right now. Try again shortly or use another configured provider."
+        : detail.includes("HTTP 401")||detail.includes("HTTP 403")
+          ? provider.toUpperCase()+" rejected the credential or request. Check the API key and provider permissions."
+          : "Connection test failed: "+detail;
+    msg.textContent=friendly;toast("Provider test failed","error")
+  }
   finally{btn.disabled=false}
 }
 async function removeApiKey(){
