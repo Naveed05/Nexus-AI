@@ -826,7 +826,15 @@ class AnthropicBYOKAdapter(BYOKProviderAdapter):
             "messages": messages,
         }
         if tools:
-            payload["tools"] = tools
+            # Anthropic Messages uses a provider-specific tool schema.
+            payload["tools"] = [
+                {
+                    "name": str(tool.get("name", "")),
+                    "description": str(tool.get("description", "")),
+                    "input_schema": tool.get("parameters", {}),
+                }
+                for tool in tools
+            ]
         return ProviderRequest(self.provider, model.model_id, self.endpoint, headers, payload)
 
 
