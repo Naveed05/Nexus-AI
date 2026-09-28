@@ -349,6 +349,7 @@ def test_byok_transport_retries_transient_http_failures() -> None:
     def opener(request, timeout):
         nonlocal attempts
         attempts += 1
+        assert request.get_header("User-Agent") == "NEXUS-AI/1.0"
         if attempts < 3:
             raise HTTPError(
                 request.full_url,
