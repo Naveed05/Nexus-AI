@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 const api={async get(path,headers={}){const r=await fetch(path,{headers:{Accept:"application/json","X-Nexus-User-ID":LOCAL_USER_ID,"X-User-Id":LOCAL_USER_ID,...headers}});if(!r.ok)throw new Error(await r.text());return r.json()},async post(path,body,headers={}){const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Nexus-User-ID":LOCAL_USER_ID,"X-User-Id":LOCAL_USER_ID,...headers},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json()},async put(path,body,headers={}){const r=await fetch(path,{method:"PUT",headers:{"Content-Type":"application/json","X-Nexus-User-ID":LOCAL_USER_ID,"X-User-Id":LOCAL_USER_ID,...headers},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json()},async del(path,headers={}){const r=await fetch(path,{method:"DELETE",headers:{"X-Nexus-User-ID":LOCAL_USER_ID,"X-User-Id":LOCAL_USER_ID,...headers}});if(!r.ok&&r.status!==204)throw new Error(await r.text());return true}};
 const LOCAL_USER_ID=localStorage.getItem("nexus-user-id")||("local-"+crypto.randomUUID());localStorage.setItem("nexus-user-id",LOCAL_USER_ID);
-const state={runs:[],agents:[],workspace:null,theme:localStorage.getItem("nexus-theme")||"light",runFilter:"",providerConfigured:false,provider:null};let deferredInstallPrompt=null;
+const state={runs:[],agents:[],workspace:null,theme:localStorage.getItem("nexus-theme")||"light",runFilter:"",providerConfigured:false,provider:null,providers:[]};let deferredInstallPrompt=null;
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 function toast(message,type="ok"){const el=document.createElement("div");el.className="toast "+type;el.textContent=message;$("toast-stack").appendChild(el);setTimeout(()=>el.remove(),3200)}
 function setTheme(){document.documentElement.classList.toggle("light",state.theme==="light");$("theme-label").textContent=state.theme==="light"?"Light":"Dark";$("theme-btn").setAttribute("aria-label","Switch to "+(state.theme==="light"?"dark":"light")+" appearance");localStorage.setItem("nexus-theme",state.theme)}
@@ -33,7 +33,8 @@ function updateChatFromJob(job){
 async function loadApiSettings(){
   try{
     const data=await api.get("/api/v1/byok/credentials");
-    const configured=data.providers?.filter(x=>x.configured)||[];
+    state.providers=data.providers||[];
+    const configured=state.providers.filter(x=>x.configured)||[];
     const selectedProvider=data.preferred||configured[0]?.provider||"";
     if($("provider-select"))$("provider-select").value=selectedProvider;
     const active=configured.find(x=>x.provider===selectedProvider)||configured[0];
@@ -67,7 +68,8 @@ async function saveApiKey(){
 }
 async function testApiKey(){
   const provider=$("provider-select").value,btn=$("test-api-key"),msg=$("settings-message");
-  if(!state.providerConfigured){msg.textContent="Save a provider key first.";return}
+  const selected=state.providers.find(x=>x.provider===provider);
+  if(!selected?.configured){msg.textContent="Save an API key for "+provider.toUpperCase()+" first.";return}
   btn.disabled=true;msg.textContent="Testing "+provider.toUpperCase()+"…";
   try{
     const data=await api.post("/api/v1/byok/test",{provider});
@@ -81,6 +83,12 @@ async function removeApiKey(){
   try{await api.del("/api/v1/byok/credentials/"+encodeURIComponent(provider));if($("settings-message"))$("settings-message").textContent=provider.toUpperCase()+" key removed.";toast("Provider disconnected");await loadApiSettings()}
   catch(e){toast("Could not remove provider","error")}
 }
+$("provider-select")?.addEventListener("change",e=>{
+  const selected=state.providers.find(x=>x.provider===e.target.value);
+  if($("provider-status-title"))$("provider-status-title").textContent=selected?.configured?e.target.value.toUpperCase()+" is connected":"No "+e.target.value.toUpperCase()+" key connected";
+  if($("provider-status-detail"))$("provider-status-detail").textContent=selected?.server_configured&&!selected?.configured?"A server-side key is available for this provider.":"Configure your own provider key to test this provider.";
+  if($("provider-dot"))$("provider-dot").classList.toggle("connected",Boolean(selected?.configured||selected?.server_configured));
+});
 function setStatusPill(id,label,tone="ok"){const el=$(id);if(!el)return;el.textContent=label;el.classList.remove("status-warning","status-danger","status-neutral");if(tone==="warning")el.classList.add("status-warning");if(tone==="danger")el.classList.add("status-danger");if(tone==="neutral")el.classList.add("status-neutral")}
 function activateView(id){const target=$(id)||$("overview");document.querySelectorAll(".view-section").forEach(x=>x.classList.toggle("active",x===target));document.querySelectorAll("[data-nav]").forEach(x=>x.classList.toggle("active",x.dataset.nav===target.id));$("page-title").textContent=target.id==="control-center"?"Control center":target.id==="agent-workspace"?"Agent workspace":target.id.charAt(0).toUpperCase()+target.id.slice(1);history.replaceState(null,"","#"+target.id);closeMobile();if(target.id==="settings")loadApiSettings()}
 function route(){activateView(location.hash.slice(1)||"overview")}
