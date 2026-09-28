@@ -779,7 +779,26 @@ class OpenAICompatibleBYOKAdapter(BYOKProviderAdapter):
                 "input": input_items,
             }
         if tools:
-            payload["tools"] = tools
+            # NEXUS tool contracts use the Responses-style flat function shape,
+            # while Chat Completions providers (Gemini/Groq/NVIDIA NIM) expect
+            # the OpenAI Chat Completions nested shape.
+            normalized_tools: list[dict[str, Any]] = []
+            for tool in tools:
+                item = dict(tool)
+                if item.get("type") == "function" and "name" in item and "function" not in item:
+                    function = {
+                        "name": item["name"],
+                        "description": item.get("description", ""),
+                        "parameters": item.get("parameters", {}),
+                    }
+                    # Gemini's OpenAI-compatible endpoint rejects Responses-only
+                    # fields such as top-level "strict".
+                    if self.provider != "gemini" and "strict" in item:
+                        function["strict"] = item["strict"]
+                    normalized_tools.append({"type": "function", "function": function})
+                else:
+                    normalized_tools.append(item)
+            payload["tools"] = normalized_tools
             payload["tool_choice"] = tool_choice
         return ProviderRequest(self.provider, model.model_id, self.endpoint, headers, payload)
 
