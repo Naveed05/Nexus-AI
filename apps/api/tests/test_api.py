@@ -12,6 +12,42 @@ from nexus.core.workspaces import workspace_registry
 client = TestClient(app)
 
 
+def test_byok_provider_fallback_switches_after_transient_failure() -> None:
+    from nexus.core.models import BYOKProviderManager, InMemoryCredentialStore, ModelResponse
+
+    manager = BYOKProviderManager(InMemoryCredentialStore())
+    manager.configure("user-1", "gemini", "gemini-test-key")
+    manager.configure("user-1", "groq", "groq-test-key")
+
+    class FakeTransport:
+        def __init__(self) -> None:
+            self.providers: list[str] = []
+
+        def execute(self, request, *, timeout_seconds: float = 30.0):
+            from nexus.core.models import BYOKProviderError
+            self.providers.append(request.provider)
+            if request.provider == "gemini":
+                raise BYOKProviderError("gemini request failed with HTTP 503: temporarily unavailable")
+            return ModelResponse(
+                output="Groq fallback worked",
+                response_id="groq-fallback-1",
+                provider="groq",
+                model_id="openai/gpt-oss-120b",
+            )
+
+    transport = FakeTransport()
+    response = manager.generate_with_fallback(
+        user_id="user-1",
+        model=__import__("nexus.core.models", fromlist=["GEMINI_MODEL_SPECS"]).GEMINI_MODEL_SPECS[0],
+        input_items=[{"role": "user", "content": "hi"}],
+        transport=transport,
+    )
+
+    assert response.provider == "groq"
+    assert response.output == "Groq fallback worked"
+    assert transport.providers == ["gemini", "groq"]
+
+
 def test_health() -> None:
     response = client.get("/api/v1/health")
     assert response.status_code == 200
