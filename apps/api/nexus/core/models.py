@@ -779,8 +779,26 @@ class OpenAICompatibleBYOKAdapter(BYOKProviderAdapter):
                 "input": input_items,
             }
         if tools:
-            payload["tools"] = tools
-            payload["tool_choice"] = tool_choice
+            if self.provider in {"groq", "nemotron", "gemini"}:
+                # These providers expose OpenAI Chat Completions compatibility,
+                # whose function definitions are nested under "function".
+                payload["tools"] = [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": str(tool.get("name", "")),
+                            "description": str(tool.get("description", "")),
+                            "parameters": tool.get("parameters", {}),
+                        },
+                    }
+                    for tool in tools
+                ]
+                payload["tool_choice"] = tool_choice
+            elif self.provider == "openai":
+                # OpenAI Responses expects the Responses tool shape already
+                # produced by NEXUS.
+                payload["tools"] = tools
+                payload["tool_choice"] = tool_choice
         return ProviderRequest(self.provider, model.model_id, self.endpoint, headers, payload)
 
 
