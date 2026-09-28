@@ -301,6 +301,22 @@ GEMINI_MODEL_SPECS: tuple[ModelSpec, ...] = (
     ),
 )
 
+ANTHROPIC_MODEL_SPECS: tuple[ModelSpec, ...] = (
+    ModelSpec(
+        key="claude-sonnet-5",
+        model_id="claude-sonnet-5",
+        provider="anthropic",
+        tier="flagship",
+        description="Anthropic Claude Sonnet 5 for reasoning, coding, tool use, and agentic workflows.",
+        capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis"}),
+        reasoning_levels=frozenset({"low", "medium", "high"}),
+        context_window=200_000,
+        supports_tools=True,
+        cost_score=3,
+        latency_score=2,
+    ),
+)
+
 def provider_model_specs(provider: str) -> tuple[ModelSpec, ...]:
     normalized = provider.strip().lower()
     if normalized == "groq":
@@ -309,6 +325,8 @@ def provider_model_specs(provider: str) -> tuple[ModelSpec, ...]:
         return NEMOTRON_MODEL_SPECS
     if normalized == "gemini":
         return GEMINI_MODEL_SPECS
+    if normalized == "anthropic":
+        return ANTHROPIC_MODEL_SPECS
     return tuple(model for model in model_registry.all() if model.provider == normalized)
 
 
