@@ -581,6 +581,53 @@ class BYOKProviderManager:
         )
         return (transport or BYOKHTTPTransport()).execute(request, timeout_seconds=timeout_seconds)
 
+    def generate_with_fallback(
+        self,
+        *,
+        user_id: str,
+        model: ModelSpec,
+        input_items: list[Any],
+        tools: list[Mapping[str, Any]] | None = None,
+        tool_choice: str = "auto",
+        transport: "BYOKHTTPTransport | None" = None,
+        timeout_seconds: float = 30.0,
+    ) -> ModelResponse:
+        """Try the preferred BYOK provider, then other configured providers for transient failures."""
+        providers = list(self.configured(user_id))
+        preferred = self.preferred(user_id)
+        if preferred in providers:
+            providers.remove(preferred)
+            providers.insert(0, preferred)
+        elif model.provider in providers:
+            providers.remove(model.provider)
+            providers.insert(0, model.provider)
+
+        if not providers:
+            raise ProviderNotConfiguredError("No API key configured for any provider")
+
+        last_error: BYOKProviderError | None = None
+        retryable_codes = BYOKHTTPTransport.RETRYABLE_HTTP_CODES
+        for provider in providers:
+            specs = provider_model_specs(provider)
+            if not specs:
+                continue
+            candidate = model if provider == model.provider else specs[0]
+            try:
+                return self.generate(
+                    user_id=user_id,
+                    model=candidate,
+                    input_items=input_items,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    transport=transport,
+                    timeout_seconds=timeout_seconds,
+                )
+            except BYOKProviderError as exc:
+                last_error = exc
+                if not any(f"HTTP {code}" in str(exc) for code in retryable_codes):
+                    raise
+        raise last_error or BYOKProviderError("All configured BYOK providers failed")
+
     def generate_with_api_key(
         self,
         *,
