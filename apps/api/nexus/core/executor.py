@@ -94,7 +94,7 @@ class BYOKModelProvider:
         tool_choice: str,
     ) -> ModelResponse:
         try:
-            return self._manager.generate(
+            return self._manager.generate_with_fallback(
                 user_id=self._user_id,
                 model=model,
                 input_items=input_items,
