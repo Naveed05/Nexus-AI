@@ -1,3 +1,5 @@
+from io import BytesIO
+from urllib.error import HTTPError
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -325,6 +327,91 @@ def test_byok_tool_schemas_match_each_provider_api() -> None:
                 }
         finally:
             byok_provider_manager.remove(user_id, provider)
+
+
+
+def test_byok_transport_retries_transient_http_failures() -> None:
+    from nexus.core.models import BYOKHTTPTransport, ProviderRequest
+
+    attempts = 0
+    sleeps: list[float] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"id":"retry-success","choices":[{"message":{"content":"Recovered"}}]}'
+
+    def opener(request, timeout):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise HTTPError(
+                request.full_url,
+                503,
+                "Service Unavailable",
+                {},
+                BytesIO(b'{"error":"temporarily overloaded"}'),
+            )
+        return FakeResponse()
+
+    transport = BYOKHTTPTransport(
+        opener=opener,
+        sleep_fn=sleeps.append,
+        max_attempts=4,
+        backoff_seconds=1.0,
+    )
+    response = transport.execute(
+        ProviderRequest(
+            provider="gemini",
+            model_id="gemini-3.8-flash",
+            endpoint="https://example.test",
+            headers={"Content-Type": "application/json"},
+            payload={"model": "gemini-3.8-flash", "messages": [{"role": "user", "content": "hi"}]},
+        )
+    )
+
+    assert response.output == "Recovered"
+    assert attempts == 3
+    assert sleeps == [1.0, 2.0]
+
+
+def test_byok_transport_does_not_retry_non_transient_http_failures() -> None:
+    from nexus.core.models import BYOKHTTPTransport, ProviderRequest
+
+    attempts = 0
+
+    def opener(request, timeout):
+        nonlocal attempts
+        attempts += 1
+        raise HTTPError(
+            request.full_url,
+            400,
+            "Bad Request",
+            {},
+            BytesIO(b'{"error":"invalid request"}'),
+        )
+
+    transport = BYOKHTTPTransport(opener=opener, sleep_fn=lambda _: None)
+    try:
+        transport.execute(
+            ProviderRequest(
+                provider="gemini",
+                model_id="gemini-3.8-flash",
+                endpoint="https://example.test",
+                headers={"Content-Type": "application/json"},
+                payload={"model": "gemini-3.8-flash", "messages": [{"role": "user", "content": "hi"}]},
+            )
+        )
+        raise AssertionError("expected BYOKProviderError")
+    except Exception as exc:
+        assert "HTTP 400" in str(exc)
+
+    assert attempts == 1
 
 
 def test_byok_requires_user_identity() -> None:
