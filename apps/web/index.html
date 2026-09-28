@@ -243,7 +243,7 @@
             <div class="settings-title"><div class="settings-provider-icon">✦</div><div><p class="eyebrow">AI PROVIDER</p><h2>Connect an API key</h2><p>For this local installation, the safest simple option is to configure your own provider key here. NEXUS keeps it in the local runtime memory and never sends it to the browser after saving.</p></div></div>
             <div class="provider-status" id="provider-status-card"><span class="provider-dot" id="provider-dot"></span><div><b id="provider-status-title">Checking connection…</b><small id="provider-status-detail">Checking configured providers.</small></div></div>
             <div class="provider-form">
-              <label><span>Provider</span><select id="provider-select"><option value="">Select provider</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="groq">Groq</option><option value="nemotron">NVIDIA Nemotron</option></select></label>
+              <label><span>Provider</span><select id="provider-select"><option value="">Select provider</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="groq">Groq</option><option value="nemotron">NVIDIA Nemotron</option><option value="gemini">Google Gemini</option></select></label>
               <label class="key-field"><span>API key</span><div class="secret-input"><input id="provider-api-key" type="password" autocomplete="off" placeholder="Paste your API key here"><button id="toggle-api-key" type="button" class="icon-button" aria-label="Show API key">◉</button></div></label>
               <div class="provider-actions"><button id="save-api-key" class="primary">Save securely <b>→</b></button><button id="test-api-key" class="ghost">Test connection</button><button id="remove-api-key" class="ghost">Remove key</button></div>
               <p id="settings-message" class="settings-message" role="status"></p>
@@ -253,7 +253,7 @@
           <section class="panel">
             <div class="section-head"><div><p class="eyebrow">GET STARTED</p><h2>How to use NEXUS</h2></div><span class="live-badge">4 STEPS</span></div>
             <div class="guide-list">
-              <div><i>1</i><div><b>Connect your provider</b><small>Connect OpenAI, Groq, NVIDIA Nemotron, or Anthropic in this Settings page.</small></div></div>
+              <div><i>1</i><div><b>Connect your provider</b><small>Connect OpenAI, Groq, Google Gemini, NVIDIA Nemotron, or Anthropic in this Settings page.</small></div></div>
               <div><i>2</i><div><b>Create a workspace</b><small>Keep files and memory together for one project.</small></div></div>
               <div><i>3</i><div><b>Describe the outcome</b><small>Use Home → Run a task. Start simple while testing.</small></div></div>
               <div><i>4</i><div><b>Inspect the result</b><small>Open Jobs or Executions to see status, verification, and artifacts.</small></div></div>
