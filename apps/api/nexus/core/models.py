@@ -642,10 +642,14 @@ class BYOKHTTPTransport:
 
     def execute(self, request: ProviderRequest, *, timeout_seconds: float = 30.0) -> ModelResponse:
         body = json.dumps(request.payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        headers = dict(request.headers)
+        # Groq is fronted by Cloudflare and rejects Python's default
+        # urllib User-Agent with HTTP 403 / error code 1010.
+        headers.setdefault("User-Agent", "NEXUS-AI/1.0")
         http_request = Request(
             request.endpoint,
             data=body,
-            headers=dict(request.headers),
+            headers=headers,
             method="POST",
         )
 
