@@ -94,7 +94,7 @@ REMEMBER
 
 ### 🔑 Multi-provider / BYOK model layer
 
-NEXUS supports a Bring Your Own Key foundation so each user can connect their own model-provider credentials instead of sharing a platform-wide API key. The provider layer currently supports OpenAI, Anthropic Claude, Groq, and NVIDIA Nemotron. Nemotron 3 Super is exposed through NVIDIA's OpenAI-compatible NIM endpoint with 1M-context metadata, reasoning/tool-use capability contracts, per-user credential isolation, masked credentials, provider validation, provider-specific adapters, and an extensible provider abstraction.
+NEXUS supports a Bring Your Own Key foundation so each user can connect their own model-provider credentials instead of sharing a platform-wide API key. The provider layer currently supports OpenAI, Anthropic Claude, Groq, Google Gemini, and NVIDIA Nemotron. Nemotron 3 Super is exposed through NVIDIA's OpenAI-compatible NIM endpoint with 1M-context metadata, reasoning/tool-use capability contracts, per-user credential isolation, masked credentials, provider validation, provider-specific adapters, and an extensible provider abstraction.
 
 Raw user API keys are never returned by the credential-management interface. Production persistence is expected to use an encrypted secret store rather than plaintext application storage.
 
