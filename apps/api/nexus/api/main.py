@@ -1582,25 +1582,31 @@ def test_byok_provider(
     if provider not in SUPPORTED_PROVIDERS:
         raise HTTPException(status_code=422, detail="provider is required")
     try:
-        credential = byok_provider_manager.credential(user_id, provider)
         specs = provider_model_specs(provider)
         if not specs:
             raise ProviderCredentialError(f"No executable model is registered for provider: {provider}")
         model = specs[0]
-        if provider in {"nemotron", "gemini"} and provider not in byok_provider_manager.configured(user_id):
-            server_key = {"nemotron": settings.nvidia_api_key, "gemini": settings.gemini_api_key}.get(provider)
-            if server_key:
-                response = byok_provider_manager.generate_with_api_key(
-                    provider=provider,
-                    api_key=server_key,
+        configured = provider in byok_provider_manager.configured(user_id)
+        if configured:
+            response = byok_provider_manager.generate(
+                user_id=user_id,
                 model=model,
                 input_items=[{"role": "user", "content": "Reply with exactly: NEXUS provider connection OK"}],
                 tools=[],
                 timeout_seconds=20,
             )
         else:
-            response = byok_provider_manager.generate(
-                user_id=user_id,
+            server_key = {
+                "openai": settings.openai_api_key,
+                "groq": settings.groq_api_key,
+                "nemotron": settings.nvidia_api_key,
+                "gemini": settings.gemini_api_key,
+            }.get(provider)
+            if not server_key:
+                raise ProviderNotConfiguredError(f"No API key configured for provider: {provider}")
+            response = byok_provider_manager.generate_with_api_key(
+                provider=provider,
+                api_key=server_key,
                 model=model,
                 input_items=[{"role": "user", "content": "Reply with exactly: NEXUS provider connection OK"}],
                 tools=[],
