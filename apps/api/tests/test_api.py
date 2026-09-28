@@ -271,6 +271,62 @@ def test_byok_provider_connection_test_supports_every_provider(monkeypatch) -> N
             byok_provider_manager.remove(user_id, provider)
 
 
+def test_byok_tool_schemas_match_each_provider_api() -> None:
+    from nexus.core.models import build_byok_request, provider_model_specs
+
+    user_id = "byok-tool-schema-test"
+    tool = {
+        "type": "function",
+        "name": "calculator",
+        "description": "Perform basic arithmetic calculations.",
+        "parameters": {
+            "type": "object",
+            "properties": {"expression": {"type": "string"}},
+            "required": ["expression"],
+            "additionalProperties": False,
+        },
+    }
+
+    expected_models = {
+        "openai": provider_model_specs("openai")[0],
+        "groq": provider_model_specs("groq")[0],
+        "nemotron": provider_model_specs("nemotron")[0],
+        "gemini": provider_model_specs("gemini")[0],
+        "anthropic": provider_model_specs("anthropic")[0],
+    }
+
+    for provider, model in expected_models.items():
+        byok_provider_manager.configure(user_id, provider, f"{provider}-tool-secret")
+        try:
+            request = build_byok_request(
+                user_id=user_id,
+                model=model,
+                input_items=[{"role": "user", "content": "2 + 2"}],
+                tools=[tool],
+            )
+            provider_tool = request.payload["tools"][0]
+
+            if provider == "anthropic":
+                assert provider_tool == {
+                    "name": "calculator",
+                    "description": "Perform basic arithmetic calculations.",
+                    "input_schema": tool["parameters"],
+                }
+            elif provider == "openai":
+                assert provider_tool == tool
+            else:
+                assert provider_tool == {
+                    "type": "function",
+                    "function": {
+                        "name": "calculator",
+                        "description": "Perform basic arithmetic calculations.",
+                        "parameters": tool["parameters"],
+                    },
+                }
+        finally:
+            byok_provider_manager.remove(user_id, provider)
+
+
 def test_byok_requires_user_identity() -> None:
     response = client.get("/api/v1/byok/credentials")
     assert response.status_code == 401
