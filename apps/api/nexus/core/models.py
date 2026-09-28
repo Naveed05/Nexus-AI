@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import json
 import os
 import sqlite3
+import time
 from pathlib import Path
 from threading import RLock
 from typing import Any, Callable, Mapping, Protocol
@@ -618,10 +619,26 @@ class BYOKProviderError(RuntimeError):
 
 
 class BYOKHTTPTransport:
-    """Small real HTTPS transport with injectable opener for deterministic tests."""
+    """Small real HTTPS transport with bounded retries for transient provider errors."""
 
-    def __init__(self, opener: Callable[..., Any] = urlopen) -> None:
+    RETRYABLE_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
+
+    def __init__(
+        self,
+        opener: Callable[..., Any] = urlopen,
+        *,
+        sleep_fn: Callable[[float], None] = time.sleep,
+        max_attempts: int = 4,
+        backoff_seconds: float = 1.0,
+    ) -> None:
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+        if backoff_seconds < 0:
+            raise ValueError("backoff_seconds cannot be negative")
         self._opener = opener
+        self._sleep = sleep_fn
+        self._max_attempts = max_attempts
+        self._backoff_seconds = backoff_seconds
 
     def execute(self, request: ProviderRequest, *, timeout_seconds: float = 30.0) -> ModelResponse:
         body = json.dumps(request.payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -631,20 +648,27 @@ class BYOKHTTPTransport:
             headers=dict(request.headers),
             method="POST",
         )
-        try:
-            with self._opener(http_request, timeout=timeout_seconds) as response:
-                raw = response.read()
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:1000]
-            raise BYOKProviderError(
-                f"{request.provider} request failed with HTTP {exc.code}: {detail}"
-            ) from exc
-        except URLError as exc:
-            raise BYOKProviderError(
-                f"{request.provider} request failed: {exc.reason}"
-            ) from exc
-        except TimeoutError as exc:
-            raise BYOKProviderError(f"{request.provider} request timed out") from exc
+
+        for attempt in range(1, self._max_attempts + 1):
+            try:
+                with self._opener(http_request, timeout=timeout_seconds) as response:
+                    raw = response.read()
+                break
+            except HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")[:1000]
+                if exc.code not in self.RETRYABLE_HTTP_CODES or attempt == self._max_attempts:
+                    raise BYOKProviderError(
+                        f"{request.provider} request failed with HTTP {exc.code}: {detail}"
+                    ) from exc
+                self._sleep(self._backoff_seconds * (2 ** (attempt - 1)))
+            except URLError as exc:
+                raise BYOKProviderError(
+                    f"{request.provider} request failed: {exc.reason}"
+                ) from exc
+            except TimeoutError as exc:
+                raise BYOKProviderError(f"{request.provider} request timed out") from exc
+        else:
+            raise BYOKProviderError(f"{request.provider} request failed after retries")
 
         try:
             data = json.loads(raw.decode("utf-8"))
