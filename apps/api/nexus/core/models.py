@@ -745,7 +745,7 @@ class OpenAICompatibleBYOKAdapter(BYOKProviderAdapter):
             "Authorization": f"Bearer {credential.key}",
             "Content-Type": "application/json",
         }
-        if self.provider in {"groq", "nemotron"}:
+        if self.provider in {"groq", "nemotron", "gemini"}:
             payload: dict[str, Any] = {
                 "model": model.model_id,
                 "messages": input_items,
@@ -798,6 +798,7 @@ BYOK_PROVIDER_ADAPTERS: dict[str, BYOKProviderAdapter] = {
     "openai": OpenAICompatibleBYOKAdapter("openai", "https://api.openai.com/v1/responses"),
     "groq": OpenAICompatibleBYOKAdapter("groq", "https://api.groq.com/openai/v1/chat/completions"),
     "nemotron": OpenAICompatibleBYOKAdapter("nemotron", "https://integrate.api.nvidia.com/v1/chat/completions", reasoning=True),
+    "gemini": OpenAICompatibleBYOKAdapter("gemini", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
     "anthropic": AnthropicBYOKAdapter(),
 }
 
