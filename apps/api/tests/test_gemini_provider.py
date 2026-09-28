@@ -31,7 +31,7 @@ def test_gemini_builds_openai_compatible_request() -> None:
         user_id="user-1",
         model=GEMINI_MODEL_SPECS[0],
         input_items=[{"role": "user", "content": "Analyze this experiment."}],
-        tools=[{"type": "function", "function": {"name": "profile_dataset"}}],
+        tools=[{"type": "function", "name": "profile_dataset", "description": "", "parameters": {}}],
         tool_choice="auto",
         manager=manager,
     )
