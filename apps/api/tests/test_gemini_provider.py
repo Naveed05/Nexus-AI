@@ -8,6 +8,7 @@ from nexus.core.models import (
     build_byok_request,
     provider_model_specs,
 )
+from nexus.core.tools import tool_registry
 
 
 def test_gemini_catalog_exposes_flash_model() -> None:
@@ -93,3 +94,26 @@ def test_gemini_server_key_path_does_not_persist_credentials() -> None:
 
 def test_gemini_provider_catalog_is_case_insensitive() -> None:
     assert provider_model_specs(" Gemini ") == GEMINI_MODEL_SPECS
+
+
+def test_gemini_normalizes_nexus_tool_contract_for_chat_completions() -> None:
+    manager = BYOKProviderManager(InMemoryCredentialStore())
+    manager.configure("user-1", "gemini", "gemini-test-key")
+    request = build_byok_request(
+        user_id="user-1",
+        model=GEMINI_MODEL_SPECS[0],
+        input_items=[{"role": "user", "content": "Use the calculator."}],
+        tools=[tool_registry.get("calculator").as_openai_tool()],
+        tool_choice="auto",
+        manager=manager,
+    )
+
+    tool = request.payload["tools"][0]
+    assert tool["type"] == "function"
+    assert tool["function"]["name"] == "calculator"
+    assert tool["function"]["description"]
+    assert tool["function"]["parameters"]["required"] == ["expression"]
+    assert "strict" not in tool
+    assert "name" not in tool
+    assert "description" not in tool
+    assert "parameters" not in tool
