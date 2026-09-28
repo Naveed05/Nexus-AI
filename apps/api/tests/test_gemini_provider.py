@@ -87,3 +87,7 @@ def test_gemini_server_key_path_does_not_persist_credentials() -> None:
     )
     assert response.output == "ok"
     assert manager.configured("server-user") == ()
+
+
+def test_gemini_provider_catalog_is_case_insensitive() -> None:
+    assert provider_model_specs(" Gemini ") == GEMINI_MODEL_SPECS
