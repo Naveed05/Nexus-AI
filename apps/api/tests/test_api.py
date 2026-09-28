@@ -274,6 +274,7 @@ def test_byok_provider_connection_test_supports_every_provider(monkeypatch) -> N
 
 
 def test_byok_tool_schemas_match_each_provider_api() -> None:
+    from nexus.api.main import byok_provider_manager
     from nexus.core.models import build_byok_request, provider_model_specs
 
     user_id = "byok-tool-schema-test"
@@ -349,7 +350,7 @@ def test_byok_transport_retries_transient_http_failures() -> None:
     def opener(request, timeout):
         nonlocal attempts
         attempts += 1
-        assert request.get_header("User-Agent") == "NEXUS-AI/1.0"
+        assert request.get_header("User-agent") == "NEXUS-AI/1.0"
         if attempts < 3:
             raise HTTPError(
                 request.full_url,
@@ -490,7 +491,7 @@ def test_model_catalog_and_health_api_are_safe() -> None:
     models = client.get("/api/v1/models")
     assert models.status_code == 200
     body = models.json()
-    assert {item["key"] for item in body} == {"astra", "sol", "terra", "luna", "groq-gpt-oss-120b", "groq-gpt-oss-20b", "nemotron-3-super-120b-a12b"}
+    assert {item["key"] for item in body} == {"astra", "sol", "terra", "luna", "groq-gpt-oss-120b", "groq-gpt-oss-20b", "nemotron-3-super-120b-a12b", "gemini-3.8-flash", "claude-sonnet-5"}
     astra = next(item for item in body if item["key"] == "astra")
     assert "agentic" in astra["capabilities"]
     assert "health" in astra
