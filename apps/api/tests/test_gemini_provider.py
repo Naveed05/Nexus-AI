@@ -41,6 +41,8 @@ def test_gemini_builds_openai_compatible_request() -> None:
     assert request.headers["Authorization"] == "Bearer gemini-test-key"
     assert request.payload["model"] == "gemini-3.8-flash"
     assert request.payload["messages"][0]["content"] == "Analyze this experiment."
+    assert "input" not in request.payload
+    assert "reasoning_effort" not in request.payload
     assert request.payload["tools"][0]["function"]["name"] == "profile_dataset"
     assert request.payload["tool_choice"] == "auto"
 
