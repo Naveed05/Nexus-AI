@@ -285,12 +285,30 @@ GROQ_MODEL_SPECS: tuple[ModelSpec, ...] = (
     ),
 )
 
+GEMINI_MODEL_SPECS: tuple[ModelSpec, ...] = (
+    ModelSpec(
+        key="gemini-3.8-flash",
+        model_id="gemini-3.8-flash",
+        provider="gemini",
+        tier="flagship",
+        description="Google Gemini 3.8 Flash for fast reasoning, coding, multimodal, and agentic workflows.",
+        capabilities=frozenset({"reasoning", "coding", "research", "agentic", "tools", "data_analysis", "document_analysis", "multimodal", "long_context"}),
+        reasoning_levels=frozenset({"low", "medium", "high"}),
+        context_window=1_000_000,
+        supports_tools=True,
+        cost_score=2,
+        latency_score=2,
+    ),
+)
+
 def provider_model_specs(provider: str) -> tuple[ModelSpec, ...]:
     normalized = provider.strip().lower()
     if normalized == "groq":
         return GROQ_MODEL_SPECS
     if normalized == "nemotron":
         return NEMOTRON_MODEL_SPECS
+    if normalized == "gemini":
+        return GEMINI_MODEL_SPECS
     return tuple(model for model in model_registry.all() if model.provider == normalized)
 
 
@@ -470,7 +488,7 @@ class InMemoryCredentialStore:
         return tuple(sorted(key.removeprefix(prefix) for key in self._credentials if key.startswith(prefix)))
 
 
-SUPPORTED_PROVIDERS = frozenset({"openai", "anthropic", "groq", "nemotron"})
+SUPPORTED_PROVIDERS = frozenset({"openai", "anthropic", "groq", "nemotron", "gemini"})
 
 
 class BYOKProviderManager:
