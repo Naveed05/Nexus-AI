@@ -42,7 +42,7 @@ def test_nemotron_builds_openai_compatible_reasoning_request() -> None:
         user_id="user-1",
         model=NEMOTRON_MODEL_SPECS[0],
         input_items=[{"role": "user", "content": "Analyze this experiment."}],
-        tools=[{"type": "function", "function": {"name": "profile_dataset"}}],
+        tools=[{"type": "function", "name": "profile_dataset", "description": "", "parameters": {}}],
         tool_choice="auto",
         manager=manager,
     )
