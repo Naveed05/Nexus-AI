@@ -98,3 +98,25 @@ def test_nemotron_server_key_path_does_not_persist_credentials() -> None:
     )
     assert response.output == "ok"
     assert manager.configured("server-user") == ()
+
+def test_nemotron_normalizes_nexus_tool_contract_for_chat_completions() -> None:
+    manager = BYOKProviderManager(InMemoryCredentialStore())
+    manager.configure("user-1", "nemotron", "nvapi-test-key")
+    request = build_byok_request(
+        user_id="user-1",
+        model=NEMOTRON_MODEL_SPECS[0],
+        input_items=[{"role": "user", "content": "Use the calculator."}],
+        tools=[{"type": "function", "name": "calculator", "description": "Calculate.", "parameters": {"type": "object"}}],
+        tool_choice="auto",
+        manager=manager,
+    )
+
+    tool = request.payload["tools"][0]
+    assert tool == {
+        "type": "function",
+        "function": {
+            "name": "calculator",
+            "description": "Calculate.",
+            "parameters": {"type": "object"},
+        },
+    }
