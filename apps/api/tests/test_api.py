@@ -229,6 +229,48 @@ def test_byok_generate_uses_user_credential_without_exposing_it(monkeypatch) -> 
     assert "groq-secret-1234" not in response.text
 
 
+def test_byok_provider_connection_test_supports_every_provider(monkeypatch) -> None:
+    from nexus.api.main import byok_provider_manager
+    from nexus.core.models import ModelResponse
+
+    user_id = "byok-all-providers-test"
+    providers = {
+        "openai": "gpt-5.6-sol",
+        "groq": "openai/gpt-oss-120b",
+        "nemotron": "nvidia/nemotron-3-super-120b-a12b",
+        "gemini": "gemini-3.8-flash",
+        "anthropic": "claude-sonnet-5",
+    }
+
+    def fake_generate(**kwargs):
+        provider = kwargs["model"].provider
+        return ModelResponse(
+            output="NEXUS provider connection OK",
+            response_id=f"{provider}-connection-test",
+            provider=provider,
+            model_id=kwargs["model"].model_id,
+        )
+
+    monkeypatch.setattr(byok_provider_manager, "generate", fake_generate)
+
+    for provider, model_id in providers.items():
+        byok_provider_manager.configure(user_id, provider, f"{provider}-secret-1234")
+        try:
+            response = client.post(
+                "/api/v1/byok/test",
+                headers={"X-Nexus-User-ID": user_id},
+                json={"provider": provider},
+            )
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is True
+            assert body["provider"] == provider
+            assert body["model"] == model_id
+            assert "secret-1234" not in response.text
+        finally:
+            byok_provider_manager.remove(user_id, provider)
+
+
 def test_byok_requires_user_identity() -> None:
     response = client.get("/api/v1/byok/credentials")
     assert response.status_code == 401
