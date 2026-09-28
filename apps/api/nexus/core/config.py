@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     groq_api_key: str | None = None
     nvidia_api_key: str | None = None
+    gemini_api_key: str | None = None
     embedding_provider: str = "auto"
     embedding_model: str = "text-embedding-3-small"
     dataset_storage_path: str = ".nexus/data"
