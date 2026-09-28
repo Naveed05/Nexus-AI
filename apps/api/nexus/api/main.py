@@ -1351,6 +1351,7 @@ def model_arena(x_nexus_user_id: str | None = Header(default=None)) -> dict:
                 "groq": settings.groq_api_key,
                 "nemotron": settings.nvidia_api_key,
                 "gemini": settings.gemini_api_key,
+                "anthropic": settings.anthropic_api_key,
             }.get(model.provider)),
             "available": health.available,
             "consecutive_failures": health.consecutive_failures,
@@ -1381,13 +1382,14 @@ def run_model_arena(
     if len(expected) > 10:
         raise HTTPException(status_code=422, detail="at most 10 expected_contains assertions are allowed")
 
-    catalog = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"), *provider_model_specs("gemini"))
+    catalog = (*model_registry.all(), *provider_model_specs("groq"), *provider_model_specs("nemotron"), *provider_model_specs("gemini"), *provider_model_specs("anthropic"))
     by_key = {model.key: model for model in catalog}
     server_keys = {
         "openai": settings.openai_api_key,
         "groq": settings.groq_api_key,
         "nemotron": settings.nvidia_api_key,
         "gemini": settings.gemini_api_key,
+        "anthropic": settings.anthropic_api_key,
     }
     results = []
     for key in selected:
