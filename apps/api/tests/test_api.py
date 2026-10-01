@@ -16,8 +16,9 @@ def test_byok_provider_fallback_switches_after_transient_failure() -> None:
     from nexus.core.models import BYOKProviderManager, InMemoryCredentialStore, ModelResponse
 
     manager = BYOKProviderManager(InMemoryCredentialStore())
-    manager.configure("user-1", "gemini", "gemini-test-key")
+    # Configure Gemini last so it is explicitly the preferred provider.
     manager.configure("user-1", "groq", "groq-test-key")
+    manager.configure("user-1", "gemini", "gemini-test-key")
 
     class FakeTransport:
         def __init__(self) -> None:
@@ -166,7 +167,6 @@ def test_memory_api_is_workspace_scoped_and_supports_recall_lifecycle() -> None:
 def test_memory_api_rejects_unknown_workspace() -> None:
     response = client.get(f"/api/v1/workspaces/{UUID(int=0)}/memories")
     assert response.status_code == 404
-
 
 
 def test_byok_credential_lifecycle_is_user_scoped_and_masks_keys() -> None:
@@ -608,7 +608,6 @@ def test_production_health_exposes_runtime_capacity() -> None:
     assert body["runtime"]["status"] == "ready"
     assert body["runtime"]["max_concurrent_runs"] >= 1
     assert "completed" in body["runs"]
-
 
 
 def test_scale_topology_endpoint_is_explicit():
